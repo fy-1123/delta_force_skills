@@ -90,6 +90,36 @@ public final class BlockbenchAnimatedModelRenderer {
             Set<String> hiddenGroups,
             int argbColor
     ) {
+        return renderInternal(modelId, animationName, animationSeconds, poseStack, buffer,
+                packedLight, hiddenGroups, argbColor, Map.of());
+    }
+
+    public static boolean renderWithGroupReplacements(
+            ResourceLocation modelId,
+            String animationName,
+            float animationSeconds,
+            PoseStack poseStack,
+            MultiBufferSource buffer,
+            int packedLight,
+            Set<String> hiddenGroups,
+            Map<String, Runnable> groupReplacements
+    ) {
+        return renderInternal(modelId, animationName, animationSeconds, poseStack, buffer,
+                packedLight, hiddenGroups, 0xFFFFFFFF,
+                groupReplacements == null ? Map.of() : groupReplacements);
+    }
+
+    private static boolean renderInternal(
+            ResourceLocation modelId,
+            String animationName,
+            float animationSeconds,
+            PoseStack poseStack,
+            MultiBufferSource buffer,
+            int packedLight,
+            Set<String> hiddenGroups,
+            int argbColor,
+            Map<String, Runnable> groupReplacements
+    ) {
         ModelData model = modelFor(modelId);
         if (model.empty()) {
             return false;
@@ -107,7 +137,8 @@ public final class BlockbenchAnimatedModelRenderer {
                 animation,
                 sampleTime,
                 hiddenGroups == null ? Set.of() : hiddenGroups,
-                argbColor
+                argbColor,
+                groupReplacements
         );
         for (Node root : model.roots()) {
             renderNode(root, Vec.ZERO, context);
@@ -420,8 +451,13 @@ public final class BlockbenchAnimatedModelRenderer {
             );
             context.poseStack().scale(animation.scale().x(), animation.scale().y(), animation.scale().z());
             rotate(context.poseStack(), group.rotation().add(animation.rotation()));
-            for (Node child : groupNode.children()) {
-                renderNode(child, group.origin(), context);
+            Runnable replacement = context.groupReplacements().get(group.name());
+            if (replacement != null) {
+                replacement.run();
+            } else {
+                for (Node child : groupNode.children()) {
+                    renderNode(child, group.origin(), context);
+                }
             }
             context.poseStack().popPose();
             return;
@@ -806,7 +842,8 @@ public final class BlockbenchAnimatedModelRenderer {
             Animation animation,
             float sampleTime,
             Set<String> hiddenGroups,
-            int argbColor
+            int argbColor,
+            Map<String, Runnable> groupReplacements
     ) {
         private VertexConsumer consumer(int textureIndex) {
             TextureData texture = textures.get(Math.max(0, Math.min(textureIndex, textures.size() - 1)));

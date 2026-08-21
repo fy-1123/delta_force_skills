@@ -210,25 +210,29 @@ public class ShepherdDroneEntity extends Entity implements ItemSupplier {
     }
 
     private void pulse(ServerLevel level, int durationTicks) {
-        RangedSoundHelper.playThrottled(level, position(), ModSounds.SHEPHERD_DRONE_STUN.get(),
+        pulseAt(level, position(), owner(level), durationTicks);
+    }
+
+    public static void pulseAt(ServerLevel level, Vec3 center, Entity owner, int durationTicks) {
+        RangedSoundHelper.playThrottled(level, center, ModSounds.SHEPHERD_DRONE_STUN.get(),
                 SoundSource.PLAYERS, 0.85f, 1.0f, 20.0D, 10, 5.0D);
-        level.sendParticles(ParticleTypes.SONIC_BOOM, getX(), getY(), getZ(),
+        level.sendParticles(ParticleTypes.SONIC_BOOM, center.x, center.y, center.z,
                 1, 0.0D, 0.0D, 0.0D, 0.0D);
-        level.sendParticles(DRONE_DUST, getX(), getY(), getZ(),
+        level.sendParticles(DRONE_DUST, center.x, center.y, center.z,
                 140, STUN_RADIUS * 0.45D, STUN_RADIUS * 0.12D, STUN_RADIUS * 0.45D, 0.0D);
 
-        AABB box = new AABB(position(), position()).inflate(STUN_RADIUS);
-        Entity owner = owner(level);
+        AABB box = new AABB(center, center).inflate(STUN_RADIUS);
+        UUID pulseOwnerId = owner == null ? null : owner.getUUID();
         boolean hitPlayer = false;
         int affectedTargets = 0;
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
             if (!TargetingUtil.isHostileLivingFor(owner, target)) {
                 continue;
             }
-            if (ownerId != null && target.getUUID().equals(ownerId)) {
+            if (pulseOwnerId != null && target.getUUID().equals(pulseOwnerId)) {
                 continue;
             }
-            double distance = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(position());
+            double distance = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(center);
             if (distance > STUN_RADIUS) {
                 continue;
             }

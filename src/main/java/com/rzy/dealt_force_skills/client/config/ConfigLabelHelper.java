@@ -46,6 +46,19 @@ public final class ConfigLabelHelper {
         put("hud", "HUD");
         put("attributes", "属性");
         put("experience_growth", "经验成长");
+        put("facilities", "特勤处设施");
+        put("redemption", "普通特勤处赎回");
+        put("gti", "GTI特勤处");
+        put("trading_hall", "GTI交易行");
+        put("warehouse", "仓库");
+        put("command_center", "指挥中心");
+        put("shooting_range", "靶场");
+        put("training_center", "训练中心");
+        put("diving_center", "潜水中心");
+        put("decontamination_room", "洗消室");
+        put("max_level", "最高可升级等级");
+        put("effects_enabled", "设施效果开关");
+        put("redemption_enabled", "赎回功能开关");
         // character ids — must match zh_cn character.*.name (design names, NOT machine translation)
         put("dwolf", "红狼");
         put("d_wolf", "红狼");

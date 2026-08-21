@@ -5,6 +5,8 @@ import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.electronics.ElectronicInterferenceManager;
 import com.rzy.dealt_force_skills.compat.PlayerReviveCompat;
 import com.rzy.dealt_force_skills.entity.RaptorFalconDroneEntity;
@@ -103,7 +105,9 @@ public final class TempestStateManager {
 
     public static boolean isTempest(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.TEMPEST_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.TEMPEST_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.TEMPEST_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -115,7 +119,7 @@ public final class TempestStateManager {
             return;
         }
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(WALL_CHARGES, WALL_MAX_CHARGES);
+        tag.putInt(WALL_CHARGES, wallCapacity(player));
         tag.putLong(WALL_NEXT_RECHARGE, 0L);
         tag.putLong(ROLL_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, TempestTool.NONE.ordinal());
@@ -223,12 +227,13 @@ public final class TempestStateManager {
 
     public static boolean consumeWallCharge(ServerPlayer player) {
         CompoundTag tag = data(player);
-        int charges = tag.getInt(WALL_CHARGES);
+        int capacity = wallCapacity(player);
+        int charges = Math.min(capacity, tag.getInt(WALL_CHARGES));
         if (charges <= 0) {
             return false;
         }
         tag.putInt(WALL_CHARGES, charges - 1);
-        if (charges - 1 < WALL_MAX_CHARGES && tag.getLong(WALL_NEXT_RECHARGE) <= 0L) {
+        if (charges - 1 < capacity && tag.getLong(WALL_NEXT_RECHARGE) <= 0L) {
             tag.putLong(WALL_NEXT_RECHARGE,
                     SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), WALL_RECHARGE_TICKS));
         }
@@ -236,11 +241,11 @@ public final class TempestStateManager {
     }
 
     public static int wallCharges(Player player) {
-        return data(player).getInt(WALL_CHARGES);
+        return Math.min(wallCapacity(player), data(player).getInt(WALL_CHARGES));
     }
 
     public static int wallRechargeRemainingTicks(Player player) {
-        return wallCharges(player) >= WALL_MAX_CHARGES ? 0 : remainingTicks(player, WALL_NEXT_RECHARGE);
+        return wallCharges(player) >= wallCapacity(player) ? 0 : remainingTicks(player, WALL_NEXT_RECHARGE);
     }
 
     public static int rollCooldownRemainingTicks(Player player) {
@@ -292,6 +297,10 @@ public final class TempestStateManager {
         }
         RangedSoundHelper.playFollowingPlayer(player, ModSounds.TEMPEST_RECALL_LETHAL_TRIGGER.get(),
                 SoundSource.PLAYERS, 1.0F, 1.0F, 32.0D);
+        if (CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.TEMPEST_START_BITING)) {
+            completeEmergencyRecall(player);
+            return;
+        }
         startRecall(player, true);
     }
 
@@ -336,8 +345,10 @@ public final class TempestStateManager {
             return;
         }
         boolean refresh = player.hasEffect(ModEffects.TEMPEST_EXPLOSIVE_SPINE.get());
+        int duration = CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.TEMPEST_HIGH_ENERGY_SPINE)
+                ? EXPLOSIVE_SPINE_TICKS * 3 : EXPLOSIVE_SPINE_TICKS;
         player.addEffect(new MobEffectInstance(ModEffects.TEMPEST_EXPLOSIVE_SPINE.get(),
-                EXPLOSIVE_SPINE_TICKS, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.tempest.tempest_state_manager.effect.tempest_explosive_spine.0.amplifier", 0), false, true, true));
+                duration, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.tempest.tempest_state_manager.effect.tempest_explosive_spine.0.amplifier", 0), false, true, true));
         if (refresh) {
             DfsAchievements.recordTempestSpineRefresh(player);
         }
@@ -383,7 +394,7 @@ public final class TempestStateManager {
                 PlayerReviveCompat.tempestSelfRescueTicks(player));
         NetworkHandler.sendToPlayer(new S2C_SyncTempestState(
                 wallCharges(player),
-                WALL_MAX_CHARGES,
+                wallCapacity(player),
                 wallRechargeRemainingTicks(player),
                 rollCooldownRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
@@ -617,6 +628,31 @@ public final class TempestStateManager {
         endRecall(player);
     }
 
+    private static void completeEmergencyRecall(ServerPlayer player) {
+        CompoundTag tag = data(player);
+        Vec3 savedAnchor = anchor(tag);
+        Vec3 destination = canOccupy(player, savedAnchor)
+                ? savedAnchor
+                : findSafeStandPosition(player.serverLevel(), savedAnchor, savedAnchor);
+        double ropeLength = tag.getDouble(ROPE_LENGTH);
+        requestRecallPosition(player, destination);
+        player.setDeltaMovement(Vec3.ZERO);
+        player.fallDistance = 0.0F;
+        clearRope(player, true);
+        player.setHealth(player.getMaxHealth());
+        player.getFoodData().setFoodLevel(20);
+        player.getFoodData().setSaturation(20.0F);
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            var stack = player.getInventory().getItem(slot);
+            if (stack.isDamageableItem() && stack.isDamaged()) {
+                stack.setDamageValue(0);
+            }
+        }
+        DfsAchievements.recordTempestRecallSuccess(player, ropeLength);
+        RangedSoundHelper.playFollowingPlayer(player, ModSounds.TEMPEST_RECALL_END.get(),
+                SoundSource.PLAYERS, 0.9F, 1.0F, 32.0D);
+    }
+
     private static void requestRecallPosition(ServerPlayer player, Vec3 destination) {
         player.connection.teleport(destination.x, destination.y, destination.z, player.getYRot(), player.getXRot());
         putVec(data(player), RECALL_LAST_POSITION, destination);
@@ -762,7 +798,9 @@ public final class TempestStateManager {
             return;
         }
         double length = tag.getDouble(ROPE_LENGTH) + distance;
-        if (enforceLength && length > ROPE_MAX_LENGTH) {
+        double maxLength = CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.TEMPEST_START_BITING)
+                ? ROPE_MAX_LENGTH * 3.0D : ROPE_MAX_LENGTH;
+        if (enforceLength && length > maxLength) {
             player.teleportTo(last.x, last.y, last.z);
             player.setDeltaMovement(Vec3.ZERO);
             warnRope(player);
@@ -771,7 +809,7 @@ public final class TempestStateManager {
         path.add(vecTag(node));
         tag.put(PATH, path);
         tag.putDouble(ROPE_LENGTH, length);
-        if (enforceLength && ROPE_MAX_LENGTH - length <= 15.0D) {
+        if (enforceLength && maxLength - length <= 15.0D) {
             warnRope(player);
         }
     }
@@ -899,8 +937,10 @@ public final class TempestStateManager {
 
     private static void recharge(ServerPlayer player, long now) {
         CompoundTag tag = data(player);
-        int charges = tag.getInt(WALL_CHARGES);
-        if (charges >= WALL_MAX_CHARGES) {
+        int capacity = wallCapacity(player);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(WALL_CHARGES)));
+        tag.putInt(WALL_CHARGES, charges);
+        if (charges >= capacity) {
             tag.putLong(WALL_NEXT_RECHARGE, 0L);
             return;
         }
@@ -909,12 +949,16 @@ public final class TempestStateManager {
             tag.putLong(WALL_NEXT_RECHARGE, SkillCooldownHelper.until(player, now, WALL_RECHARGE_TICKS));
             return;
         }
-        while (charges < WALL_MAX_CHARGES && now >= next) {
+        while (charges < capacity && now >= next) {
             charges++;
             next += SkillCooldownHelper.ticks(player, WALL_RECHARGE_TICKS);
         }
         tag.putInt(WALL_CHARGES, charges);
-        tag.putLong(WALL_NEXT_RECHARGE, charges >= WALL_MAX_CHARGES ? 0L : next);
+        tag.putLong(WALL_NEXT_RECHARGE, charges >= capacity ? 0L : next);
+    }
+
+    private static int wallCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, WALL_MAX_CHARGES);
     }
 
     private static int remainingTicks(Player player, String key) {

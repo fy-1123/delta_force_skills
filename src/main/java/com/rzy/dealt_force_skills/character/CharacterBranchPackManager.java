@@ -52,6 +52,7 @@ public final class CharacterBranchPackManager {
     private static final List<OfficialSamplePack> OFFICIAL_SAMPLE_PACKS = officialSamplePacks();
     private static final Set<String> SPECIAL_DEFAULT_CHARACTER_IDS = Set.of(
             ModCharacters.CORPS_ID,
+            ModCharacters.LEGACY_CORPS_ID,
             ModCharacters.NIKAIDOU_HIRO_WITCHIFICATION_ID
     );
     private static List<CharacterBranch> branches = fallbackBranches();
@@ -95,35 +96,111 @@ public final class CharacterBranchPackManager {
     }
 
     public static synchronized void reload() {
-        branches = fallbackBranches();
-        charactersById = characterIndex(branches);
+        try {
+            List<LoadedBranch> loaded = loadBranchesFromDisk();
+            branches = loaded.isEmpty() ? fallbackBranches() : orderBranches(loaded);
+            charactersById = characterIndex(branches);
+            LOGGER.info("Loaded {} deltaforce character branch data files from {}", loaded.size(), rootDirectory());
+        } catch (IOException | RuntimeException error) {
+            LOGGER.error("Unable to load deltaforce character branch data files from {}", rootDirectory(), error);
+            branches = fallbackBranches();
+            charactersById = characterIndex(branches);
+        }
     }
 
     public static synchronized void reload(ResourceManager resourceManager) {
+        List<LoadedBranch> loaded = new ArrayList<>();
         try {
-            List<LoadedBranch> loaded = new ArrayList<>();
             resourceManager.listResources(DATA_DIRECTORY, location -> location.getPath().endsWith(".json"))
                     .entrySet()
                     .stream()
                     .sorted(Comparator.comparing(entry -> entry.getKey().toString()))
                     .forEach(entry -> readBranch(fileToBranchId(entry.getKey()), entry.getValue()).ifPresent(loaded::add));
-            branches = orderBranches(loaded);
-            charactersById = characterIndex(branches);
-            LOGGER.info("Loaded {} deltaforce character branch data files", branches.size());
         } catch (RuntimeException error) {
-            LOGGER.error("Unable to load deltaforce character branch data files", error);
-            branches = List.of();
-            charactersById = Map.of();
+            LOGGER.error("Unable to load deltaforce character branches from the active resource manager", error);
         }
+        try {
+            List<LoadedBranch> merged = mergeBranches(loaded, loadBranchesFromDisk());
+            loaded.clear();
+            loaded.addAll(merged);
+        } catch (IOException | RuntimeException error) {
+            LOGGER.error("Unable to load deltaforce character branches from {}", rootDirectory(), error);
+        }
+        branches = loaded.isEmpty() ? fallbackBranches() : orderBranches(loaded);
+        charactersById = characterIndex(branches);
+        LOGGER.info("Loaded {} deltaforce character branches", branches.size());
     }
 
     public static synchronized List<CharacterBranch> currentBranches() {
         return List.copyOf(branches);
     }
 
+    private static List<LoadedBranch> loadBranchesFromDisk() throws IOException {
+        List<LoadedBranch> loaded = new ArrayList<>();
+        Path root = rootDirectory();
+        if (Files.notExists(root)) {
+            return loaded;
+        }
+        List<Path> packs;
+        try (var stream = Files.list(root)) {
+            packs = stream.filter(Files::isDirectory).sorted().toList();
+        }
+        for (Path pack : packs) {
+            Path data = pack.resolve("data");
+            if (Files.notExists(data)) {
+                continue;
+            }
+            List<Path> namespaces;
+            try (var stream = Files.list(data)) {
+                namespaces = stream.filter(Files::isDirectory).sorted().toList();
+            }
+            for (Path namespace : namespaces) {
+                Path branchDirectory = namespace.resolve(DATA_DIRECTORY);
+                if (Files.notExists(branchDirectory)) {
+                    continue;
+                }
+                List<Path> files;
+                try (var stream = Files.walk(branchDirectory)) {
+                    files = stream.filter(Files::isRegularFile)
+                            .filter(path -> path.getFileName().toString().endsWith(".json"))
+                            .sorted().toList();
+                }
+                for (Path file : files) {
+                    String relative = namespace.relativize(file).toString().replace('\\', '/');
+                    ResourceLocation fileId = ResourceLocation.tryParse(
+                            namespace.getFileName().toString() + ":" + relative);
+                    if (fileId == null) {
+                        LOGGER.warn("Ignoring deltaforce branch file with invalid resource path {}", file);
+                        continue;
+                    }
+                    try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                        JsonObject object = GSON.fromJson(reader, JsonObject.class);
+                        if (object != null) {
+                            readBranch(fileToBranchId(fileId), object).ifPresent(loaded::add);
+                        }
+                    } catch (IOException | RuntimeException error) {
+                        LOGGER.warn("Unable to read deltaforce branch file {}", file, error);
+                    }
+                }
+            }
+        }
+        return loaded;
+    }
+
+    private static List<LoadedBranch> mergeBranches(List<LoadedBranch> resourceBranches,
+                                                     List<LoadedBranch> diskBranches) {
+        Map<String, LoadedBranch> merged = new LinkedHashMap<>();
+        resourceBranches.forEach(branch -> merged.put(branch.id(), branch));
+        diskBranches.forEach(branch -> merged.put(branch.id(), branch));
+        return new ArrayList<>(merged.values());
+    }
+
     public static synchronized Optional<CharacterDefinition> findCharacter(String id) {
         if (id == null || id.isBlank()) {
             return Optional.empty();
+        }
+        if (ModCharacters.LEGACY_CORPS_ID.equals(id)) {
+            id = ModCharacters.CORPS_ID;
         }
         CharacterDefinition character = charactersById.get(id);
         return character == null ? ModCharacters.get(id) : Optional.of(character);
@@ -408,8 +485,34 @@ public final class CharacterBranchPackManager {
         Path dataDir = pack.resolve("data").resolve(DealtForceSkillsMod.MODID).resolve(DATA_DIRECTORY);
         for (BuiltinBranch branch : BUILTIN_BRANCHES.values()) {
             Path file = dataDir.resolve(branch.folderName() + ".json");
+            migrateLegacyCharacterIds(file);
             removeMisplacedSpecialDefaultCharacters(file, branch);
             appendMissingBuiltinCharacters(file, branch);
+        }
+    }
+
+    private static void migrateLegacyCharacterIds(Path file) throws IOException {
+        Optional<JsonObject> editable = readEditableBranchJson(file);
+        if (editable.isEmpty()) {
+            return;
+        }
+        JsonObject object = editable.get();
+        JsonArray characters = editableCharacters(object);
+        boolean changed = false;
+        for (JsonElement element : characters) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject character = element.getAsJsonObject();
+            if (ModCharacters.LEGACY_CORPS_ID.equals(stringValue(character, "id", ""))) {
+                character.addProperty("id", ModCharacters.CORPS_ID);
+                character.addProperty("role", CharacterRole.SPECIAL.name());
+                changed = true;
+            }
+        }
+        if (changed) {
+            writeEditableBranchJson(file, object);
+            LOGGER.info("Migrated legacy Corps character id in {}", file);
         }
     }
 

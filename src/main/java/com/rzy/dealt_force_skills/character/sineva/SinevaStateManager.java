@@ -4,6 +4,8 @@ import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SinevaShieldStaminaConsume;
@@ -41,7 +43,7 @@ public final class SinevaStateManager {
       "characters.sineva.sineva_state_manager.bomb_suit_jump_height_reduction_fraction", 0.5
    ));
     private static volatile double BOMB_SUIT_STEP_HEIGHT_BONUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BOMB_SUIT_STEP_HEIGHT_BONUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue(
-      "characters.sineva.sineva_state_manager.bomb_suit_step_height_bonus", 0.5
+      "characters.sineva.sineva_state_manager.bomb_suit_step_height_bonus", 1.0
    ));
     private static volatile double VIEWPORT_PRESSURE_DECAY_PER_TICK = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("VIEWPORT_PRESSURE_DECAY_PER_TICK", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue(
       "characters.sineva.sineva_state_manager.viewport_pressure_decay_per_tick", 0.82
@@ -88,8 +90,11 @@ public final class SinevaStateManager {
     private static final String SHIELD_MAX_DURABILITY_LAST = "ShieldMaxDurabilityLast";
     private static final String VIEWPORT_HEALTH = "ViewportHealth";
     private static final String VIEWPORT_HEALTH_FP = "ViewportHealthFp";
+    private static final String VIEWPORT_MAX_HEALTH_LAST = "ViewportMaxHealthLast";
     private static final String VIEWPORT_PRESSURE = "ViewportPressure";
     private static final String VIEWPORT_PRESSURE_TICK = "ViewportPressureTick";
+    private static final String VIEWPORT_DAMAGE_WINDOW = "ViewportDamageWindow";
+    private static final String VIEWPORT_DAMAGE_TOTAL = "ViewportDamageTotal";
     private static final String SHIELD_DAMAGE_SLOW = "ShieldDamageSlow";
     private static final String SHIELD_DAMAGE_SLOW_TICK = "ShieldDamageSlowTick";
     private static final String BASH_COOLDOWN_UNTIL = "BashCooldownUntil";
@@ -103,7 +108,9 @@ public final class SinevaStateManager {
 
     public static boolean isSineva(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.SINEVA_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.SINEVA_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.SINEVA_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -116,7 +123,7 @@ public final class SinevaStateManager {
         }
 
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(BLADE_WIRE_CHARGES, BLADE_WIRE_MAX_CHARGES);
+        tag.putInt(BLADE_WIRE_CHARGES, bladeWireCapacity(player));
         tag.putLong(BLADE_WIRE_NEXT_RECHARGE, 0L);
         tag.putLong(GRAPPLE_COOLDOWN_UNTIL, 0L);
         tag.putLong(BOMB_SUIT_COOLDOWN_UNTIL, 0L);
@@ -153,7 +160,11 @@ public final class SinevaStateManager {
     }
 
     public static void tick(ServerPlayer player) {
-        if (!isSineva(player)) return;
+        boolean activeSource = isSineva(player);
+        updateBombSuitStepHeight(player, activeSource && isBombSuitActive(player));
+        if (!activeSource) {
+            return;
+        }
         initializeIfNeeded(player);
 
         long now = SkillCooldownHelper.now(player);
@@ -163,11 +174,11 @@ public final class SinevaStateManager {
     }
 
     public static int bladeWireCharges(Player player) {
-        return data(player).getInt(BLADE_WIRE_CHARGES);
+        return Math.min(bladeWireCapacity(player), data(player).getInt(BLADE_WIRE_CHARGES));
     }
 
     public static int bladeWireRechargeRemainingTicks(Player player) {
-        if (bladeWireCharges(player) >= BLADE_WIRE_MAX_CHARGES) {
+        if (bladeWireCharges(player) >= bladeWireCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, BLADE_WIRE_NEXT_RECHARGE);
@@ -175,13 +186,14 @@ public final class SinevaStateManager {
 
     public static boolean consumeBladeWireCharge(ServerPlayer player) {
         CompoundTag tag = data(player);
-        int charges = Math.min(BLADE_WIRE_MAX_CHARGES, tag.getInt(BLADE_WIRE_CHARGES));
+        int capacity = bladeWireCapacity(player);
+        int charges = Math.min(capacity, tag.getInt(BLADE_WIRE_CHARGES));
         if (charges <= 0) {
             return false;
         }
 
         tag.putInt(BLADE_WIRE_CHARGES, charges - 1);
-        if (charges == BLADE_WIRE_MAX_CHARGES) {
+        if (charges == capacity) {
             tag.putLong(BLADE_WIRE_NEXT_RECHARGE,
                     SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), BLADE_WIRE_RECHARGE_TICKS));
         }
@@ -235,11 +247,15 @@ public final class SinevaStateManager {
     }
 
     public static boolean isShieldDeployed(Player player) {
-        return isBombSuitActive(player) && data(player).getBoolean(SHIELD_DEPLOYED) && !isShieldBroken(player);
+        return isBombSuitActive(player) && data(player).getBoolean(SHIELD_DEPLOYED)
+                && (!isShieldBroken(player) || CommanderStateManager.hasBranchUpgrade(
+                player, CommanderBranchUpgrade.SINEVA_ADVANCED_MATERIALS));
     }
 
     public static void setShieldDeployed(Player player, boolean deployed) {
-        data(player).putBoolean(SHIELD_DEPLOYED, deployed && !isShieldBroken(player));
+        data(player).putBoolean(SHIELD_DEPLOYED, deployed && (!isShieldBroken(player)
+                || CommanderStateManager.hasBranchUpgrade(
+                player, CommanderBranchUpgrade.SINEVA_ADVANCED_MATERIALS)));
     }
 
     public static boolean isShieldBroken(Player player) {
@@ -260,7 +276,11 @@ public final class SinevaStateManager {
     }
 
     public static boolean damageShield(Player player, float amount) {
+        if (CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.SINEVA_ADVANCED_MATERIALS)) {
+            return false;
+        }
         CompoundTag tag = data(player);
+        ensureShieldDurability(player, tag);
         double previous = tag.contains(SHIELD_DURABILITY_FP)
                 ? tag.getDouble(SHIELD_DURABILITY_FP)
                 : tag.getInt(SHIELD_DURABILITY);
@@ -292,6 +312,9 @@ public final class SinevaStateManager {
         if (attr == null) {
             return;
         }
+        if (CommanderStateManager.isCommander(player)) {
+            active = false;
+        }
         AttributeModifier existing = attr.getModifier(BOMB_SUIT_STEP_HEIGHT_UUID);
         double bonus = bombSuitStepHeightBonus();
         if (active && bonus > 0.0D) {
@@ -310,6 +333,7 @@ public final class SinevaStateManager {
 
     public static int viewportHealth(Player player) {
         CompoundTag tag = data(player);
+        ensureViewportHealth(player, tag);
         double health = tag.contains(VIEWPORT_HEALTH_FP)
                 ? tag.getDouble(VIEWPORT_HEALTH_FP)
                 : tag.getInt(VIEWPORT_HEALTH);
@@ -317,7 +341,11 @@ public final class SinevaStateManager {
     }
 
     public static int calculateViewportMaxHealth(Player player) {
-        return calculateScaledDurability(player, VIEWPORT_MAX_HEALTH);
+        int durability = calculateScaledDurability(player, VIEWPORT_MAX_HEALTH);
+        if (CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.SINEVA_ADVANCED_MATERIALS)) {
+            return (int) Math.min(Integer.MAX_VALUE, durability * 3L);
+        }
+        return durability;
     }
 
     private static int calculateScaledDurability(Player player, int baseValue) {
@@ -325,16 +353,19 @@ public final class SinevaStateManager {
         float reduction = Math.min(0.8f, armor * 0.04f);
         int level = ModGameRules.effectiveExperienceLevel(player);
         float hp = player.getMaxHealth();
-        int fullHealth = baseValue + (int) (hp
+        float effectiveHealth = hp
                 * (1.0f + armor * 0.2f)
-                * (1.0f + level * com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue(
-                "experience_growth.sineva.viewport_health_per_level", 1.0F))
-                * (1.0f + reduction * 5.0f));
-        return Math.max(baseValue, fullHealth / 2);
+                * (1.0f + reduction * 5.0f);
+        int baseDurability = Math.max(baseValue, (baseValue + (int) effectiveHealth) / 2);
+        float growthPerLevel = com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue(
+                "experience_growth.sineva.viewport_health_per_level", 1.0F);
+        int experienceBonus = (int) (effectiveHealth * level * growthPerLevel / 2.0f);
+        return Math.max(baseValue, baseDurability + experienceBonus);
     }
 
     public static boolean damageViewport(Player player, float amount) {
         CompoundTag tag = data(player);
+        ensureViewportHealth(player, tag);
         double previous = tag.contains(VIEWPORT_HEALTH_FP)
                 ? tag.getDouble(VIEWPORT_HEALTH_FP)
                 : tag.getInt(VIEWPORT_HEALTH);
@@ -343,6 +374,17 @@ public final class SinevaStateManager {
         }
 
         double effectiveDamage = Math.max(0.0D, amount);
+        if (CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.SINEVA_ADVANCED_MATERIALS)) {
+            long window = SkillCooldownHelper.now(player) / 20L;
+            if (tag.getLong(VIEWPORT_DAMAGE_WINDOW) != window) {
+                tag.putLong(VIEWPORT_DAMAGE_WINDOW, window);
+                tag.putDouble(VIEWPORT_DAMAGE_TOTAL, 0.0D);
+            }
+            double cap = calculateViewportMaxHealth(player) * 0.10D;
+            double remaining = Math.max(0.0D, cap - tag.getDouble(VIEWPORT_DAMAGE_TOTAL));
+            effectiveDamage = Math.min(effectiveDamage, remaining);
+            tag.putDouble(VIEWPORT_DAMAGE_TOTAL, tag.getDouble(VIEWPORT_DAMAGE_TOTAL) + effectiveDamage);
+        }
         /*
          * Dynamic viewport pressure reduction is intentionally disabled.
          * Restore this block to make repeated viewport hits reduce incoming viewport damage again.
@@ -434,7 +476,7 @@ public final class SinevaStateManager {
 
         NetworkHandler.sendToPlayer(new S2C_SyncSinevaState(
                 bladeWireCharges(player),
-                BLADE_WIRE_MAX_CHARGES,
+                bladeWireCapacity(player),
                 bladeWireRechargeRemainingTicks(player),
                 grappleCooldownRemainingTicks(player),
                 bombSuitCooldownRemainingTicks(player),
@@ -463,17 +505,28 @@ public final class SinevaStateManager {
 
     private static void rechargeBladeWire(ServerPlayer player, long now) {
         CompoundTag tag = data(player);
-        int charges = Math.min(BLADE_WIRE_MAX_CHARGES, tag.getInt(BLADE_WIRE_CHARGES));
+        int capacity = bladeWireCapacity(player);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(BLADE_WIRE_CHARGES)));
+        tag.putInt(BLADE_WIRE_CHARGES, charges);
         long nextRecharge = tag.getLong(BLADE_WIRE_NEXT_RECHARGE);
 
-        if (charges >= BLADE_WIRE_MAX_CHARGES || nextRecharge <= 0L || now < nextRecharge) {
+        if (charges >= capacity) {
+            tag.putLong(BLADE_WIRE_NEXT_RECHARGE, 0L);
+            return;
+        }
+        if (nextRecharge <= 0L) {
+            tag.putLong(BLADE_WIRE_NEXT_RECHARGE,
+                    SkillCooldownHelper.until(player, now, BLADE_WIRE_RECHARGE_TICKS));
+            return;
+        }
+        if (now < nextRecharge) {
             return;
         }
 
         charges++;
         tag.putInt(BLADE_WIRE_CHARGES, charges);
         tag.putLong(BLADE_WIRE_NEXT_RECHARGE,
-                charges < BLADE_WIRE_MAX_CHARGES
+                charges < capacity
                         ? SkillCooldownHelper.until(player, now, BLADE_WIRE_RECHARGE_TICKS)
                         : 0L);
     }
@@ -500,6 +553,7 @@ public final class SinevaStateManager {
         int maxHealth = calculateViewportMaxHealth(player);
         tag.putInt(VIEWPORT_HEALTH, maxHealth);
         tag.putDouble(VIEWPORT_HEALTH_FP, maxHealth);
+        tag.putInt(VIEWPORT_MAX_HEALTH_LAST, maxHealth);
         tag.putDouble(VIEWPORT_PRESSURE, 0.0D);
         tag.putLong(VIEWPORT_PRESSURE_TICK, SkillCooldownHelper.now(player));
     }
@@ -519,16 +573,36 @@ public final class SinevaStateManager {
         }
 
         int maxDurability = calculateShieldMaxDurability(player);
-        if (!tag.contains(SHIELD_MAX_DURABILITY_LAST)) {
-            double current = tag.contains(SHIELD_DURABILITY_FP)
-                    ? tag.getDouble(SHIELD_DURABILITY_FP)
-                    : tag.getInt(SHIELD_DURABILITY);
-            if (current > 0.0D && current < maxDurability) {
-                tag.putDouble(SHIELD_DURABILITY_FP, maxDurability);
-                tag.putInt(SHIELD_DURABILITY, maxDurability);
-            }
-            tag.putInt(SHIELD_MAX_DURABILITY_LAST, maxDurability);
+        syncScaledDurability(tag, SHIELD_DURABILITY, SHIELD_DURABILITY_FP,
+                SHIELD_MAX_DURABILITY_LAST, maxDurability);
+    }
+
+    private static void ensureViewportHealth(Player player, CompoundTag tag) {
+        if (!tag.contains(VIEWPORT_HEALTH_FP) && !tag.contains(VIEWPORT_HEALTH)) {
+            resetViewport(player);
+            return;
         }
+
+        syncScaledDurability(tag, VIEWPORT_HEALTH, VIEWPORT_HEALTH_FP,
+                VIEWPORT_MAX_HEALTH_LAST, calculateViewportMaxHealth(player));
+    }
+
+    private static void syncScaledDurability(CompoundTag tag, String valueKey, String preciseValueKey,
+                                             String previousMaxKey, int currentMax) {
+        double current = tag.contains(preciseValueKey) ? tag.getDouble(preciseValueKey) : tag.getInt(valueKey);
+        if (!tag.contains(previousMaxKey)) {
+            if (current > 0.0D && current < currentMax) {
+                current = currentMax;
+            }
+        } else {
+            int previousMax = Math.max(0, tag.getInt(previousMaxKey));
+            if (previousMax != currentMax && current > 0.0D) {
+                current = Math.max(0.0D, Math.min(currentMax, current + currentMax - previousMax));
+            }
+        }
+        tag.putDouble(preciseValueKey, current);
+        tag.putInt(valueKey, (int) Math.ceil(current));
+        tag.putInt(previousMaxKey, currentMax);
     }
 
     private static double decayedViewportPressure(Player player) {
@@ -590,6 +664,10 @@ public final class SinevaStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int bladeWireCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, BLADE_WIRE_MAX_CHARGES);
     }
 
     private static CompoundTag data(Player player) {

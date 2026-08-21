@@ -422,6 +422,7 @@ public class DfsEquipmentItem extends ArmorItem {
             case PURPLE -> 0.70D;
             case GOLD -> 0.90D;
             case RED -> 0.96D;
+            case COLORFUL -> 0.96D;
         };
     }
 
@@ -433,6 +434,7 @@ public class DfsEquipmentItem extends ArmorItem {
             case PURPLE -> 7;
             case GOLD -> 6;
             case RED -> 5;
+            case COLORFUL -> 5;
         };
     }
 

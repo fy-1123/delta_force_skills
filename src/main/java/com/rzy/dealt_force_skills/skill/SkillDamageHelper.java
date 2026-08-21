@@ -2,8 +2,11 @@ package com.rzy.dealt_force_skills.skill;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.boss.BossCombatRules;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
+import com.rzy.dealt_force_skills.compat.TrainingTargetCompat;
 import com.rzy.dealt_force_skills.registry.ModGameRules;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -14,7 +17,11 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 
+import java.util.List;
+
 public final class SkillDamageHelper {
+    private static final ThreadLocal<Boolean> COMMANDER_SKILL_DAMAGE =
+            ThreadLocal.withInitial(() -> false);
     private static volatile float BONUS_PER_EXPERIENCE_LEVEL = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BONUS_PER_EXPERIENCE_LEVEL", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("experience_growth.general.skill_damage_per_level", 0.005F));
     private static volatile float NON_PLAYER_TARGET_MULTIPLIER = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("NON_PLAYER_TARGET_MULTIPLIER", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("general.skilldamagehelper.non_player_target_multiplier", 5.0F));
     public static final ResourceKey<DamageType> TRUE_SKILL_DAMAGE = key("true_skill");
@@ -61,14 +68,38 @@ public final class SkillDamageHelper {
         if (!(source instanceof Player player) || amount <= 0.0f) {
             return amount;
         }
-        return amount * (1.0f + ModGameRules.effectiveExperienceLevel(player) * BONUS_PER_EXPERIENCE_LEVEL);
+        return (float) (amount * (1.0f + ModGameRules.effectiveExperienceLevel(player) * BONUS_PER_EXPERIENCE_LEVEL)
+                * CommanderStateManager.skillStrengthMultiplier(player));
     }
 
     public static boolean hurt(LivingEntity target, DamageSource source, LivingEntity sourceEntity, float amount) {
         if (shouldSkipTeammateDamage(target, source, sourceEntity)) {
             return false;
         }
-        return target.hurt(source, scaleForTarget(target, sourceEntity, amount));
+        float scaled = scaleForTarget(target, sourceEntity, amount);
+        if (sourceEntity instanceof net.minecraft.server.level.ServerPlayer commander) {
+            DamageSource appliedSource = source;
+            boolean convert = CommanderStateManager.convertsSkillDamage(commander)
+                    && !TrainingTargetCompat.recordsDamageWithoutDying(target)
+                    && target.level() instanceof ServerLevel;
+            if (convert) {
+                ServerLevel level = (ServerLevel) target.level();
+                appliedSource = level.damageSources().fellOutOfWorld();
+            }
+            COMMANDER_SKILL_DAMAGE.set(true);
+            try {
+                boolean applied = target.hurt(appliedSource, scaled);
+                CommanderStateManager.onSkillDamage(commander, target, appliedSource, scaled, applied);
+                return applied;
+            } finally {
+                COMMANDER_SKILL_DAMAGE.remove();
+            }
+        }
+        return target.hurt(source, scaled);
+    }
+
+    public static boolean isApplyingCommanderSkillDamage() {
+        return COMMANDER_SKILL_DAMAGE.get();
     }
 
     public static boolean hurtUnscaled(LivingEntity target, DamageSource source, float amount) {
@@ -94,7 +125,12 @@ public final class SkillDamageHelper {
 
     private static boolean shouldSkipTeammateDamage(LivingEntity target, DamageSource source, LivingEntity sourceEntity) {
         Entity attacker = sourceEntity != null ? sourceEntity : source.getEntity();
-        return attacker instanceof Player && target instanceof Player && DealtTeamManager.areTeammates(attacker, target);
+        return sourceEntity instanceof Player player
+                && target == player
+                && CommanderStateManager.isCommander(player)
+                || TargetingUtil.isPlayerOwnedSummonOf(attacker, target)
+                || attacker instanceof Player && target instanceof Player
+                && DealtTeamManager.areTeammates(attacker, target);
     }
 
     public static DamageSource trueDamage(ServerLevel level, Entity directEntity, Entity causingEntity) {
@@ -231,5 +267,11 @@ public final class SkillDamageHelper {
                 directEntity,
                 causingEntity
         );
+    }
+
+    public static List<ResourceKey<DamageType>> allTypes(ServerLevel level) {
+        return level.registryAccess().registryOrThrow(Registries.DAMAGE_TYPE).entrySet().stream()
+                .map(java.util.Map.Entry::getKey)
+                .toList();
     }
 }

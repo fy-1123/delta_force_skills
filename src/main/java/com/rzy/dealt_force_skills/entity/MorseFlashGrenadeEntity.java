@@ -164,8 +164,7 @@ public class MorseFlashGrenadeEntity extends Projectile implements ItemSupplier 
             }
             Vec3 before = target.getDeltaMovement();
             target.invulnerableTime = 0;
-            SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, owner), owner,
-                    com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("summons.morse_flash_grenade_entity.skill_hurt.0.damage", 1.0f));
+            SkillDamageHelper.hurtUnscaled(target, SkillDamageHelper.trueDamage(level, this, owner), 1.0F);
             target.setDeltaMovement(before);
             target.hurtMarked = true;
             target.addEffect(new MobEffectInstance(ModEffects.MORSE_FLASH_BLIND.get(),

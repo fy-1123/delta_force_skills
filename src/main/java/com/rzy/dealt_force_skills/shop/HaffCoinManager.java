@@ -9,7 +9,6 @@ import com.rzy.dealt_force_skills.character.saeed.SaeedStateManager;
 import com.rzy.dealt_force_skills.character.undead.UndeadStateManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncHaffCoins;
-import com.rzy.dealt_force_skills.registry.ModGameRules;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -50,7 +49,7 @@ public final class HaffCoinManager {
                 && !SaeedStateManager.isSaeed(player)
                 && (GhrothStateManager.isGhroth(player)
                 || ChamberStateManager.hasHaffPassive(player)
-                || player.serverLevel().getGameRules().getBoolean(ModGameRules.DEALT_FORCE_SHOP));
+                || DealtShopAccessManager.isAllowed(DealtShopAccessManager.Service.SHOP, player));
     }
 
     public static void add(ServerPlayer player, long amount) {

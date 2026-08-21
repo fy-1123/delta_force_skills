@@ -2,9 +2,12 @@ package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.util.ClientVisionHooks;
 import com.rzy.dealt_force_skills.character.stinger.StingerStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModParticles;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -28,27 +31,34 @@ import net.minecraftforge.network.NetworkHooks;
 
 import java.util.UUID;
 
-public class StingerSmokeCloudEntity extends Entity implements ItemSupplier {
+public class StingerSmokeCloudEntity extends Entity implements ItemSupplier, SmokeCloudModelState {
     public static volatile int GRENADE_LIFE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("GRENADE_LIFE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.stingersmokecloudentity.grenade_life_ticks", 300));
     public static volatile int DRONE_LIFE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("DRONE_LIFE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.stingersmokecloudentity.drone_life_ticks", 500));
     public static volatile double RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.stingersmokecloudentity.radius", 5.5));
     public static volatile double ENHANCED_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("ENHANCED_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.stingersmokecloudentity.enhanced_radius", 7.0));
     private static final int PARTICLE_REFRESH_TICKS = 15;
+    private static final int HIVE_PARTICLE_REFRESH_TICKS = 10;
+    private static final int HIVE_PARTICLE_COUNT = 12;
     private static final EntityDataAccessor<Boolean> DATA_ENHANCED = SynchedEntityData.defineId(StingerSmokeCloudEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_DRONE_SOURCE = SynchedEntityData.defineId(StingerSmokeCloudEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Integer> DATA_LIFE_TICKS = SynchedEntityData.defineId(StingerSmokeCloudEntity.class, EntityDataSerializers.INT);
 
     private UUID ownerId;
+    private UUID droneId;
     private int lifeTicks = GRENADE_LIFE_TICKS;
     private boolean falling;
+    private boolean strongSmokeExtended;
 
     public StingerSmokeCloudEntity(EntityType<? extends StingerSmokeCloudEntity> type, Level level) {
         super(type, level);
         noPhysics = true;
+        noCulling = true;
     }
 
     public StingerSmokeCloudEntity(EntityType<? extends StingerSmokeCloudEntity> type, Level level, UUID ownerId, int lifeTicks, boolean falling) {
         this(type, level);
         this.ownerId = ownerId;
-        this.lifeTicks = lifeTicks;
+        setLifeTicks(lifeTicks);
         this.falling = falling;
     }
 
@@ -60,6 +70,8 @@ public class StingerSmokeCloudEntity extends Entity implements ItemSupplier {
     @Override
     protected void defineSynchedData() {
         entityData.define(DATA_ENHANCED, false);
+        entityData.define(DATA_DRONE_SOURCE, false);
+        entityData.define(DATA_LIFE_TICKS, GRENADE_LIFE_TICKS);
     }
 
     @Override
@@ -71,28 +83,34 @@ public class StingerSmokeCloudEntity extends Entity implements ItemSupplier {
         }
 
         if (level() instanceof ServerLevel serverLevel) {
+            extendStrongSmokeIfNeeded(serverLevel);
             if (falling) {
                 settleDown(serverLevel);
             }
-            if (isEnhanced()) {
+            if (isEnhanced() && (!isHiveSmoke() || tickCount % 20 == 0)) {
                 applySmokeRegen(serverLevel);
             }
             suppressTargetsThroughSmoke(serverLevel);
         }
-        if (tickCount >= lifeTicks) {
+        if (tickCount >= smokeLifetimeTicks()) {
             discard();
         }
     }
 
     @Override
+    public int smokeLifetimeTicks() {
+        return Math.max(1, entityData.get(DATA_LIFE_TICKS));
+    }
+
+    @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         ownerId = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
-        lifeTicks = tag.getInt("LifeTicks");
-        if (lifeTicks <= 0) {
-            lifeTicks = GRENADE_LIFE_TICKS;
-        }
+        droneId = tag.hasUUID("Drone") ? tag.getUUID("Drone") : null;
+        setLifeTicks(tag.getInt("LifeTicks") <= 0 ? GRENADE_LIFE_TICKS : tag.getInt("LifeTicks"));
         setEnhanced(tag.getBoolean("Enhanced"));
+        entityData.set(DATA_DRONE_SOURCE, tag.getBoolean("DroneSource"));
         falling = tag.getBoolean("Falling");
+        strongSmokeExtended = tag.getBoolean("StrongSmokeExtended");
     }
 
     @Override
@@ -100,9 +118,14 @@ public class StingerSmokeCloudEntity extends Entity implements ItemSupplier {
         if (ownerId != null) {
             tag.putUUID("Owner", ownerId);
         }
+        if (droneId != null) {
+            tag.putUUID("Drone", droneId);
+        }
         tag.putInt("LifeTicks", lifeTicks);
         tag.putBoolean("Enhanced", isEnhanced());
+        tag.putBoolean("DroneSource", isDroneSource());
         tag.putBoolean("Falling", falling);
+        tag.putBoolean("StrongSmokeExtended", strongSmokeExtended);
     }
 
     @Override
@@ -110,12 +133,30 @@ public class StingerSmokeCloudEntity extends Entity implements ItemSupplier {
         return NetworkHooks.getEntitySpawningPacket(this);
     }
 
+    @Override
+    public boolean shouldRenderAtSqrDistance(double distance) {
+        double renderDistance = 512.0D;
+        return distance < renderDistance * renderDistance;
+    }
+
     public static void enhanceSmokeNear(ServerLevel level, Vec3 position) {
         AABB box = new AABB(position, position).inflate(RADIUS);
         for (StingerSmokeCloudEntity cloud : level.getEntitiesOfClass(StingerSmokeCloudEntity.class, box,
                 cloud -> cloud.isAlive() && cloud.position().distanceTo(position) <= RADIUS)) {
             cloud.setEnhanced(true);
+            if (cloud.droneId != null && level.getEntity(cloud.droneId) instanceof StingerSmokeDroneEntity drone) {
+                drone.setEnhanced(true);
+            }
         }
+        for (StingerSmokeDroneEntity drone : level.getEntitiesOfClass(StingerSmokeDroneEntity.class, box,
+                drone -> drone.isAlive() && drone.position().distanceTo(position) <= RADIUS)) {
+            drone.setEnhanced(true);
+        }
+    }
+
+    void setDroneSource(UUID droneId) {
+        this.droneId = droneId;
+        entityData.set(DATA_DRONE_SOURCE, true);
     }
 
     private void applySmokeRegen(ServerLevel level) {
@@ -126,7 +167,7 @@ public class StingerSmokeCloudEntity extends Entity implements ItemSupplier {
                 player -> player.isAlive()
                         && (owner == null || DealtTeamManager.isSelfOrTeammate(owner, player))
                         && player.position().add(0.0D, player.getBbHeight() * 0.5D, 0.0D).distanceTo(position()) <= radius)) {
-            StingerStateManager.applySmokeRegen(owner, player);
+            StingerStateManager.applySmokeRegen(owner, player, isHiveSmoke());
         }
     }
 
@@ -179,20 +220,64 @@ public class StingerSmokeCloudEntity extends Entity implements ItemSupplier {
         if (ClientVisionHooks.isThermalVisionActive()) {
             return;
         }
-        if (tickCount > 1 && tickCount % PARTICLE_REFRESH_TICKS != 0) {
+        if (!isHiveSmoke()) {
             return;
         }
-        boolean enhanced = isEnhanced();
-        var particle = enhanced ? ModParticles.STINGER_HEALING_SMOKE.get() : ModParticles.STINGER_LARGE_SMOKE.get();
-        level().addParticle(particle, getX(), getY() + 1.5D, getZ(), 0.0D, 0.0D, 0.0D);
+        int interval = HIVE_PARTICLE_REFRESH_TICKS;
+        if (tickCount > 1 && tickCount % interval != 0) {
+            return;
+        }
+        double radius = smokeRadius() * 0.9D;
+        for (int i = 0; i < HIVE_PARTICLE_COUNT; i++) {
+            double angle = level().getRandom().nextDouble() * Math.PI * 2.0D;
+            double distance = Math.sqrt(level().getRandom().nextDouble()) * radius;
+            double x = getX() + Math.cos(angle) * distance;
+            double z = getZ() + Math.sin(angle) * distance;
+            double y = getY() + 0.15D + level().getRandom().nextDouble() * 1.8D;
+            level().addParticle(ParticleTypes.HAPPY_VILLAGER, x, y, z, 0.0D, 0.015D, 0.0D);
+        }
     }
 
     private boolean isEnhanced() {
         return entityData.get(DATA_ENHANCED);
     }
 
-    private void setEnhanced(boolean enhanced) {
+    void setEnhanced(boolean enhanced) {
         entityData.set(DATA_ENHANCED, enhanced);
+    }
+
+    private void setLifeTicks(int value) {
+        lifeTicks = Math.max(1, value);
+        entityData.set(DATA_LIFE_TICKS, lifeTicks);
+    }
+
+    @Override
+    public boolean isPickable() {
+        return false;
+    }
+
+    @Override
+    public boolean isAttackable() {
+        return false;
+    }
+
+    private boolean isDroneSource() {
+        return entityData.get(DATA_DRONE_SOURCE) || droneId != null;
+    }
+
+    private boolean isHiveSmoke() {
+        return isEnhanced() && !isDroneSource();
+    }
+
+    private void extendStrongSmokeIfNeeded(ServerLevel level) {
+        if (strongSmokeExtended || !isHiveSmoke() || ownerId == null
+                || !(level.getEntity(ownerId) instanceof ServerPlayer owner)
+                || !CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.STINGER_STRONG_SMOKE)) {
+            return;
+        }
+        int remaining = Math.max(1, lifeTicks - tickCount);
+        setLifeTicks(tickCount + (int) Math.ceil(remaining * 4.5D));
+        strongSmokeExtended = true;
     }
 
     private double smokeRadius() {

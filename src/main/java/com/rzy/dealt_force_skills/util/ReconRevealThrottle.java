@@ -19,7 +19,31 @@ public final class ReconRevealThrottle {
         if (until > now) {
             return false;
         }
-        tag.putLong(REVEAL_UNTIL, now + ticks);
+        tag.putLong(REVEAL_UNTIL, now + (long) ticks);
         return true;
+    }
+
+    public static boolean tryStartOrExtend(LivingEntity target, int ticks) {
+        if (target == null || target.level().isClientSide || ticks <= 0) {
+            return false;
+        }
+        long now = target.level().getGameTime();
+        long requestedUntil = now + (long) ticks;
+        CompoundTag tag = target.getPersistentData();
+        if (tag.getLong(REVEAL_UNTIL) >= requestedUntil) {
+            return false;
+        }
+        tag.putLong(REVEAL_UNTIL, requestedUntil);
+        return true;
+    }
+
+    public static boolean isActive(LivingEntity target) {
+        return target != null
+                && !target.level().isClientSide
+                && activeUntil(target) > target.level().getGameTime();
+    }
+
+    public static long activeUntil(LivingEntity target) {
+        return target == null ? 0L : target.getPersistentData().getLong(REVEAL_UNTIL);
     }
 }

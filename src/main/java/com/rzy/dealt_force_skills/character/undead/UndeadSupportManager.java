@@ -157,8 +157,7 @@ public final class UndeadSupportManager {
         }
         UUID targetOwner = summonOwner(target);
         UUID attackerOwner = summonOwner(attacker);
-        return targetOwner != null && (targetOwner.equals(attacker.getUUID())
-                || targetOwner.equals(attackerOwner))
+        return targetOwner != null && targetOwner.equals(attackerOwner)
                 || attackerOwner != null && attackerOwner.equals(target.getUUID());
     }
 

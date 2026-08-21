@@ -3,10 +3,12 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.nox.NoxTool;
 import com.rzy.dealt_force_skills.character.nox.NoxToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientNoxHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_NoxToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -51,16 +53,34 @@ public final class NoxInputHandler {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientNoxHudState.shouldRender()) {
+        boolean nativeCharacter = ClientNoxHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.NOX_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.NOX_ID, SkillSlot.ACTIVE_2);
+        boolean coreOwned = nativeCharacter || coreWasDown || minecraft.player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.NOX_ID, SkillSlot.CORE, minecraft.player.isShiftKeyDown());
+        if (minecraft.player == null || (!active1Owned && !active2Owned && !coreOwned
+                && !ClientNoxHudState.hasEquippedTool())) {
             resetActive2();
             resetCore();
             resetRotorLock();
             return;
         }
 
-        handleActive1Key();
-        handleActive2Key();
-        handleCoreKey();
+        if (active1Owned) {
+            handleActive1Key();
+        }
+        if (active2Owned) {
+            handleActive2Key();
+        } else {
+            resetActive2();
+        }
+        if (coreOwned) {
+            handleCoreKey();
+        } else {
+            resetCore();
+        }
         if (rotorMouseHolding && ClientNoxHudState.equippedTool() == NoxTool.ROTOR) {
             updateRotorLock(minecraft);
         } else if (ClientNoxHudState.equippedTool() != NoxTool.ROTOR) {
@@ -77,7 +97,9 @@ public final class NoxInputHandler {
     }
 
     public static boolean ownsCoreSkill() {
-        return ClientNoxHudState.shouldRender();
+        var player = Minecraft.getInstance().player;
+        return ClientNoxHudState.shouldRender() || coreWasDown || player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.NOX_ID, SkillSlot.CORE, player.isShiftKeyDown());
     }
 
     public static int rotorLockTicks() {
@@ -158,7 +180,7 @@ public final class NoxInputHandler {
             return;
         }
         while (KeybindRegister.ACTIVE_SKILL_1.consumeClick()) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1);
+            ClientCommanderState.useNativeOrInherited(ModCharacters.NOX_ID, SkillSlot.ACTIVE_1, false);
         }
     }
 
@@ -193,7 +215,8 @@ public final class NoxInputHandler {
                 equipped
                         ? () -> NetworkHandler.sendToServer(new C2S_NoxToolAction(
                                 NoxToolAction.THROW_FLASH_GRENADE, -1, true))
-                        : () -> ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2));
+                        : () -> ClientCommanderState.useNativeOrInherited(
+                                ModCharacters.NOX_ID, SkillSlot.ACTIVE_2, false));
     }
 
     private static void handleCoreKey() {
@@ -209,7 +232,7 @@ public final class NoxInputHandler {
             return;
         }
         if (coreWasDown) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.CORE);
+            ClientCommanderState.useNativeOrInherited(ModCharacters.NOX_ID, SkillSlot.CORE, false);
         }
         resetCore();
     }

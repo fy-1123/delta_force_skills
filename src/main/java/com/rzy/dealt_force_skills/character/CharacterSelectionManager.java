@@ -4,9 +4,11 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_OpenCharacterSelection;
 import com.rzy.dealt_force_skills.network.S2C_SyncSelectedCharacter;
+import com.rzy.dealt_force_skills.character.commander.CommanderSkillContext;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import mccfk.DeltaForce.java.data.PlayerCharacterStore;
 
 import java.util.Optional;
 
@@ -27,11 +29,36 @@ public final class CharacterSelectionManager {
     }
 
     public static Optional<String> getSelectedCharacterId(Player player) {
+        Optional<String> inherited = CommanderSkillContext.effectiveCharacterId(player);
+        if (inherited.isPresent()) {
+            return inherited;
+        }
+        return getStoredSelectedCharacterId(player);
+    }
+
+    public static Optional<String> getStoredSelectedCharacterId(Player player) {
         String id = player.getPersistentData().getString(SELECTED_CHARACTER_TAG);
         if (id.isBlank()) {
             return Optional.empty();
         }
-        return Optional.of(id);
+        return Optional.of(canonicalCharacterId(id));
+    }
+
+    public static void migrateStoredSelection(ServerPlayer player) {
+        String playerName = player.getGameProfile().getName();
+        String storedId = canonicalCharacterId(PlayerCharacterStore.getSelectedCharacterId(playerName));
+        String legacyId = canonicalCharacterId(player.getPersistentData().getString(SELECTED_CHARACTER_TAG));
+        if (storedId != null && CharacterBranchPackManager.findCharacter(storedId).isPresent()) {
+            player.getPersistentData().putString(SELECTED_CHARACTER_TAG, storedId);
+            PlayerCharacterStore.setSelectedCharacter(playerName, storedId);
+        } else if (!legacyId.isBlank() && CharacterBranchPackManager.findCharacter(legacyId).isPresent()) {
+            player.getPersistentData().putString(SELECTED_CHARACTER_TAG, legacyId);
+            PlayerCharacterStore.setSelectedCharacter(playerName, legacyId);
+        }
+    }
+
+    private static String canonicalCharacterId(String id) {
+        return ModCharacters.LEGACY_CORPS_ID.equals(id) ? ModCharacters.CORPS_ID : id;
     }
 
     public static boolean hasCharacterReselection(Player player) {
@@ -63,6 +90,7 @@ public final class CharacterSelectionManager {
         return CharacterBranchPackManager.findCharacter(characterId).map(character -> {
             player.getPersistentData().remove(NORMAL_PLAYER_TAG);
             player.getPersistentData().putString(SELECTED_CHARACTER_TAG, character.id());
+            PlayerCharacterStore.setSelectedCharacter(player.getGameProfile().getName(), character.id());
             CharacterSkinSync.syncToTracking(player);
             return character;
         });
@@ -74,6 +102,7 @@ public final class CharacterSelectionManager {
                     CharacterEffectHooks.onCharacterDeselected(player, oldCharacter));
             player.getPersistentData().remove(NORMAL_PLAYER_TAG);
             player.getPersistentData().putString(SELECTED_CHARACTER_TAG, character.id());
+            PlayerCharacterStore.setSelectedCharacter(player.getGameProfile().getName(), character.id());
             CharacterSkinSync.syncToTracking(player);
             return character;
         });
@@ -87,6 +116,7 @@ public final class CharacterSelectionManager {
 
         CharacterEffectHooks.onCharacterDeselected(player, selected.get());
         player.getPersistentData().remove(SELECTED_CHARACTER_TAG);
+        PlayerCharacterStore.clearSelectedCharacter(player.getGameProfile().getName());
         player.getPersistentData().remove(NORMAL_PLAYER_TAG);
         grantCharacterReselection(player);
         CharacterSkinSync.syncToTracking(player);
@@ -110,6 +140,7 @@ public final class CharacterSelectionManager {
         }
         CharacterEffectHooks.onCharacterDeselected(player, selected.get());
         player.getPersistentData().remove(SELECTED_CHARACTER_TAG);
+        PlayerCharacterStore.clearSelectedCharacter(player.getGameProfile().getName());
         player.getPersistentData().remove(CHARACTER_RESELECTION_TAG);
         if (becomeNormalPlayer) {
             player.getPersistentData().putBoolean(NORMAL_PLAYER_TAG, true);

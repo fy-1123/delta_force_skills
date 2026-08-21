@@ -7,6 +7,8 @@ import com.rzy.dealt_force_skills.character.shepherd.ShepherdTool;
 import com.rzy.dealt_force_skills.character.shepherd.ShepherdToolAction;
 import com.rzy.dealt_force_skills.character.shepherd.ShepherdTrapMarker;
 import com.rzy.dealt_force_skills.client.character.ClientShepherdHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_ShepherdToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -63,7 +65,9 @@ public final class ShepherdInputHandler {
 
         applySonicShockClientSlow(minecraft);
 
-        if (!ClientShepherdHudState.shouldRender()) {
+        if (!ClientShepherdHudState.shouldRender()
+                && !(ClientCommanderState.inherits(ModCharacters.SHEPHERD_ID)
+                && ClientShepherdHudState.hasEquippedTool())) {
             return;
         }
 
@@ -93,7 +97,9 @@ public final class ShepherdInputHandler {
             return;
         }
 
-        if (!ClientShepherdHudState.shouldRender()) {
+        if (!ClientShepherdHudState.shouldRender()
+                && !(ClientCommanderState.inherits(ModCharacters.SHEPHERD_ID)
+                && ClientShepherdHudState.hasEquippedTool())) {
             return;
         }
 

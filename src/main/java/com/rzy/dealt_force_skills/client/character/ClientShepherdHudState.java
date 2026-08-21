@@ -88,7 +88,8 @@ public final class ClientShepherdHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != ShepherdTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.SHEPHERD_ID))
+                && equippedTool != ShepherdTool.NONE;
     }
 
     public static int trapCharges() {

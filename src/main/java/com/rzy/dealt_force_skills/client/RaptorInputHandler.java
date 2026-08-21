@@ -3,10 +3,12 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.raptor.RaptorTool;
 import com.rzy.dealt_force_skills.character.raptor.RaptorToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientRaptorHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_RaptorToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -43,15 +45,35 @@ public final class RaptorInputHandler {
             resetCore();
             return;
         }
-        if (minecraft.player == null || !ClientRaptorHudState.shouldRender()) {
+        boolean nativeCharacter = ClientRaptorHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.RAPTOR_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.RAPTOR_ID, SkillSlot.ACTIVE_2);
+        boolean coreOwned = nativeCharacter || coreWasDown || minecraft.player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.RAPTOR_ID, SkillSlot.CORE, minecraft.player.isShiftKeyDown());
+        if (minecraft.player == null || (!active1Owned && !active2Owned && !coreOwned
+                && !ClientRaptorHudState.hasEquippedTool())) {
             resetActive1();
             resetActive2();
             resetCore();
             return;
         }
-        handleActive1Key();
-        handleActive2Key();
-        handleCoreKey();
+        if (active1Owned) {
+            handleActive1Key();
+        } else {
+            resetActive1();
+        }
+        if (active2Owned) {
+            handleActive2Key();
+        } else {
+            resetActive2();
+        }
+        if (coreOwned) {
+            handleCoreKey();
+        } else {
+            resetCore();
+        }
         if (ClientRaptorHudState.hasEquippedTool()) {
             releaseBlockedKey(minecraft.options.keyAttack);
             releaseBlockedKey(minecraft.options.keyUse);
@@ -62,7 +84,9 @@ public final class RaptorInputHandler {
     }
 
     public static boolean ownsCoreSkill() {
-        return ClientRaptorHudState.shouldRender();
+        var player = Minecraft.getInstance().player;
+        return ClientRaptorHudState.shouldRender() || coreWasDown || player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.RAPTOR_ID, SkillSlot.CORE, player.isShiftKeyDown());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -141,7 +165,7 @@ public final class RaptorInputHandler {
             if (active1HeldTicks >= ACTIVE_LONG_HOLD_TICKS && ClientRaptorHudState.falconActiveTicks() > 0) {
                 NetworkHandler.sendToServer(new C2S_RaptorToolAction(RaptorToolAction.FALCON_SELF_DESTRUCT));
             } else {
-                ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1);
+                ClientCommanderState.useNativeOrInherited(ModCharacters.RAPTOR_ID, SkillSlot.ACTIVE_1, false);
             }
         }
         resetActive1();
@@ -167,7 +191,7 @@ public final class RaptorInputHandler {
         }
         if (active2WasDown && !sentActive2HoldAction) {
             if (ClientRaptorHudState.falconActiveTicks() > 0) {
-                ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2);
+                ClientCommanderState.useNativeOrInherited(ModCharacters.RAPTOR_ID, SkillSlot.ACTIVE_2, false);
             } else {
                 beginPulseThrow(false);
             }
@@ -182,7 +206,8 @@ public final class RaptorInputHandler {
                 equipped
                         ? () -> NetworkHandler.sendToServer(new C2S_RaptorToolAction(
                                 RaptorToolAction.THROW_PULSE_GRENADE))
-                        : () -> ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2));
+                        : () -> ClientCommanderState.useNativeOrInherited(
+                                ModCharacters.RAPTOR_ID, SkillSlot.ACTIVE_2, false));
     }
 
     private static void handleCoreKey() {
@@ -198,7 +223,8 @@ public final class RaptorInputHandler {
             return;
         }
         if (coreWasDown) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.CORE, coreHeldTicks >= ACTIVE_LONG_HOLD_TICKS);
+            ClientCommanderState.useNativeOrInherited(ModCharacters.RAPTOR_ID, SkillSlot.CORE,
+                    coreHeldTicks >= ACTIVE_LONG_HOLD_TICKS);
         }
         resetCore();
     }

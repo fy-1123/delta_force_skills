@@ -1,5 +1,6 @@
 package com.rzy.dealt_force_skills.client.character;
 
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 
@@ -34,7 +35,8 @@ public final class ClientSinevaRenderState {
 
     public static boolean isBombSuitActive(Player player) {
         if (isLocalPlayer(player)) {
-            return ClientSinevaHudState.shouldRender() && ClientSinevaHudState.bombSuitActive();
+            return (ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(ModCharacters.SINEVA_ID))
+                    && ClientSinevaHudState.bombSuitActive();
         }
         State state = STATES.get(player.getId());
         return state != null && state.bombSuitActive();
@@ -42,7 +44,8 @@ public final class ClientSinevaRenderState {
 
     public static boolean isShieldDeployed(Player player) {
         if (isLocalPlayer(player)) {
-            return ClientSinevaHudState.shouldRender() && ClientSinevaHudState.shieldDeployed();
+            return (ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(ModCharacters.SINEVA_ID))
+                    && ClientSinevaHudState.shieldDeployed();
         }
         State state = STATES.get(player.getId());
         return state != null && state.shieldDeployed();
@@ -50,7 +53,7 @@ public final class ClientSinevaRenderState {
 
     public static boolean isViewportBroken(Player player) {
         if (isLocalPlayer(player)) {
-            return ClientSinevaHudState.shouldRender()
+            return (ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(ModCharacters.SINEVA_ID))
                     && ClientSinevaHudState.shieldDeployed()
                     && ClientSinevaHudState.viewportHealth() <= 0;
         }

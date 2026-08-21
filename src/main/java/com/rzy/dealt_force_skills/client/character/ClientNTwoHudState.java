@@ -103,7 +103,8 @@ public final class ClientNTwoHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != NTwoTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.N_TWO_ID))
+                && equippedTool != NTwoTool.NONE;
     }
 
     public static int trackingCooldownTicks() {

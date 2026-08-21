@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
@@ -11,6 +13,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -18,12 +21,14 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkHooks;
@@ -75,7 +80,17 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
 
         Vec3 motion = getDeltaMovement();
         Vec3 next = position().add(motion);
-        HitResult hit = level().clip(new ClipContext(position(), next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+        Vec3 start = position();
+        HitResult hit = level().clip(new ClipContext(start, next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+        EntityHitResult entityHit = ProjectileUtil.getEntityHitResult(level(), this, start, next,
+                getBoundingBox().expandTowards(motion).inflate(0.35D), this::canHitEntity);
+        if (entityHit != null && (hit.getType() != HitResult.Type.BLOCK
+                || start.distanceToSqr(entityHit.getLocation()) <= start.distanceToSqr(hit.getLocation()))) {
+            if (!level().isClientSide) {
+                explode(entityHit.getLocation());
+            }
+            return;
+        }
         if (hit.getType() == HitResult.Type.BLOCK) {
             handleBlockHit((BlockHitResult) hit);
             return;
@@ -89,7 +104,11 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
 
     @Override
     protected boolean canHitEntity(Entity target) {
-        return false;
+        return super.canHitEntity(target)
+                && target instanceof LivingEntity living
+                && getOwner() instanceof ServerPlayer owner
+                && CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.DWOLF_FAST_BURN_CHARGE)
+                && TargetingUtil.isHostileLivingFor(owner, living);
     }
 
     @Override
@@ -147,6 +166,9 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
         }
 
         LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
+        Player ownerPlayer = owner instanceof Player player ? player : null;
+        double radius = CommanderStateManager.skillRadius(ownerPlayer, RADIUS);
+        double falloff = CommanderStateManager.skillDamageFalloff(ownerPlayer, 0.1D);
         RangedSoundHelper.stop(serverLevel, center, ModSounds.D_WOLF_HAND_CANNON_FUSE.get(),
                 SoundSource.PLAYERS, 48.0D);
         serverLevel.playSound(null, center.x, center.y, center.z, ModSounds.D_WOLF_HAND_CANNON_EXPLODE.get(),
@@ -154,18 +176,18 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
         serverLevel.sendParticles(ParticleTypes.EXPLOSION, center.x, center.y + 0.2D, center.z,
                 8, 0.45D, 0.25D, 0.45D, 0.02D);
         serverLevel.sendParticles(ParticleTypes.CLOUD, center.x, center.y + 0.2D, center.z,
-                48, RADIUS * 0.65D, 0.35D, RADIUS * 0.65D, 0.04D);
+                48, radius * 0.65D, 0.35D, radius * 0.65D, 0.04D);
 
-        AABB box = new AABB(center, center).inflate(RADIUS);
+        AABB box = new AABB(center, center).inflate(radius);
         for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box,
                 entity -> TargetingUtil.isSelfOrHostileLivingFor(owner, entity))) {
             double distance = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(center);
-            if (distance > RADIUS) {
+            if (distance > radius) {
                 continue;
             }
 
             float baseDamage = target instanceof Player ? 12.0f : 24.0f;
-            float amount = baseDamage * Math.max(0.0f, 1.0f - (float) distance * 0.1f);
+            float amount = baseDamage * Math.max(0.0f, 1.0f - (float) (distance * falloff));
             if (amount <= 0.0f) {
                 continue;
             }
@@ -176,7 +198,7 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
             target.setDeltaMovement(before);
             target.hurtMarked = true;
         }
-        SuperbWarfareCompat.damageVehicles(serverLevel, center, RADIUS,
+        SuperbWarfareCompat.damageVehicles(serverLevel, center, radius,
                 SkillDamageHelper.dWolfHandCannon(serverLevel, this, owner), this, 0.24F, false);
         discard();
     }

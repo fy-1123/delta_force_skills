@@ -4,8 +4,11 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_NTwoFrozenVisualState;
+import com.rzy.dealt_force_skills.effect.ShakehandsCombatHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncNTwoState;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModSounds;
@@ -57,6 +60,7 @@ public final class NTwoStateManager {
     private static final String COLD_OWNER_NAME = "OwnerName";
     private static final String COLD_LAST_INCREASE_TICK = "LastIncreaseTick";
     private static final String COLD_LAST_DECAY_TICK = "LastDecayTick";
+    private static final String QUICK_FROST = "QuickFrost";
     private static final String STRUGGLE_HOLDING = "StruggleHolding";
     private static final String STRUGGLE_PROGRESS = "StruggleProgress";
     private static final String STRUGGLE_LATCHED = "StruggleLatched";
@@ -70,7 +74,9 @@ public final class NTwoStateManager {
 
     public static boolean isNTwo(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.N_TWO_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.N_TWO_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.N_TWO_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -83,27 +89,13 @@ public final class NTwoStateManager {
         }
         tag.putBoolean(INITIALIZED, true);
         tag.putLong(TRACKING_COOLDOWN_UNTIL, 0L);
-        tag.putInt(DEWAR_CHARGES, DEWAR_MAX_CHARGES);
+        tag.putInt(DEWAR_CHARGES, dewarCapacity(player));
         tag.putLong(DEWAR_NEXT_RECHARGE, 0L);
         tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
         tag.putLong(CORE_ACTIVE_UNTIL, 0L);
         tag.putInt(CORE_AMMO, 0);
         tag.putLong(CORE_NEXT_SHOT, 0L);
         tag.putInt(EQUIPPED_TOOL, NTwoTool.NONE.ordinal());
-    }
-
-    public static void restartDewarCooldownOnSelection(ServerPlayer player) {
-        if (!isNTwo(player)) {
-            return;
-        }
-        initializeIfNeeded(player);
-        CompoundTag tag = data(player);
-        long now = SkillCooldownHelper.now(player);
-        tag.putInt(DEWAR_CHARGES, 0);
-        tag.putLong(DEWAR_NEXT_RECHARGE, SkillCooldownHelper.until(player, now, DEWAR_RECHARGE_TICKS));
-        if (equippedTool(player) == NTwoTool.DEWAR_CANISTER) {
-            setEquippedTool(player, NTwoTool.NONE);
-        }
     }
 
     public static void copyState(Player original, Player target) {
@@ -124,7 +116,8 @@ public final class NTwoStateManager {
         initializeIfNeeded(player);
         long now = SkillCooldownHelper.now(player);
         rechargeDewar(player, now);
-        if (isCoreActive(player) && now >= data(player).getLong(CORE_ACTIVE_UNTIL)) {
+        long coreActiveUntil = data(player).getLong(CORE_ACTIVE_UNTIL);
+        if (coreActiveUntil > 0L && now >= coreActiveUntil) {
             endCore(player, true);
         }
     }
@@ -143,11 +136,11 @@ public final class NTwoStateManager {
     }
 
     public static int dewarCharges(Player player) {
-        return Math.min(DEWAR_MAX_CHARGES, Math.max(0, data(player).getInt(DEWAR_CHARGES)));
+        return Math.min(dewarCapacity(player), Math.max(0, data(player).getInt(DEWAR_CHARGES)));
     }
 
     public static int dewarRechargeRemainingTicks(Player player) {
-        return dewarCharges(player) >= DEWAR_MAX_CHARGES ? 0 : remainingTicks(player, DEWAR_NEXT_RECHARGE);
+        return dewarCharges(player) >= dewarCapacity(player) ? 0 : remainingTicks(player, DEWAR_NEXT_RECHARGE);
     }
 
     public static boolean consumeDewarCharge(ServerPlayer player) {
@@ -157,7 +150,7 @@ public final class NTwoStateManager {
             return false;
         }
         tag.putInt(DEWAR_CHARGES, charges - 1);
-        if (charges == DEWAR_MAX_CHARGES) {
+        if (charges == dewarCapacity(player)) {
             tag.putLong(DEWAR_NEXT_RECHARGE, SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), DEWAR_RECHARGE_TICKS));
         }
         return true;
@@ -188,8 +181,11 @@ public final class NTwoStateManager {
     public static void startCore(ServerPlayer player) {
         CompoundTag tag = data(player);
         long now = SkillCooldownHelper.now(player);
-        tag.putLong(CORE_ACTIVE_UNTIL, SkillCooldownHelper.until(player, now, CORE_ACTIVE_TICKS));
-        tag.putInt(CORE_AMMO, CORE_MAX_AMMO);
+        tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
+        tag.putLong(CORE_ACTIVE_UNTIL, now + CommanderStateManager.skillDuration(player, CORE_ACTIVE_TICKS));
+        int baseAmmo = CommanderStateManager.hasBranchUpgrade(
+                player, CommanderBranchUpgrade.NTWO_SMART_GRENADE) ? 18 : CORE_MAX_AMMO;
+        tag.putInt(CORE_AMMO, CommanderStateManager.skillCapacity(player, baseAmmo));
         tag.putLong(CORE_NEXT_SHOT, now);
         setEquippedTool(player, NTwoTool.CONDENSER_LAUNCHER);
     }
@@ -227,36 +223,66 @@ public final class NTwoStateManager {
     }
 
     public static int cold(LivingEntity target) {
-        return Math.max(0, Math.min(100, coldData(target).getInt(COLD_VALUE)));
+        return Math.max(0, coldData(target).getInt(COLD_VALUE));
     }
 
     public static boolean hasCold(LivingEntity target) {
         return cold(target) > 0;
     }
 
-    public static boolean addCold(ServerPlayer owner, LivingEntity target, int amount) {
+    public static boolean addCold(LivingEntity owner, LivingEntity target, int amount) {
         if (target == null || !target.isAlive() || amount <= 0
-                || owner.getUUID().equals(target.getUUID())) {
+                || owner.getUUID().equals(target.getUUID())
+                || ShakehandsCombatHandler.blocksExternalSpecial(target, owner)) {
             return false;
         }
         CompoundTag tag = coldData(target);
         int previous = cold(target);
-        int value = Math.min(100, previous + amount);
+        boolean quickFrost = owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NTWO_QUICK_FROST);
+        int value = quickFrost
+                ? (previous > Integer.MAX_VALUE - amount ? Integer.MAX_VALUE : previous + amount)
+                : Math.min(100, previous + amount);
         tag.putInt(COLD_VALUE, value);
+        tag.putBoolean(QUICK_FROST, quickFrost);
         tag.putUUID(COLD_OWNER, owner.getUUID());
-        tag.putString(COLD_OWNER_NAME, owner.getGameProfile().getName());
+        tag.putString(COLD_OWNER_NAME, owner.getName().getString());
         if (value > previous) {
             long now = SkillCooldownHelper.now(target);
             tag.putLong(COLD_LAST_INCREASE_TICK, now);
             tag.putLong(COLD_LAST_DECAY_TICK, now + COLD_DECAY_DELAY_TICKS - COLD_DECAY_INTERVAL_TICKS);
         }
         applyColdMovement(target);
-        if (value >= 100) {
-            freeze(owner, target);
-            DfsAchievements.recordNTwoFreeze(owner, target, FREEZE_TICKS);
+        if (value >= 100 && !target.hasEffect(ModEffects.N_TWO_FROZEN.get())) {
+            int duration = freeze(owner, target);
+            if (owner instanceof ServerPlayer player) {
+                DfsAchievements.recordNTwoFreeze(player, target, duration);
+            }
             return true;
         }
         return false;
+    }
+
+    public static boolean addAmbientCold(ServerPlayer target, int amount) {
+        if (target == null || !target.isAlive() || amount <= 0) {
+            return false;
+        }
+        CompoundTag tag = coldData(target);
+        int previous = cold(target);
+        int value = Math.min(100, previous + amount);
+        tag.putInt(COLD_VALUE, value);
+        tag.putUUID(COLD_OWNER, target.getUUID());
+        tag.putString(COLD_OWNER_NAME, target.getGameProfile().getName());
+        long now = SkillCooldownHelper.now(target);
+        tag.putLong(COLD_LAST_INCREASE_TICK, now);
+        tag.putLong(COLD_LAST_DECAY_TICK, now + COLD_DECAY_DELAY_TICKS - COLD_DECAY_INTERVAL_TICKS);
+        applyColdMovement(target);
+        if (value >= 100) {
+            target.addEffect(new MobEffectInstance(ModEffects.N_TWO_FROZEN.get(), FREEZE_TICKS,
+                    0, false, true, true));
+            syncFrozenVisual(target, FREEZE_TICKS);
+        }
+        return value > previous;
     }
 
     public static void tickColdDecay(LivingEntity target) {
@@ -306,6 +332,44 @@ public final class NTwoStateManager {
         target.getPersistentData().remove(COLD_TAG);
     }
 
+    public static void onFreezeEnded(LivingEntity target) {
+        if (target == null || !target.isAlive()
+                || !target.getPersistentData().contains(COLD_TAG, Tag.TAG_COMPOUND)) {
+            clearCold(target);
+            return;
+        }
+        CompoundTag tag = coldData(target);
+        if (!tag.getBoolean(QUICK_FROST)) {
+            clearCold(target);
+            return;
+        }
+        int remaining = Math.max(0, cold(target) - 50);
+        if (remaining <= 0) {
+            clearCold(target);
+            return;
+        }
+        tag.putInt(COLD_VALUE, remaining);
+        long now = SkillCooldownHelper.now(target);
+        tag.putLong(COLD_LAST_INCREASE_TICK, now);
+        tag.putLong(COLD_LAST_DECAY_TICK, now + COLD_DECAY_DELAY_TICKS - COLD_DECAY_INTERVAL_TICKS);
+        applyColdMovement(target);
+        if (remaining > 100) {
+            LivingEntity owner = target;
+            if (tag.hasUUID(COLD_OWNER) && target.level() instanceof ServerLevel level) {
+                net.minecraft.world.entity.Entity source = level.getEntity(tag.getUUID(COLD_OWNER));
+                if (source instanceof LivingEntity living) {
+                    owner = living;
+                } else {
+                    ServerPlayer player = level.getServer().getPlayerList().getPlayer(tag.getUUID(COLD_OWNER));
+                    if (player != null) {
+                        owner = player;
+                    }
+                }
+            }
+            freeze(owner, target);
+        }
+    }
+
     public static boolean tryBoostAddedHarmfulEffect(LivingEntity target, MobEffectInstance effect, LivingEntity source) {
         if (target.level().isClientSide || effect == null || !hasCold(target)
                 || effect.getEffect().getCategory() != MobEffectCategory.HARMFUL
@@ -347,7 +411,7 @@ public final class NTwoStateManager {
         NetworkHandler.sendToPlayer(new S2C_SyncNTwoState(
                 trackingCooldownRemainingTicks(player),
                 dewarCharges(player),
-                DEWAR_MAX_CHARGES,
+                dewarCapacity(player),
                 dewarRechargeRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
                 coreActiveRemainingTicks(player),
@@ -389,15 +453,23 @@ public final class NTwoStateManager {
                 target);
     }
 
-    private static void freeze(ServerPlayer owner, LivingEntity target) {
-        target.addEffect(new MobEffectInstance(ModEffects.N_TWO_FROZEN.get(), FREEZE_TICKS, 0, false, true, true), owner);
-        syncFrozenVisual(target, FREEZE_TICKS);
+    private static int freeze(LivingEntity owner, LivingEntity target) {
+        int duration = FREEZE_TICKS;
+        int amplifier = 0;
+        if (owner instanceof Player player) {
+            duration = CommanderStateManager.skillDuration(player, duration);
+            amplifier = CommanderStateManager.skillEffectAmplifier(player, amplifier);
+        }
+        target.addEffect(new MobEffectInstance(ModEffects.N_TWO_FROZEN.get(),
+                duration, amplifier, false, true, true), owner);
+        syncFrozenVisual(target, duration);
         target.setTicksFrozen(Math.max(target.getTicksFrozen(), 140));
         target.level().playSound(null, target.getX(), target.getY(), target.getZ(), ModSounds.N_TWO_FREEZE.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f);
         if (target instanceof ServerPlayer player) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.ntwo.frozen"), true);
         }
+        return duration;
     }
 
     private static void tickFrozenPlayer(ServerPlayer player) {
@@ -433,7 +505,10 @@ public final class NTwoStateManager {
     private static void rechargeDewar(ServerPlayer player, long now) {
         CompoundTag tag = data(player);
         int charges = dewarCharges(player);
-        if (charges >= DEWAR_MAX_CHARGES) {
+        int capacity = dewarCapacity(player);
+        charges = Math.min(capacity, Math.max(0, charges));
+        tag.putInt(DEWAR_CHARGES, charges);
+        if (charges >= capacity) {
             tag.putLong(DEWAR_NEXT_RECHARGE, 0L);
             return;
         }
@@ -446,7 +521,7 @@ public final class NTwoStateManager {
             return;
         }
         tag.putInt(DEWAR_CHARGES, charges + 1);
-        tag.putLong(DEWAR_NEXT_RECHARGE, charges + 1 < DEWAR_MAX_CHARGES
+        tag.putLong(DEWAR_NEXT_RECHARGE, charges + 1 < capacity
                 ? SkillCooldownHelper.until(player, now, DEWAR_RECHARGE_TICKS)
                 : 0L);
     }
@@ -481,6 +556,10 @@ public final class NTwoStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int dewarCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, DEWAR_MAX_CHARGES);
     }
 
     private static CompoundTag data(Player player) {

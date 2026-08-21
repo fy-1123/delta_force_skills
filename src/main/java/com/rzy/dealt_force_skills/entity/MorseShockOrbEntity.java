@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.util.TargetingUtil;
@@ -41,6 +43,7 @@ public class MorseShockOrbEntity extends Projectile implements ItemSupplier {
     private static final DustParticleOptions SHOCK_DUST = new DustParticleOptions(new Vector3f(1.0f, 0.78f, 0.24f), 1.2f);
 
     private UUID ownerId;
+    private boolean masterBall;
     private boolean bounced;
     private int explodeInTicks = -1;
 
@@ -52,6 +55,8 @@ public class MorseShockOrbEntity extends Projectile implements ItemSupplier {
         super(type, level);
         setOwner(owner);
         ownerId = owner.getUUID();
+        masterBall = owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.MORSE_MASTER_BALL);
     }
 
     @Override
@@ -114,6 +119,7 @@ public class MorseShockOrbEntity extends Projectile implements ItemSupplier {
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         ownerId = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
+        masterBall = tag.getBoolean("MasterBall");
         bounced = tag.getBoolean("Bounced");
         explodeInTicks = tag.contains("ExplodeIn") ? tag.getInt("ExplodeIn") : -1;
     }
@@ -123,6 +129,7 @@ public class MorseShockOrbEntity extends Projectile implements ItemSupplier {
         if (ownerId != null) {
             tag.putUUID("Owner", ownerId);
         }
+        tag.putBoolean("MasterBall", masterBall);
         tag.putBoolean("Bounced", bounced);
         tag.putInt("ExplodeIn", explodeInTicks);
     }
@@ -174,25 +181,37 @@ public class MorseShockOrbEntity extends Projectile implements ItemSupplier {
             return;
         }
         LivingEntity owner = owner(level);
+        double effectiveRadius = masterBall ? RADIUS * 6.0D : RADIUS;
+        int effectiveShockTicks = masterBall
+                ? (int) Math.min(Integer.MAX_VALUE, (long) STRONG_SHOCK_TICKS * 2L)
+                : STRONG_SHOCK_TICKS;
+        int effectiveShockAmplifier = STRONG_SHOCK_AMPLIFIER;
+        if (owner instanceof ServerPlayer commanderOwner) {
+            effectiveRadius = CommanderStateManager.skillRadius(commanderOwner, effectiveRadius);
+            effectiveShockTicks = CommanderStateManager.skillDuration(commanderOwner, effectiveShockTicks);
+            effectiveShockAmplifier = CommanderStateManager.skillEffectAmplifier(
+                    commanderOwner, effectiveShockAmplifier);
+        }
         level.playSound(null, center.x, center.y, center.z, ModSounds.MORSE_SHOCK_ORB_BURST.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f);
         level.sendParticles(ParticleTypes.SONIC_BOOM, center.x, center.y + 0.2D, center.z,
                 1, 0.0D, 0.0D, 0.0D, 0.0D);
         level.sendParticles(SHOCK_DUST, center.x, center.y + 0.35D, center.z,
-                120, RADIUS * 0.35D, RADIUS * 0.18D, RADIUS * 0.35D, 0.04D);
+                masterBall ? 240 : 120, effectiveRadius * 0.35D, effectiveRadius * 0.18D,
+                effectiveRadius * 0.35D, 0.04D);
 
-        AABB box = new AABB(center, center).inflate(RADIUS);
+        AABB box = new AABB(center, center).inflate(effectiveRadius);
         int shockedTargets = 0;
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
             if (!TargetingUtil.isHostileLivingFor(owner, target) || (owner != null && target.getUUID().equals(owner.getUUID()))) {
                 continue;
             }
             Vec3 targetCenter = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
-            if (targetCenter.distanceTo(center) > RADIUS) {
+            if (targetCenter.distanceTo(center) > effectiveRadius) {
                 continue;
             }
             target.addEffect(new MobEffectInstance(ModEffects.MORSE_STRONG_SHOCK.get(),
-                    STRONG_SHOCK_TICKS, STRONG_SHOCK_AMPLIFIER, false, true, true), owner);
+                    effectiveShockTicks, effectiveShockAmplifier, false, true, true), owner);
             level.playSound(null, target.blockPosition(), target instanceof net.minecraft.world.entity.player.Player
                             ? ModSounds.MORSE_DEAFENED.get()
                             : ModSounds.MORSE_AI_DISABLED.get(),

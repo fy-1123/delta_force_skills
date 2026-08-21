@@ -484,6 +484,7 @@ public class DealtForceConfigScreen extends Screen {
             entryList.render(graphics, mouseX, mouseY, partialTick);
             // Hide EditBoxes that scrolled out of the list viewport to prevent overlap.
             syncFieldVisibility();
+            renderValueFields(graphics, mouseX, mouseY, partialTick);
         }
         // Status line (clip length)
         String status = statusMessage;
@@ -503,17 +504,21 @@ public class DealtForceConfigScreen extends Screen {
         int bottom = entryList.viewportBottom();
         for (EditBox field : valueFields) {
             int y = field.getY();
-            boolean visible = y + 16 > top && y < bottom - 2;
+            boolean visible = y >= top + 2 && y + 16 <= bottom - 2;
             field.visible = visible;
-            // Keep active only when on-screen; do not leave focused fields stuck inactive.
             if (!visible) {
                 field.active = false;
                 if (getFocused() == field) {
                     setFocused(null);
                 }
-            } else if (!field.active) {
-                // ValueRow.render also refreshes active; recover if a prior frame disabled it.
-                field.active = true;
+            }
+        }
+    }
+
+    private void renderValueFields(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        for (EditBox field : valueFields) {
+            if (field.visible) {
+                field.render(graphics, mouseX, mouseY, partialTick);
             }
         }
     }
@@ -784,7 +789,9 @@ public class DealtForceConfigScreen extends Screen {
             }
             this.field.visible = false;
             valueFields.add(field);
-            addRenderableWidget(field);
+            // Value rows own rendering. Keeping fields out of Screen.renderables prevents old
+            // rows from surviving a filtered or scrolled list rebuild.
+            addWidget(field);
         }
 
         @Override

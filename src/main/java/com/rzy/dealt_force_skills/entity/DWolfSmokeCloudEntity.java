@@ -1,7 +1,5 @@
 package com.rzy.dealt_force_skills.entity;
 
-import com.rzy.dealt_force_skills.util.ClientVisionHooks;
-import com.rzy.dealt_force_skills.registry.ModParticles;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
@@ -16,15 +14,18 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraftforge.network.NetworkHooks;
 
 import java.util.UUID;
 
-public class DWolfSmokeCloudEntity extends Entity implements ItemSupplier {
+public class DWolfSmokeCloudEntity extends Entity implements ItemSupplier, SmokeCloudModelState {
     public static volatile int LIFE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("LIFE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.dwolfsmokecloudentity.life_ticks", 160));
     public static volatile double RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.dwolfsmokecloudentity.radius", 6.0));
-    /** Client: refresh the single static billboard every N ticks. */
-    private static final int PARTICLE_REFRESH_TICKS = 15;
+    private static final EntityDataAccessor<Integer> DATA_LIFE_TICKS =
+            SynchedEntityData.defineId(DWolfSmokeCloudEntity.class, EntityDataSerializers.INT);
 
     private UUID ownerId;
     private int lifeTicks = LIFE_TICKS;
@@ -32,6 +33,7 @@ public class DWolfSmokeCloudEntity extends Entity implements ItemSupplier {
     public DWolfSmokeCloudEntity(EntityType<? extends DWolfSmokeCloudEntity> type, Level level) {
         super(type, level);
         noPhysics = true;
+        noCulling = true;
     }
 
     public DWolfSmokeCloudEntity(EntityType<? extends DWolfSmokeCloudEntity> type, Level level, UUID ownerId) {
@@ -41,6 +43,12 @@ public class DWolfSmokeCloudEntity extends Entity implements ItemSupplier {
 
     public void setLifeTicks(int lifeTicks) {
         this.lifeTicks = Math.max(1, lifeTicks);
+        entityData.set(DATA_LIFE_TICKS, this.lifeTicks);
+    }
+
+    @Override
+    public int smokeLifetimeTicks() {
+        return Math.max(1, entityData.get(DATA_LIFE_TICKS));
     }
 
     @Override
@@ -50,20 +58,20 @@ public class DWolfSmokeCloudEntity extends Entity implements ItemSupplier {
 
     @Override
     protected void defineSynchedData() {
+        entityData.define(DATA_LIFE_TICKS, LIFE_TICKS);
     }
 
     @Override
     public void tick() {
         super.tick();
         if (level().isClientSide) {
-            spawnSmokeParticles();
             return;
         }
 
         if (level() instanceof ServerLevel serverLevel) {
             suppressTargetsThroughSmoke(serverLevel);
         }
-        if (tickCount >= lifeTicks) {
+        if (tickCount >= smokeLifetimeTicks()) {
             discard();
         }
     }
@@ -71,7 +79,7 @@ public class DWolfSmokeCloudEntity extends Entity implements ItemSupplier {
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         ownerId = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
-        lifeTicks = tag.contains("LifeTicks") ? Math.max(1, tag.getInt("LifeTicks")) : LIFE_TICKS;
+        setLifeTicks(tag.contains("LifeTicks") ? tag.getInt("LifeTicks") : LIFE_TICKS);
     }
 
     @Override
@@ -87,16 +95,20 @@ public class DWolfSmokeCloudEntity extends Entity implements ItemSupplier {
         return NetworkHooks.getEntitySpawningPacket(this);
     }
 
-    private void spawnSmokeParticles() {
-        if (ClientVisionHooks.isThermalVisionActive()) {
-            return;
-        }
-        // One large static billboard at the cloud center — huge perf win vs multi-particle fog.
-        if (tickCount > 1 && tickCount % PARTICLE_REFRESH_TICKS != 0) {
-            return;
-        }
-        level().addParticle(ModParticles.D_WOLF_LARGE_SMOKE.get(),
-                getX(), getY() + 1.5D, getZ(), 0.0D, 0.0D, 0.0D);
+    @Override
+    public boolean shouldRenderAtSqrDistance(double distance) {
+        double renderDistance = 512.0D;
+        return distance < renderDistance * renderDistance;
+    }
+
+    @Override
+    public boolean isPickable() {
+        return false;
+    }
+
+    @Override
+    public boolean isAttackable() {
+        return false;
     }
 
     private void suppressTargetsThroughSmoke(ServerLevel level) {

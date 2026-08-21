@@ -11,7 +11,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -25,7 +24,7 @@ public final class StingerHudOverlay {
 
     @SubscribeEvent
     public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        if (!VanillaGuiOverlay.HOTBAR.id().equals(event.getOverlay().id())) {
+        if (!SkillHudRenderCompat.shouldRender(event)) {
             return;
         }
 
@@ -100,6 +99,13 @@ public final class StingerHudOverlay {
             graphics.drawCenteredString(font,
                     Component.translatable("hud.dealt_force_skills.stinger.rescue").getString(),
                     width / 2, y + 10, 0xFFFFFFFF);
+            statusY = y + 24;
+        }
+        if (ClientStingerHudState.rescueCooldownTicks() > 0) {
+            graphics.drawCenteredString(font,
+                    Component.translatable("hud.dealt_force_skills.stinger.rescue_cooldown",
+                            cooldownText(ClientStingerHudState.rescueCooldownTicks())),
+                    width / 2, statusY, 0xFFFFC66D);
         }
     }
 

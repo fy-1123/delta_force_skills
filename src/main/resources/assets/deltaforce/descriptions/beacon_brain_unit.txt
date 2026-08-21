@@ -1,0 +1,2 @@
+.tag("#deltaforce:df_age_6")
+击败信标Boss掉落。用于合成Hvk高级瓦解光束发射器。

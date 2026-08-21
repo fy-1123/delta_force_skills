@@ -10,8 +10,10 @@ import com.rzy.dealt_force_skills.character.undead.UndeadSkillInputAction;
 import com.rzy.dealt_force_skills.character.undead.UndeadSkills;
 import com.rzy.dealt_force_skills.character.undead.UndeadStateManager;
 import com.rzy.dealt_force_skills.network.C2S_OpenSelectionOrShop;
+import com.rzy.dealt_force_skills.network.C2S_OpenOwnShop;
 import com.rzy.dealt_force_skills.network.C2S_UndeadSkillInput;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
+import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
@@ -53,11 +55,25 @@ public final class UndeadInputHandler {
             heldTicks++;
             if (!longTriggered && heldTicks >= LONG_HOLD_TICKS && minecraft.screen == null) {
                 longTriggered = true;
-                UndeadProfessionScreen.open();
+                boolean creative = minecraft.player.getAbilities().instabuild;
+                boolean sneak = minecraft.player.isShiftKeyDown();
+                if ((!creative && !sneak) || (creative && sneak)) {
+                    UndeadProfessionScreen.open();
+                } else {
+                    DFGUI_MAIN.openToLogistics();
+                }
             }
         } else if (wasDown) {
             if (!longTriggered && minecraft.screen == null) {
-                NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+                boolean creative = minecraft.player.getAbilities().instabuild;
+                boolean sneak = minecraft.player.isShiftKeyDown();
+                if (creative && !sneak) {
+                    DFGUI_MAIN.openToOperator();
+                } else if (sneak && !creative) {
+                    NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+                } else {
+                    NetworkHandler.sendToServer(C2S_OpenOwnShop.open());
+                }
             }
             heldTicks = 0;
             longTriggered = false;

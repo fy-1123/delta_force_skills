@@ -34,9 +34,6 @@ public class DriftwoodItem extends Item {
 
         if (!CharacterSelectionManager.hasSelectedCharacter(serverPlayer)) {
             if (CharacterSelectionManager.isNormalPlayer(serverPlayer)) {
-                if (!serverPlayer.getAbilities().instabuild) {
-                    stack.shrink(1);
-                }
                 CharacterSelectionManager.clearNormalPlayer(serverPlayer);
             }
             CharacterAvailability.syncToClient(serverPlayer);
@@ -44,11 +41,6 @@ public class DriftwoodItem extends Item {
             return InteractionResultHolder.success(stack);
         }
 
-        if (!serverPlayer.getAbilities().instabuild
-                && !CharacterSelectionManager.hasCharacterReselection(serverPlayer)) {
-            CharacterSelectionManager.grantCharacterReselection(serverPlayer);
-            stack.shrink(1);
-        }
         CharacterAvailability.syncToClient(serverPlayer);
         NetworkHandler.sendToPlayer(new S2C_OpenCharacterSelection(true), serverPlayer);
         return InteractionResultHolder.success(stack);

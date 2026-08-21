@@ -5,12 +5,14 @@ package com.rzy.dealt_force_skills.config;
  */
 public enum ConfigFileId {
     GAMEPLAY("dealtforceskills.toml", false),
+    BASE("dealtbase.toml", false),
     BOSSES("dealtbosses.toml", false),
     SHOP("dealtforceshop.toml", false),
     SHOP_SET("dealtshopset.toml", false),
     PLAYER("dealtforceplayer.toml", false),
     GAMBLER("dealtgambler.toml", false),
-    HUD("dealtforceskills-hud.toml", true);
+    HUD("dealtforceskills-hud.toml", true),
+    TAMARIND_LOOT("dealttamarindloot.toml", false);
 
     private final String fileName;
     private final boolean clientLocal;

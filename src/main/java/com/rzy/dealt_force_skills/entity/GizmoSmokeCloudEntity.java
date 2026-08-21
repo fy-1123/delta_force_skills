@@ -1,11 +1,9 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
-import com.rzy.dealt_force_skills.util.ClientVisionHooks;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_GizmoRevealEntities;
 import com.rzy.dealt_force_skills.registry.ModEffects;
-import com.rzy.dealt_force_skills.registry.ModParticles;
 import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
@@ -30,7 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public class GizmoSmokeCloudEntity extends Entity implements ItemSupplier {
+public class GizmoSmokeCloudEntity extends Entity implements ItemSupplier, SmokeCloudModelState {
     public static volatile int LIFE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("LIFE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.gizmosmokecloudentity.life_ticks", 300));
     public static volatile double RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmosmokecloudentity.radius", 4.5));
     private static final int PARTICLE_REFRESH_TICKS = 15;
@@ -40,11 +38,17 @@ public class GizmoSmokeCloudEntity extends Entity implements ItemSupplier {
     public GizmoSmokeCloudEntity(EntityType<? extends GizmoSmokeCloudEntity> type, Level level) {
         super(type, level);
         noPhysics = true;
+        noCulling = true;
     }
 
     public GizmoSmokeCloudEntity(EntityType<? extends GizmoSmokeCloudEntity> type, Level level, UUID ownerId) {
         this(type, level);
         this.ownerId = ownerId;
+    }
+
+    @Override
+    public int smokeLifetimeTicks() {
+        return LIFE_TICKS;
     }
 
     @Override
@@ -60,7 +64,6 @@ public class GizmoSmokeCloudEntity extends Entity implements ItemSupplier {
     public void tick() {
         super.tick();
         if (level().isClientSide) {
-            spawnSmokeParticles();
             return;
         }
 
@@ -88,6 +91,12 @@ public class GizmoSmokeCloudEntity extends Entity implements ItemSupplier {
     @Override
     public Packet<ClientGamePacketListener> getAddEntityPacket() {
         return NetworkHooks.getEntitySpawningPacket(this);
+    }
+
+    @Override
+    public boolean shouldRenderAtSqrDistance(double distance) {
+        double renderDistance = 512.0D;
+        return distance < renderDistance * renderDistance;
     }
 
     private void applySmokeEffects(ServerLevel level) {
@@ -146,14 +155,13 @@ public class GizmoSmokeCloudEntity extends Entity implements ItemSupplier {
         return closest.distanceTo(position()) <= RADIUS;
     }
 
-    private void spawnSmokeParticles() {
-        if (ClientVisionHooks.isThermalVisionActive()) {
-            return;
-        }
-        if (tickCount > 1 && tickCount % PARTICLE_REFRESH_TICKS != 0) {
-            return;
-        }
-        level().addParticle(ModParticles.GIZMO_LARGE_SMOKE.get(),
-                getX(), getY() + 1.3D, getZ(), 0.0D, 0.0D, 0.0D);
+    @Override
+    public boolean isPickable() {
+        return false;
+    }
+
+    @Override
+    public boolean isAttackable() {
+        return false;
     }
 }

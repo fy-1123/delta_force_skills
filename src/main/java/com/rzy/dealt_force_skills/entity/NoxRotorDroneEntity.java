@@ -1,6 +1,9 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.character.nox.NoxStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
+import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
@@ -11,6 +14,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -176,7 +180,23 @@ public class NoxRotorDroneEntity extends Projectile implements ItemSupplier {
     }
 
     private void updateHomingMotion() {
-        if (!(level() instanceof ServerLevel level) || targetId == null) {
+        if (!(level() instanceof ServerLevel level)) {
+            return;
+        }
+        LivingEntity owner = owner(level);
+        if (targetId == null && owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NOX_FLASH_ROTOR)) {
+            double closest = 32.0D * 32.0D;
+            for (LivingEntity candidate : level.getEntitiesOfClass(LivingEntity.class,
+                    getBoundingBox().inflate(32.0D), LivingEntity::isAlive)) {
+                double distance = candidate.distanceToSqr(this);
+                if (distance < closest && TargetingUtil.isHostileLivingFor(player, candidate)) {
+                    targetId = candidate.getUUID();
+                    closest = distance;
+                }
+            }
+        }
+        if (targetId == null) {
             return;
         }
         Entity target = level.getEntity(targetId);
@@ -262,6 +282,14 @@ public class NoxRotorDroneEntity extends Projectile implements ItemSupplier {
             target.setDeltaMovement(before);
             target.hurtMarked = true;
             NoxStateManager.applyCrippled(target, owner);
+            if (owner instanceof ServerPlayer player
+                    && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NOX_FLASH_ROTOR)
+                    && TargetingUtil.isHostileLivingFor(player, target)) {
+                target.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+                        ModEffects.NOX_FLASHED.get(), 15 * 20, 0, false, false, true), player);
+                target.level().playSound(null, target.blockPosition(), ModSounds.NOX_FLASH_HIT_FULL.get(),
+                        SoundSource.PLAYERS, 0.7F, 1.0F);
+            }
         }
         discard();
     }

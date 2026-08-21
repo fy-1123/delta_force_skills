@@ -1,12 +1,15 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -34,9 +37,12 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkHooks;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplier {
+    private static final double DENTURES_HOME_RADIUS = 13.0D;
+    private static final double DENTURES_HOMING_WEIGHT = 0.20D;
     private static volatile int DEFAULT_FUSE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("DEFAULT_FUSE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.shepherdfraggrenadeentity.default_fuse_ticks", 70));
     private static volatile double RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.shepherdfraggrenadeentity.radius", 8.0));
     private static volatile double WALL_BOUNCE_FACTOR = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("WALL_BOUNCE_FACTOR", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.shepherdfraggrenadeentity.wall_bounce_factor", 0.5));
@@ -59,6 +65,7 @@ public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplie
     private int rollingTicks;
     private boolean settled;
     private boolean rolling;
+    private boolean myDentures;
 
     public ShepherdFragGrenadeEntity(EntityType<? extends ShepherdFragGrenadeEntity> type, Level level) {
         super(type, level);
@@ -68,6 +75,8 @@ public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplie
         super(type, level);
         setOwner(owner);
         fuseRemaining = Math.max(1, fuseTicks);
+        myDentures = owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.SHEPHERD_MY_DENTURES);
     }
 
     @Override
@@ -103,6 +112,15 @@ public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplie
             return;
         }
 
+        if (!level().isClientSide && myDentures) {
+            LivingEntity contact = findDenturesContact();
+            if (contact != null) {
+                explode(contact.position().add(0.0D, contact.getBbHeight() * 0.5D, 0.0D));
+                return;
+            }
+            homeTowardDenturesTarget();
+        }
+
         Vec3 motion = getDeltaMovement();
         Vec3 next = position().add(motion);
         HitResult hit = level().clip(new ClipContext(position(), next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
@@ -134,6 +152,7 @@ public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplie
         rollingTicks = tag.getInt("RollingTicks");
         settled = tag.getBoolean("Settled");
         rolling = tag.getBoolean("Rolling");
+        myDentures = tag.getBoolean("MyDentures");
     }
 
     @Override
@@ -144,6 +163,7 @@ public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplie
         tag.putInt("RollingTicks", rollingTicks);
         tag.putBoolean("Settled", settled);
         tag.putBoolean("Rolling", rolling);
+        tag.putBoolean("MyDentures", myDentures);
     }
 
     @Override
@@ -241,32 +261,43 @@ public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplie
 
         LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
         ServerPlayer ownerPlayer = owner instanceof ServerPlayer player ? player : null;
+        double radius = CommanderStateManager.skillRadius(ownerPlayer, RADIUS);
+        double falloff = CommanderStateManager.skillDamageFalloff(ownerPlayer, 0.1D);
         boolean bounced = blockImpacts > 0 || audibleBounces > 0;
         RangedSoundHelper.playThrottled(serverLevel, center, ModSounds.SHEPHERD_FRAG_GRENADE_EXPLODE.get(),
                 SoundSource.PLAYERS, 1.25f, 1.0f, 24.0D, 3, 4.0D);
         serverLevel.sendParticles(ParticleTypes.EXPLOSION, center.x, center.y + 0.2D, center.z,
                 12, 0.75D, 0.3D, 0.75D, 0.02D);
         serverLevel.sendParticles(ParticleTypes.CLOUD, center.x, center.y + 0.2D, center.z,
-                72, RADIUS * 0.65D, 0.45D, RADIUS * 0.65D, 0.05D);
+                72, radius * 0.65D, 0.45D, radius * 0.65D, 0.05D);
 
-        AABB box = new AABB(center, center).inflate(RADIUS);
+        AABB box = new AABB(center, center).inflate(radius);
         for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
+            if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)) {
+                continue;
+            }
             double distance = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(center);
-            if (distance > RADIUS) {
+            if (distance > radius) {
                 continue;
             }
 
-            float baseDamage = 100.0f * Math.max(0.0f, 1.0f - (float) distance * 0.1f);
+            float baseDamage = 100.0f * Math.max(0.0f, 1.0f - (float) (distance * falloff));
             if (baseDamage <= 0.0f) {
                 continue;
             }
 
-            ArmorDamageResult armorResult = damageArmor(target, baseDamage * ARMOR_DAMAGE_SHARE, owner);
+            boolean wearingArmor = hasWornArmor(target);
+            ArmorDamageResult armorResult = myDentures && wearingArmor
+                    ? destroyArmorDurability(target, owner)
+                    : damageArmor(target, baseDamage * ARMOR_DAMAGE_SHARE, owner);
             float healthDamage = baseDamage * HEALTH_DAMAGE_SHARE + armorResult.overflowHealthDamage;
             if (!armorResult.hadDamageableArmor) {
                 // If there is no damageable armor item to grind, the armor-wear share must not disappear.
                 // This also fixes attribute-only armor from curios/trinkets or mobs with built-in armor values.
                 healthDamage += baseDamage * ARMOR_DAMAGE_SHARE;
+            }
+            if (myDentures && !wearingArmor) {
+                healthDamage *= 12.45F;
             }
             if (healthDamage <= 0.0f) {
                 continue;
@@ -340,6 +371,77 @@ public class ShepherdFragGrenadeEntity extends Projectile implements ItemSupplie
             playArmorBreak(serverLevel(), target, owner);
         }
         return new ArmorDamageResult(true, overflowLoss / ARMOR_DURABILITY_DAMAGE_PER_POINT, brokenPieces);
+    }
+
+    private boolean hasWornArmor(LivingEntity target) {
+        for (EquipmentSlot slot : armorSlots()) {
+            if (!target.getItemBySlot(slot).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ArmorDamageResult destroyArmorDurability(LivingEntity target, LivingEntity owner) {
+        boolean hadDamageableArmor = false;
+        int brokenPieces = 0;
+        for (EquipmentSlot slot : armorSlots()) {
+            ItemStack stack = target.getItemBySlot(slot);
+            if (stack.isEmpty() || !stack.isDamageableItem()) {
+                continue;
+            }
+            hadDamageableArmor = true;
+            int breakLimit = DfsEquipmentItem.profile(stack) != null
+                    ? DfsEquipmentItem.breakDamageLimit(stack)
+                    : stack.getMaxDamage();
+            if (stack.getDamageValue() < breakLimit) {
+                stack.setDamageValue(breakLimit);
+                brokenPieces++;
+            }
+        }
+        if (brokenPieces > 0) {
+            playArmorBreak(serverLevel(), target, owner);
+        }
+        return new ArmorDamageResult(hadDamageableArmor, 0.0F, brokenPieces);
+    }
+
+    private void homeTowardDenturesTarget() {
+        LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
+        if (owner == null) {
+            return;
+        }
+        LivingEntity target = level().getEntitiesOfClass(LivingEntity.class,
+                        getBoundingBox().inflate(DENTURES_HOME_RADIUS),
+                        candidate -> TargetingUtil.isHostileLivingFor(owner, candidate))
+                .stream()
+                .min(Comparator.comparingDouble(candidate -> candidate.distanceToSqr(this)))
+                .orElse(null);
+        if (target == null) {
+            return;
+        }
+        Vec3 toward = target.getEyePosition().subtract(position());
+        if (toward.lengthSqr() < 0.0001D) {
+            return;
+        }
+        double speed = Math.max(0.3D, getDeltaMovement().length());
+        Vec3 desired = toward.normalize().scale(speed);
+        Vec3 steered = getDeltaMovement().scale(1.0D - DENTURES_HOMING_WEIGHT)
+                .add(desired.scale(DENTURES_HOMING_WEIGHT));
+        if (steered.lengthSqr() > 0.0001D) {
+            setDeltaMovement(steered.normalize().scale(speed));
+        }
+    }
+
+    private LivingEntity findDenturesContact() {
+        LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
+        if (owner == null) {
+            return null;
+        }
+        return level().getEntitiesOfClass(LivingEntity.class, getBoundingBox().inflate(0.35D),
+                        target -> TargetingUtil.isHostileLivingFor(owner, target))
+                .stream()
+                .findFirst()
+                .orElse(null);
     }
 
     private int remainingArmorDurability(ItemStack stack) {

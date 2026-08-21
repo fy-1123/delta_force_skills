@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.character.shepherd;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.entity.ShepherdSonicTrapEntity;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncShepherdState;
@@ -45,7 +46,9 @@ public final class ShepherdStateManager {
 
     public static boolean isShepherd(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.SHEPHERD_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.SHEPHERD_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.SHEPHERD_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -59,9 +62,9 @@ public final class ShepherdStateManager {
         }
 
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(TRAP_CHARGES, SONIC_TRAP_MAX_CHARGES);
+        tag.putInt(TRAP_CHARGES, sonicTrapCapacity(player));
         tag.putLong(TRAP_NEXT_RECHARGE, 0L);
-        tag.putInt(FRAG_CHARGES, FRAG_GRENADE_MAX_CHARGES);
+        tag.putInt(FRAG_CHARGES, fragCapacity(player));
         tag.putLong(FRAG_NEXT_RECHARGE, 0L);
         tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, ShepherdTool.NONE.ordinal());
@@ -86,9 +89,9 @@ public final class ShepherdStateManager {
 
         initializeIfNeeded(player);
         long now = SkillCooldownHelper.now(player);
-        recharge(player, now, TRAP_CHARGES, SONIC_TRAP_MAX_CHARGES, countSonicTraps(player),
+        recharge(player, now, TRAP_CHARGES, sonicTrapCapacity(player), countSonicTraps(player),
                 TRAP_NEXT_RECHARGE, SONIC_TRAP_RECHARGE_TICKS);
-        recharge(player, now, FRAG_CHARGES, FRAG_GRENADE_MAX_CHARGES, 0,
+        recharge(player, now, FRAG_CHARGES, fragCapacity(player), 0,
                 FRAG_NEXT_RECHARGE, FRAG_GRENADE_RECHARGE_TICKS);
     }
 
@@ -97,7 +100,7 @@ public final class ShepherdStateManager {
     }
 
     public static int sonicTrapMaxCharges(Player player) {
-        return Math.max(0, SONIC_TRAP_MAX_CHARGES - countSonicTraps(player));
+        return Math.max(0, sonicTrapCapacity(player) - countSonicTraps(player));
     }
 
     public static int sonicTrapRechargeRemainingTicks(Player player) {
@@ -108,12 +111,12 @@ public final class ShepherdStateManager {
     }
 
     public static boolean consumeSonicTrapCharge(ServerPlayer player) {
-        return consumeCharge(player, TRAP_CHARGES, SONIC_TRAP_MAX_CHARGES, countSonicTraps(player),
+        return consumeCharge(player, TRAP_CHARGES, sonicTrapCapacity(player), countSonicTraps(player),
                 TRAP_NEXT_RECHARGE, SONIC_TRAP_RECHARGE_TICKS);
     }
 
     public static void restoreSonicTrapCooldown(ServerPlayer player, int percent) {
-        restoreRechargeProgress(player, TRAP_CHARGES, SONIC_TRAP_MAX_CHARGES, Math.max(0, countSonicTraps(player) - 1),
+        restoreRechargeProgress(player, TRAP_CHARGES, sonicTrapCapacity(player), Math.max(0, countSonicTraps(player) - 1),
                 TRAP_NEXT_RECHARGE, SONIC_TRAP_RECHARGE_TICKS, percent);
     }
 
@@ -130,18 +133,18 @@ public final class ShepherdStateManager {
     }
 
     public static int fragGrenadeCharges(Player player) {
-        return data(player).getInt(FRAG_CHARGES);
+        return Math.min(fragCapacity(player), data(player).getInt(FRAG_CHARGES));
     }
 
     public static int fragGrenadeRechargeRemainingTicks(Player player) {
-        if (fragGrenadeCharges(player) >= FRAG_GRENADE_MAX_CHARGES) {
+        if (fragGrenadeCharges(player) >= fragCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, FRAG_NEXT_RECHARGE);
     }
 
     public static boolean consumeFragGrenadeCharge(ServerPlayer player) {
-        return consumeCharge(player, FRAG_CHARGES, FRAG_GRENADE_MAX_CHARGES, 0,
+        return consumeCharge(player, FRAG_CHARGES, fragCapacity(player), 0,
                 FRAG_NEXT_RECHARGE, FRAG_GRENADE_RECHARGE_TICKS);
     }
 
@@ -198,6 +201,10 @@ public final class ShepherdStateManager {
         return countSonicTraps(serverPlayer);
     }
 
+    public static int sonicTrapActiveLimit(Player player) {
+        return CommanderStateManager.skillCount(player, SONIC_TRAP_ACTIVE_LIMIT);
+    }
+
     public static void syncToClient(ServerPlayer player) {
         if (!isShepherd(player)) {
             return;
@@ -208,7 +215,7 @@ public final class ShepherdStateManager {
                 sonicTrapMaxCharges(player),
                 sonicTrapRechargeRemainingTicks(player),
                 fragGrenadeCharges(player),
-                FRAG_GRENADE_MAX_CHARGES,
+                fragCapacity(player),
                 fragGrenadeRechargeRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
                 equippedTool(player).ordinal(),
@@ -296,7 +303,7 @@ public final class ShepherdStateManager {
     private static void beginSonicTrapRechargeAfterRemoval(ServerPlayer player) {
         CompoundTag tag = data(player);
         int activeCountAfterRemoval = Math.max(0, countSonicTraps(player) - 1);
-        int allowed = Math.max(0, SONIC_TRAP_MAX_CHARGES - activeCountAfterRemoval);
+        int allowed = Math.max(0, sonicTrapCapacity(player) - activeCountAfterRemoval);
         int charges = Math.min(allowed, tag.getInt(TRAP_CHARGES));
         tag.putInt(TRAP_CHARGES, charges);
         if (allowed <= 0 || charges >= allowed) {
@@ -309,7 +316,7 @@ public final class ShepherdStateManager {
             tag.putLong(TRAP_NEXT_RECHARGE,
                     SkillCooldownHelper.until(player, now, SONIC_TRAP_RECHARGE_TICKS));
         } else if (now >= nextRecharge) {
-            recharge(player, now, TRAP_CHARGES, SONIC_TRAP_MAX_CHARGES, activeCountAfterRemoval,
+            recharge(player, now, TRAP_CHARGES, sonicTrapCapacity(player), activeCountAfterRemoval,
                     TRAP_NEXT_RECHARGE, SONIC_TRAP_RECHARGE_TICKS);
         }
     }
@@ -344,6 +351,14 @@ public final class ShepherdStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int sonicTrapCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, SONIC_TRAP_MAX_CHARGES);
+    }
+
+    private static int fragCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, FRAG_GRENADE_MAX_CHARGES);
     }
 
     private static AABB trapSearchBox(ServerPlayer player) {

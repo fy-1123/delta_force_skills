@@ -1,12 +1,16 @@
 package com.rzy.dealt_force_skills.util;
 
 import com.rzy.dealt_force_skills.character.department.DepartmentOfTransportationStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.undead.UndeadStateManager;
+import com.rzy.dealt_force_skills.entity.AcceleratedTroopsEntity;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 
 /**
  * Shared hostile / friendly targeting helpers.
@@ -47,7 +51,9 @@ public final class TargetingUtil {
      * Prefer {@link #isSelfOrHostileLivingFor} when the skill is listed as self-harming.
      */
     public static boolean isHostileLivingFor(Entity owner, LivingEntity target) {
-        return isTargetableLiving(target) && !shouldSkipFriendlyControl(owner, target);
+        return isTargetableLiving(target) && !shouldSkipFactionFriendly(owner, target)
+                && !shouldSkipFriendlyControl(owner, target)
+                && !isPlayerOwnedSummonOf(owner, target);
     }
 
     /**
@@ -55,6 +61,9 @@ public final class TargetingUtil {
      * Use for skills that can damage/control the user (see characters_records list).
      */
     public static boolean isSelfOrHostilePlayerFor(Entity owner, Player target) {
+        if (owner instanceof Player player && CommanderStateManager.isCommander(player)) {
+            return isHostilePlayerFor(owner, target);
+        }
         return isTargetablePlayer(target)
                 && (isSelf(owner, target) || !shouldSkipFriendlyExceptSelf(owner, target));
     }
@@ -64,12 +73,46 @@ public final class TargetingUtil {
      * Use for skills that can damage/control the user (see characters_records list).
      */
     public static boolean isSelfOrHostileLivingFor(Entity owner, LivingEntity target) {
-        return isTargetableLiving(target)
-                && (isSelf(owner, target) || !shouldSkipFriendlyExceptSelf(owner, target));
+        if (owner instanceof Player player && CommanderStateManager.isCommander(player)) {
+            return isHostileLivingFor(owner, target);
+        }
+        return isTargetableLiving(target) && !shouldSkipFactionFriendly(owner, target)
+                && (isSelf(owner, target) || (!shouldSkipFriendlyExceptSelf(owner, target)
+                && !isPlayerOwnedSummonOf(owner, target)));
+    }
+
+    private static boolean shouldSkipFactionFriendly(Entity owner, LivingEntity target) {
+        return owner instanceof AcceleratedTroopsEntity && AcceleratedTroopsEntity.isHvkAlly(target);
     }
 
     public static boolean isSelf(Entity owner, Entity target) {
         return owner != null && target != null && owner.getUUID().equals(target.getUUID());
+    }
+
+    /**
+     * External companion mods normally expose Forge's {@link OwnableEntity} contract. Treat an
+     * entity owned by the casting player as friendly even when it is not part of a Dealt Force team.
+     */
+    public static boolean isPlayerOwnedSummonOf(Entity owner, Entity target) {
+        if (!(target instanceof OwnableEntity ownable)) {
+            return false;
+        }
+        java.util.UUID playerOwnerId = playerOwnerId(owner);
+        java.util.UUID ownerId = ownable.getOwnerUUID();
+        return playerOwnerId != null && playerOwnerId.equals(ownerId);
+    }
+
+    private static java.util.UUID playerOwnerId(Entity entity) {
+        if (entity instanceof Player player) {
+            return player.getUUID();
+        }
+        if (entity instanceof OwnableEntity ownable && ownable.getOwnerUUID() != null) {
+            return ownable.getOwnerUUID();
+        }
+        if (entity instanceof Projectile projectile) {
+            return playerOwnerId(projectile.getOwner());
+        }
+        return null;
     }
 
     /**

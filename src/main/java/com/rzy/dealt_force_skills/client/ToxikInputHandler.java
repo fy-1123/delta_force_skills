@@ -3,10 +3,12 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.toxik.ToxikTool;
 import com.rzy.dealt_force_skills.character.toxik.ToxikToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientToxikHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_ToxikPullout;
 import com.rzy.dealt_force_skills.network.C2S_ToxikToolAction;
@@ -43,16 +45,36 @@ public final class ToxikInputHandler {
     public static void tick(Minecraft minecraft) {
         handleFireflyPullout(minecraft);
 
-        if (minecraft.player == null || !ClientToxikHudState.shouldRender()) {
+        boolean nativeCharacter = ClientToxikHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.TOXIK_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.TOXIK_ID, SkillSlot.ACTIVE_2);
+        boolean coreOwned = nativeCharacter || coreWasDown || minecraft.player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.TOXIK_ID, SkillSlot.CORE, minecraft.player.isShiftKeyDown());
+        if (minecraft.player == null || (!active1Owned && !active2Owned && !coreOwned
+                && !ClientToxikHudState.hasEquippedTool())) {
             resetActive1();
             resetActive2();
             resetCore();
             return;
         }
 
-        handleActive1Key();
-        handleActive2Key();
-        handleCoreKey();
+        if (active1Owned) {
+            handleActive1Key();
+        } else {
+            resetActive1();
+        }
+        if (active2Owned) {
+            handleActive2Key();
+        } else {
+            resetActive2();
+        }
+        if (coreOwned) {
+            handleCoreKey();
+        } else {
+            resetCore();
+        }
         if (ClientToxikHudState.hasEquippedTool()) {
             releaseBlockedKey(minecraft.options.keyAttack);
             releaseBlockedKey(minecraft.options.keyUse);
@@ -63,7 +85,9 @@ public final class ToxikInputHandler {
     }
 
     public static boolean ownsCoreSkill() {
-        return ClientToxikHudState.shouldRender();
+        var player = Minecraft.getInstance().player;
+        return ClientToxikHudState.shouldRender() || coreWasDown || player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.TOXIK_ID, SkillSlot.CORE, player.isShiftKeyDown());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -146,7 +170,7 @@ public final class ToxikInputHandler {
             return;
         }
         if (active1WasDown) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1);
+            ClientCommanderState.useNativeOrInherited(ModCharacters.TOXIK_ID, SkillSlot.ACTIVE_1, false);
         }
         resetActive1();
     }
@@ -179,7 +203,8 @@ public final class ToxikInputHandler {
                 TEAR_GAS_RELEASE_TICKS,
                 equipped
                         ? () -> NetworkHandler.sendToServer(new C2S_ToxikToolAction(ToxikToolAction.THROW_TEAR_GAS))
-                        : () -> ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2));
+                        : () -> ClientCommanderState.useNativeOrInherited(
+                                ModCharacters.TOXIK_ID, SkillSlot.ACTIVE_2, false));
     }
 
     private static void beginFireflyRelease() {
@@ -205,7 +230,8 @@ public final class ToxikInputHandler {
             if (ClientToxikHudState.equippedTool() == ToxikTool.FIREFLY_SWARM && coreHeldTicks >= CORE_LONG_HOLD_TICKS) {
                 NetworkHandler.sendToServer(new C2S_ToxikToolAction(ToxikToolAction.TOGGLE_FIREFLY_MODE));
             } else {
-                ClientCharacterSelectionState.useSkill(SkillSlot.CORE, coreHeldTicks >= CORE_LONG_HOLD_TICKS);
+                ClientCommanderState.useNativeOrInherited(ModCharacters.TOXIK_ID, SkillSlot.CORE,
+                        coreHeldTicks >= CORE_LONG_HOLD_TICKS);
             }
         }
         resetCore();

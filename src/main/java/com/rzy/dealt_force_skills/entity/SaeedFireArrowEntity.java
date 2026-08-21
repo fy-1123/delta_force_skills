@@ -192,7 +192,8 @@ public class SaeedFireArrowEntity extends Projectile implements ItemSupplier {
         AABB box = new AABB(center, center).inflate(FIELD_RADIUS);
         boolean damagedAny = false;
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
-            if (isFriendlyTarget(target) || target.distanceToSqr(center) > FIELD_RADIUS * FIELD_RADIUS) {
+            if (isFriendlyTarget(target) || TargetingUtil.isPlayerOwnedSummonOf(owner, target)
+                    || target.distanceToSqr(center) > FIELD_RADIUS * FIELD_RADIUS) {
                 continue;
             }
             damagedAny |= SkillDamageHelper.hurt(target, damageSources().mobProjectile(this, owner), owner, com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("summons.saeed_fire_arrow_entity.skill_hurt.1.damage", 12.0F));

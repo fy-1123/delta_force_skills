@@ -15,19 +15,36 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class TaczShopCatalog {
+    private static volatile List<Entry> cachedEntries = List.of();
+    private static volatile boolean initialized;
+
     private TaczShopCatalog() {
     }
 
     public static List<Entry> entries() {
-        List<Entry> entries = new ArrayList<>();
-        for (Type type : Type.values()) {
-            addEntries(entries, type);
+        if (!initialized) {
+            reload();
         }
-        return entries.stream()
+        return cachedEntries;
+    }
+
+    public static synchronized void reload() {
+        List<Entry> previous = cachedEntries;
+        List<Entry> refreshed = new ArrayList<>();
+        for (Type type : Type.values()) {
+            Discovery discovery = discover(type);
+            if (discovery.success()) {
+                refreshed.addAll(discovery.entries());
+            } else {
+                previous.stream().filter(entry -> entry.type() == type).forEach(refreshed::add);
+            }
+        }
+        cachedEntries = refreshed.stream()
                 .sorted(Comparator.comparing((Entry entry) -> entry.type().ordinal())
                         .thenComparingInt(Entry::sort)
                         .thenComparing(entry -> entry.id().toString()))
                 .toList();
+        initialized = true;
     }
 
     public static Optional<Entry> find(String entryId) {
@@ -42,6 +59,21 @@ public final class TaczShopCatalog {
         return entries().stream()
                 .filter(entry -> entry.type() == type && entry.id().equals(id))
                 .findFirst();
+    }
+
+    public static Optional<Entry> find(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Type type : Type.values()) {
+            ResourceLocation id = type.itemId(stack);
+            if (id != null) {
+                return entries().stream()
+                        .filter(entry -> entry.type() == type && entry.id().equals(id))
+                        .findFirst();
+            }
+        }
+        return Optional.empty();
     }
 
     public static String configKey(ResourceLocation id) {
@@ -199,26 +231,33 @@ public final class TaczShopCatalog {
         return false;
     }
 
-    private static void addEntries(List<Entry> entries, Type type) {
+    private static Discovery discover(Type type) {
+        List<Entry> entries = new ArrayList<>();
         try {
             Class<?> timelessApi = Class.forName("com.tacz.guns.api.TimelessAPI");
             Object result = timelessApi.getMethod(type.timelessMethod()).invoke(null);
             if (!(result instanceof Set<?> set)) {
-                return;
+                return new Discovery(false, List.of());
             }
             for (Object object : set) {
                 if (!(object instanceof Map.Entry<?, ?> indexEntry)
                         || !(indexEntry.getKey() instanceof ResourceLocation id)) {
                     continue;
                 }
-                ItemStack stack = buildStack(type.builderClassName(), id, type.count());
-                if (!stack.isEmpty()) {
-                    applyIndexDisplayName(stack, indexEntry.getValue(), id);
-                    entries.add(new Entry(type, id, reflectedSort(indexEntry.getValue()), stack));
+                try {
+                    ItemStack stack = buildStack(type.builderClassName(), id, type.count());
+                    if (!stack.isEmpty()) {
+                        applyIndexDisplayName(stack, indexEntry.getValue(), id);
+                        entries.add(new Entry(type, id, reflectedSort(indexEntry.getValue()), stack));
+                    }
+                } catch (RuntimeException | LinkageError ignored) {
+                    // A stale or malformed TaCZ entry must not invalidate the rest of the catalog.
                 }
             }
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-            // TaCZ is optional for build tools and non-TaCZ packs.
+            return new Discovery(true, entries);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            // TaCZ is optional. A failed type keeps its last known-good snapshot.
+            return new Discovery(false, List.of());
         }
     }
 
@@ -232,7 +271,7 @@ public final class TaczShopCatalog {
             }
             Object stack = builderClass.getMethod("build").invoke(builder);
             return stack instanceof ItemStack itemStack ? itemStack : ItemStack.EMPTY;
-        } catch (ReflectiveOperationException | LinkageError ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return ItemStack.EMPTY;
         }
     }
@@ -355,6 +394,29 @@ public final class TaczShopCatalog {
             return count;
         }
 
+        private ResourceLocation itemId(ItemStack stack) {
+            String accessorClassName = switch (this) {
+                case GUN -> "com.tacz.guns.api.item.IGun";
+                case ATTACHMENT -> "com.tacz.guns.api.item.IAttachment";
+                case AMMO -> "com.tacz.guns.api.item.IAmmo";
+            };
+            String getterName = switch (this) {
+                case GUN -> "getGunId";
+                case ATTACHMENT -> "getAttachmentId";
+                case AMMO -> "getAmmoId";
+            };
+            try {
+                Class<?> accessorClass = Class.forName(accessorClassName);
+                if (!accessorClass.isInstance(stack.getItem())) {
+                    return null;
+                }
+                Object value = accessorClass.getMethod(getterName, ItemStack.class).invoke(stack.getItem(), stack);
+                return value instanceof ResourceLocation id ? id : null;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+                return null;
+            }
+        }
+
         public static Optional<Type> fromEntryId(String entryId) {
             if (entryId == null) {
                 return Optional.empty();
@@ -372,5 +434,8 @@ public final class TaczShopCatalog {
         public String entryId() {
             return type.prefix() + id;
         }
+    }
+
+    private record Discovery(boolean success, List<Entry> entries) {
     }
 }

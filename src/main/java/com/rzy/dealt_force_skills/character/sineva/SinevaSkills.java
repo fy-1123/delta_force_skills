@@ -2,6 +2,8 @@ package com.rzy.dealt_force_skills.character.sineva;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.effect.InjuryManager;
 import com.rzy.dealt_force_skills.entity.BladeWireProjectileEntity;
@@ -31,6 +33,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -118,7 +121,7 @@ public final class SinevaSkills {
         boolean controlVoicePlayed = false;
         int controlledTargets = 0;
         for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, box,
-                entity -> entity != player && entity.isAlive() && !DealtTeamManager.areTeammates(player, entity))) {
+                entity -> canShieldBashTarget(player, entity))) {
             Vec3 toTarget = target.position().add(0, target.getBbHeight() * 0.5, 0)
                     .subtract(player.getEyePosition()).normalize();
             if (forward.dot(toTarget) < FRONT_DOT) continue;
@@ -184,8 +187,7 @@ public final class SinevaSkills {
             AABB box = player.getBoundingBox().inflate(2.0, 1.0, 2.0);
             reflectProjectiles(player, box, data.direction, 0.0D, data.reflectedProjectiles, PROJECTILE_CHARGE_SPEED_BONUS);
             for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, box,
-                    entity -> entity != player && entity.isAlive() && !data.hitEntities.contains(entity)
-                            && !DealtTeamManager.areTeammates(player, entity))) {
+                    entity -> canShieldBashTarget(player, entity) && !data.hitEntities.contains(entity))) {
                 Vec3 toTarget = target.position().subtract(player.position()).normalize();
                 if (data.direction.dot(new Vec3(toTarget.x, 0.0, toTarget.z).normalize()) < 0.0) continue;
 
@@ -200,6 +202,13 @@ public final class SinevaSkills {
                 DfsAchievements.recordSinevaShieldBashTargets(player, data.hitEntities.size(), false);
             }
         }
+    }
+
+    private static boolean canShieldBashTarget(ServerPlayer attacker, LivingEntity target) {
+        return target != attacker
+                && target.isAlive()
+                && !DealtTeamManager.areTeammates(attacker, target)
+                && (!(target instanceof Player player) || (!player.isCreative() && !player.isSpectator()));
     }
 
     private static boolean applyShieldBashControl(ServerPlayer player, LivingEntity target) {
@@ -361,9 +370,28 @@ public final class SinevaSkills {
         }
 
         ServerLevel level = player.serverLevel();
-        GrappleHookEntity hook = new GrappleHookEntity(ModEntities.GRAPPLE_HOOK.get(), level, player);
         Vec3 start = GrappleHookEntity.ropeOrigin(player, 1.0F);
-        LivingEntity target = lockTarget ? SinevaGrappleTargeting.findTarget(level, player) : null;
+        boolean multiGrapple = CommanderStateManager.hasBranchUpgrade(
+                player, CommanderBranchUpgrade.SINEVA_MULTI_GRAPPLE);
+        LivingEntity singleTarget = lockTarget ? SinevaGrappleTargeting.findTarget(level, player) : null;
+        List<LivingEntity> targets = multiGrapple
+                ? SinevaGrappleTargeting.findTargets(level, player)
+                : (singleTarget == null ? List.of() : List.of(singleTarget));
+        if (targets.isEmpty()) {
+            spawnGrapple(level, player, start, null);
+        } else {
+            for (LivingEntity target : targets) {
+                spawnGrapple(level, player, start, target);
+            }
+        }
+        RangedSoundHelper.playFollowingPlayer(player, ModSounds.SINEVA_GRAPPLE_FIRE.get(),
+                SoundSource.PLAYERS, 1.0f, 1.0f, 32.0D);
+        SinevaStateManager.setGrappleCooldown(player);
+        return true;
+    }
+
+    private static void spawnGrapple(ServerLevel level, ServerPlayer player, Vec3 start, LivingEntity target) {
+        GrappleHookEntity hook = new GrappleHookEntity(ModEntities.GRAPPLE_HOOK.get(), level, player);
         Vec3 look = target == null
                 ? player.getLookAngle().normalize()
                 : target.getBoundingBox().getCenter().subtract(start).normalize();
@@ -371,10 +399,6 @@ public final class SinevaSkills {
         hook.setDeltaMovement(look.scale(2.2));
         alignGrappleRotation(hook, look, player);
         level.addFreshEntity(hook);
-        RangedSoundHelper.playFollowingPlayer(player, ModSounds.SINEVA_GRAPPLE_FIRE.get(),
-                SoundSource.PLAYERS, 1.0f, 1.0f, 32.0D);
-        SinevaStateManager.setGrappleCooldown(player);
-        return true;
     }
 
     private static void alignGrappleRotation(GrappleHookEntity hook, Vec3 direction, ServerPlayer player) {
@@ -396,7 +420,9 @@ public final class SinevaSkills {
                 SinevaStateManager.deactivateBombSuit(player);
                 player.displayClientMessage(Component.translatable("message.dealt_force_skills.sineva.bomb_suit_deactivated"), true);
             } else {
-                if (SinevaStateManager.isShieldBroken(player)) {
+                if (SinevaStateManager.isShieldBroken(player)
+                        && !CommanderStateManager.hasBranchUpgrade(
+                        player, CommanderBranchUpgrade.SINEVA_ADVANCED_MATERIALS)) {
                     player.displayClientMessage(Component.translatable("message.dealt_force_skills.sineva.shield_broken"), true);
                     SinevaStateManager.syncToClient(player);
                     SinevaStateManager.syncRenderStateToClients(player);

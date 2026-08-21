@@ -7,7 +7,10 @@ import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_TeamSpectatorTarget;
 import com.rzy.dealt_force_skills.shop.DealtCurrencyRegistry;
 import com.rzy.dealt_force_skills.shop.DealtKeepBoundsManager;
+import com.rzy.dealt_force_skills.shop.DealtShopAccessManager;
+import com.rzy.dealt_force_skills.shop.HaffCoinManager;
 import com.rzy.dealt_force_skills.skill.SkillRoundResetHelper;
+import com.rzy.dealt_force_skills.entity.DeathCrateEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
@@ -52,6 +55,11 @@ public final class DealtTeamManager {
     private static final String MATCH_TEAM_PREFIX = "竞赛小队";
     private static final String SCOREBOARD_TEAM_PREFIX = "dfs_";
     private static final int SCOREBOARD_TEAM_NAME_MAX_LENGTH = 16;
+    public static final int PERSISTENT_SQUAD_MAX_MEMBERS = 3;
+    private static final long MATCH_ROUND_BASE_HAFF = 10_000L;
+    private static final long MATCH_ROUND_HAFF_STEP = 5_000L;
+    private static final long MATCH_ROUND_HAFF_CAP = 150_000L;
+    private static final long MATCH_ROUND_LOSS_REDUCTION = 3_000L;
     private static final ChatFormatting[] SCOREBOARD_TEAM_COLORS = {
             ChatFormatting.AQUA,
             ChatFormatting.GOLD,
@@ -184,6 +192,136 @@ public final class DealtTeamManager {
         return team == null ? Optional.empty() : Optional.of(team.name);
     }
 
+    public static PersistentSquadView persistentSquadView(ServerPlayer viewer) {
+        TeamData data = data(viewer.server);
+        TeamRecord current = teamFor(data, viewer.getUUID());
+        List<PersistentMemberView> members = new ArrayList<>();
+        List<PersistentTeamView> teams = new ArrayList<>();
+        List<PersistentInviteView> invitations = new ArrayList<>();
+        List<PersistentJoinRequestView> joinRequests = new ArrayList<>();
+
+        if (current != null) {
+            for (UUID memberId : current.members) {
+                members.add(new PersistentMemberView(memberId, displayName(viewer.server, memberId),
+                        viewer.server.getPlayerList().getPlayer(memberId) != null));
+            }
+            if (current.leader.equals(viewer.getUUID())) {
+                for (UUID applicantId : current.joinRequests) {
+                    joinRequests.add(new PersistentJoinRequestView(applicantId,
+                            displayName(viewer.server, applicantId)));
+                }
+            }
+        } else {
+            for (TeamRecord team : data.teams.values()) {
+                if (MATCH_TEAM_PATTERN.matcher(team.name).matches()
+                        || team.members.size() >= PERSISTENT_SQUAD_MAX_MEMBERS) {
+                    continue;
+                }
+                teams.add(new PersistentTeamView(team.name, displayName(viewer.server, team.leader),
+                        team.members.size(), team.joinRequests.contains(viewer.getUUID())));
+                if (team.invites.contains(viewer.getUUID())) {
+                    invitations.add(new PersistentInviteView(team.name,
+                            displayName(viewer.server, team.leader)));
+                }
+            }
+        }
+        return new PersistentSquadView(current == null ? "" : current.name,
+                current == null ? null : current.leader, List.copyOf(members), List.copyOf(teams),
+                List.copyOf(invitations), List.copyOf(joinRequests));
+    }
+
+    public static int createPersistentSquad(ServerPlayer leader) {
+        TeamData data = data(leader.server);
+        if (teamFor(data, leader.getUUID()) != null) {
+            tell(leader, "你已经在一个队伍中。");
+            return 0;
+        }
+        String playerName = leader.getGameProfile().getName();
+        String prefix = playerName.length() > 24 ? playerName.substring(0, 24) : playerName;
+        String name = prefix + "_squad";
+        int suffix = 2;
+        while (data.teams.containsKey(key(name))) {
+            String suffixText = "_" + suffix++;
+            int maxPrefix = Math.max(1, 32 - "_squad".length() - suffixText.length());
+            name = prefix.substring(0, Math.min(prefix.length(), maxPrefix)) + "_squad" + suffixText;
+        }
+        return createTeam(leader, name);
+    }
+
+    public static int respondPersistentJoin(ServerPlayer leader, UUID applicantId, boolean accept) {
+        TeamData data = data(leader.server);
+        TeamRecord team = teamFor(data, leader.getUUID());
+        if (team == null || !team.leader.equals(leader.getUUID())) {
+            tell(leader, "只有队长可以处理加入申请。");
+            return 0;
+        }
+        if (!team.joinRequests.contains(applicantId)) {
+            tell(leader, "该加入申请已失效。");
+            return 0;
+        }
+        if (accept && team.members.size() >= PERSISTENT_SQUAD_MAX_MEMBERS) {
+            tell(leader, "队伍已满，最多只能有 3 名成员。");
+            return 0;
+        }
+        team.joinRequests.remove(applicantId);
+        ServerPlayer applicant = leader.server.getPlayerList().getPlayer(applicantId);
+        String applicantName = displayName(leader.server, applicantId);
+        if (!accept) {
+            data.setDirty();
+            tell(leader, "已拒绝 " + applicantName + " 的加入申请。");
+            if (applicant != null) {
+                tell(applicant, "队伍 " + team.name + " 拒绝了你的加入申请。");
+            }
+            return 1;
+        }
+        if (teamFor(data, applicantId) != null) {
+            data.setDirty();
+            tell(leader, applicantName + " 已经在其它队伍中。");
+            return 0;
+        }
+        addMember(data, leader.server, team, applicantId);
+        notifyTeam(leader.server, team, applicantName + " 已加入队伍 " + team.name + "。");
+        return 1;
+    }
+
+    public static int leavePersistentSquad(ServerPlayer player) {
+        TeamRecord team = teamFor(data(player.server), player.getUUID());
+        return team == null ? 0 : requestLeave(player, team.name);
+    }
+
+    public static int kickPersistentMember(ServerPlayer leader, UUID memberId) {
+        TeamData data = data(leader.server);
+        TeamRecord team = teamFor(data, leader.getUUID());
+        if (team == null || !team.leader.equals(leader.getUUID()) || leader.getUUID().equals(memberId)
+                || !team.members.contains(memberId)) {
+            tell(leader, "只有队长可以移出其他队员。");
+            return 0;
+        }
+        String memberName = displayName(leader.server, memberId);
+        removeMember(data, leader.server, team, memberId, memberName + " 已被移出队伍 " + team.name + "。");
+        ServerPlayer member = leader.server.getPlayerList().getPlayer(memberId);
+        if (member != null) {
+            tell(member, "你已被移出队伍 " + team.name + "。");
+        }
+        return 1;
+    }
+
+    public static int promotePersistentMember(ServerPlayer leader, UUID memberId) {
+        TeamData data = data(leader.server);
+        TeamRecord team = teamFor(data, leader.getUUID());
+        if (team == null || !team.leader.equals(leader.getUUID()) || leader.getUUID().equals(memberId)
+                || !team.members.contains(memberId)) {
+            tell(leader, "只有队长可以将队长移交给其他队员。");
+            return 0;
+        }
+        team.leader = memberId;
+        data.setDirty();
+        syncScoreboardTeams(leader.server, data);
+        notifyTeam(leader.server, team,
+                displayName(leader.server, memberId) + " 现在是队伍 " + team.name + " 的队长。");
+        return 1;
+    }
+
     public static Optional<BornPointView> boundBornPoint(ServerPlayer player) {
         TeamData data = data(player.server);
         String teamKey = teamKeyFor(data, player.getUUID());
@@ -221,6 +359,10 @@ public final class DealtTeamManager {
 
     public static int cleanSelf(CommandSourceStack source) throws CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
+        if (!DealtShopAccessManager.isAllowed(DealtShopAccessManager.Service.BACKTP, player)) {
+            source.sendFailure(Component.translatable("commands.dealt_force_skills.dealtclean.disabled"));
+            return 0;
+        }
         if (player.isSpectator()) {
             TeamData data = data(player.server);
             clearSpectatorState(data, player.getUUID());
@@ -260,12 +402,7 @@ public final class DealtTeamManager {
 
     public static int listTeams(CommandSourceStack source) {
         TeamData data = data(source.getServer());
-        int removed = cleanupOnlineTeamState(data, source.getServer(), null);
         if (data.teams.isEmpty()) {
-            if (removed > 0) {
-                int removedCount = removed;
-                source.sendSuccess(() -> Component.literal("已自动解散 " + removedCount + " 个无在线成员的队伍。"), false);
-            }
             source.sendSuccess(() -> Component.literal("当前没有队伍。"), false);
             return 0;
         }
@@ -280,17 +417,11 @@ public final class DealtTeamManager {
                     + " | 在线成员: " + (onlineNames.isEmpty() ? "无" : String.join("、", onlineNames));
             source.sendSuccess(() -> Component.literal(line), false);
         }
-        if (removed > 0) {
-            int removedCount = removed;
-            source.sendSuccess(() -> Component.literal("已自动解散 " + removedCount + " 个无在线成员的队伍。"), false);
-        }
         return teamCount;
     }
 
     public static void handlePlayerLoggedOut(ServerPlayer player) {
-        TeamData data = data(player.server);
-        cleanupOnlineTeamState(data, player.server, player.getUUID());
-        syncScoreboardTeams(player.server, data);
+        syncScoreboardTeams(player.server, data(player.server));
     }
 
     public static void handlePlayerLoggedIn(ServerPlayer player) {
@@ -417,12 +548,16 @@ public final class DealtTeamManager {
             return false;
         }
 
+        String winningTeamKey = liveTeamKeys.size() == 1 ? liveTeamKeys.iterator().next() : null;
         for (TeamRecord team : activeTeams) {
             for (UUID member : team.members) {
                 clearSpectatorState(data, member);
             }
         }
 
+        // The next round has been confirmed. Clear crates before players are restored so no
+        // end-of-round crate can survive a failed or delayed respawn transition.
+        DeathCrateEntity.clearActiveMatchCrates(server);
         int moved = 0;
         List<String> skipped = new ArrayList<>();
         for (TeamRecord team : activeTeams) {
@@ -435,12 +570,31 @@ public final class DealtTeamManager {
         if (moved <= 0) {
             return false;
         }
+        if (winningTeamKey != null) {
+            data.matchRoundWins.merge(winningTeamKey, 1, Integer::sum);
+        }
+        data.matchRound = Math.max(1, data.matchRound) + 1;
+        awardAndAnnounceMatchRound(server, data, activeTeams, winningTeamKey);
         data.setDirty();
         if (!skipped.isEmpty()) {
             server.getPlayerList().broadcastSystemMessage(Component.literal("下一回合复位时跳过："
                     + String.join("、", skipped)), false);
         }
         return true;
+    }
+
+    public static void handleMatchPlayerLoggedIn(ServerPlayer player) {
+        TeamData data = data(player.server);
+        long pending = Math.max(0L, data.pendingRoundHaffAwards.getOrDefault(player.getUUID(), 0L));
+        if (pending > 0L) {
+            data.pendingRoundHaffAwards.remove(player.getUUID());
+            HaffCoinManager.grant(player, pending);
+            tell(player, "已补发 " + pending + " 哈夫币回合资金。");
+            data.setDirty();
+        }
+        if (data.matchActive && data.activeMatchTeams.contains(teamKeyFor(data, player.getUUID()))) {
+            player.sendSystemMessage(matchRoundSummary(data, activeMatchTeams(data)));
+        }
     }
 
     public static boolean returnPendingMatchRoundPlayer(ServerPlayer player) {
@@ -504,6 +658,10 @@ public final class DealtTeamManager {
             tell(player, "你已经在一个队伍中。");
             return 0;
         }
+        if (team.members.size() >= PERSISTENT_SQUAD_MAX_MEMBERS) {
+            tell(player, "队伍已满，最多只能有 3 名成员。");
+            return 0;
+        }
         if (!team.joinRequests.add(player.getUUID())) {
             tell(player, "你已经向队伍 " + team.name + " 发出过加入申请。");
             return 0;
@@ -527,23 +685,9 @@ public final class DealtTeamManager {
             tell(player, "你不在队伍 " + teamName + " 中。");
             return 0;
         }
-        if (team.leader.equals(player.getUUID())) {
-            leaveTeam(data, player.server, team, player, true);
-            return 1;
-        }
-        if (!team.leaveRequests.add(player.getUUID())) {
-            tell(player, "你已经向队长发出过退出申请。");
-            return 0;
-        }
-        data.setDirty();
-        tell(player, "已向队长发出退出队伍 " + team.name + " 的申请。");
-        ServerPlayer leader = player.server.getPlayerList().getPlayer(team.leader);
-        if (leader != null) {
-            leader.sendSystemMessage(Component.literal(player.getGameProfile().getName() + " 申请退出队伍 " + team.name + " ")
-                    .append(button("同意", "/dealtteam accept leave " + team.name + " " + player.getGameProfile().getName(), ChatFormatting.GREEN))
-                    .append(Component.literal(" "))
-                    .append(button("拒绝", "/dealtteam deny leave " + team.name + " " + player.getGameProfile().getName(), ChatFormatting.RED)));
-        }
+        removeMember(data, player.server, team, player.getUUID(),
+                player.getGameProfile().getName() + " 已退出队伍 " + team.name + "。");
+        tell(player, "你已退出队伍 " + team.name + "。");
         return 1;
     }
 
@@ -552,6 +696,10 @@ public final class DealtTeamManager {
         TeamRecord team = teamFor(data, leader.getUUID());
         if (team == null || !team.leader.equals(leader.getUUID())) {
             tell(leader, "只有队长可以邀请玩家。");
+            return 0;
+        }
+        if (team.members.size() >= PERSISTENT_SQUAD_MAX_MEMBERS) {
+            tell(leader, "队伍已满，最多只能有 3 名成员。");
             return 0;
         }
         if (target.getUUID().equals(leader.getUUID()) || team.members.contains(target.getUUID())) {
@@ -580,6 +728,10 @@ public final class DealtTeamManager {
         TeamRecord team = team(data, teamName);
         if (team == null || !team.leader.equals(leader.getUUID())) {
             tell(leader, "只有队长可以处理该队伍的加入申请。");
+            return 0;
+        }
+        if (accept && team.members.size() >= PERSISTENT_SQUAD_MAX_MEMBERS) {
+            tell(leader, "队伍已满，最多只能有 3 名成员。");
             return 0;
         }
         if (!team.joinRequests.remove(applicant.getUUID())) {
@@ -627,6 +779,10 @@ public final class DealtTeamManager {
     public static int respondInvite(ServerPlayer target, String teamName, boolean accept) {
         TeamData data = data(target.server);
         TeamRecord team = team(data, teamName);
+        if (team != null && accept && team.members.size() >= PERSISTENT_SQUAD_MAX_MEMBERS) {
+            tell(target, "队伍已满，最多只能有 3 名成员。");
+            return 0;
+        }
         if (team == null || !team.invites.remove(target.getUUID())) {
             tell(target, "没有来自队伍 " + teamName + " 的邀请。");
             return 0;
@@ -954,7 +1110,13 @@ public final class DealtTeamManager {
         data.teamSpectators.clear();
         data.spectatorTargets.clear();
         data.pendingMatchRoundPlayers.clear();
+        data.matchRound = 1;
+        data.matchRoundWins.clear();
+        for (String teamKey : selected.teamKeys()) {
+            data.matchRoundWins.put(teamKey, 0);
+        }
         data.setDirty();
+        DeathCrateEntity.clearActiveMatchCrates(source.getServer());
         for (String teamKey : selected.teamKeys()) {
             TeamRecord team = data.teams.get(teamKey);
             if (team == null) {
@@ -979,6 +1141,18 @@ public final class DealtTeamManager {
             }
         }
 
+        List<TeamRecord> roundTeams = activeMatchTeams(data);
+        for (TeamRecord team : roundTeams) {
+            for (UUID member : team.members) {
+                ServerPlayer player = source.getServer().getPlayerList().getPlayer(member);
+                if (player != null) {
+                    RoundStartFreezeManager.beginFreeze(player);
+                }
+            }
+        }
+        awardAndAnnounceMatchRound(source.getServer(), data, roundTeams, null);
+        data.setDirty();
+
         String suffix = skipped.isEmpty() ? "" : "；跳过：" + String.join("、", skipped);
         int boundCount = bindingResult.count();
         int adventureCount = adventurePlayers;
@@ -986,6 +1160,17 @@ public final class DealtTeamManager {
         source.sendSuccess(() -> Component.literal("比赛已开始：已随机绑定 " + boundCount + " 个队伍复活点，"
                 + adventureCount + " 名非创造队员已设为冒险模式，传送 " + movedCount + " 名在线队员" + suffix + "。"), true);
         return Math.max(1, moved);
+    }
+
+    public static boolean isActiveMatchMember(UUID playerId, MinecraftServer server) {
+        if (playerId == null || server == null) {
+            return false;
+        }
+        TeamData teamData = data(server);
+        return teamData.matchActive && teamData.activeMatchTeams.stream()
+                .map(teamData.teams::get)
+                .filter(java.util.Objects::nonNull)
+                .anyMatch(team -> team.members.contains(playerId));
     }
 
     public static int endMatch(CommandSourceStack source) {
@@ -998,6 +1183,8 @@ public final class DealtTeamManager {
         data.teamSpectators.clear();
         data.spectatorTargets.clear();
         data.pendingMatchRoundPlayers.clear();
+        data.matchRound = 0;
+        data.matchRoundWins.clear();
         data.setDirty();
         int restored = 0;
         for (TeamRecord team : new ArrayList<>(matchTeams)) {
@@ -1441,6 +1628,59 @@ public final class DealtTeamManager {
         }
     }
 
+    private static void awardAndAnnounceMatchRound(MinecraftServer server, TeamData data,
+                                                    List<TeamRecord> teams, String previousWinnerKey) {
+        long baseAward = Math.min(MATCH_ROUND_HAFF_CAP,
+                MATCH_ROUND_BASE_HAFF + MATCH_ROUND_HAFF_STEP * Math.max(1, data.matchRound));
+        boolean applyLossReduction = data.matchRound > 1;
+        for (TeamRecord team : teams) {
+            long award = baseAward;
+            if (applyLossReduction && (previousWinnerKey == null || !previousWinnerKey.equals(team.key))) {
+                award = Math.max(0L, award - MATCH_ROUND_LOSS_REDUCTION);
+            }
+            for (UUID member : team.members) {
+                grantOrQueueRoundHaff(server, data, member, award);
+            }
+        }
+        server.getPlayerList().broadcastSystemMessage(matchRoundSummary(data, teams), false);
+    }
+
+    private static void grantOrQueueRoundHaff(MinecraftServer server, TeamData data, UUID member, long award) {
+        ServerPlayer player = server.getPlayerList().getPlayer(member);
+        if (player == null) {
+            data.pendingRoundHaffAwards.merge(member, award, DealtTeamManager::safeAdd);
+            return;
+        }
+        long pending = Math.max(0L, data.pendingRoundHaffAwards.getOrDefault(member, 0L));
+        data.pendingRoundHaffAwards.remove(member);
+        long total = safeAdd(pending, award);
+        HaffCoinManager.grant(player, total);
+        tell(player, "第 " + data.matchRound + " 回合获得 " + total + " 哈夫币。"
+                + (pending > 0L ? "（含离线期间补发 " + pending + "）" : ""));
+    }
+
+    private static MutableComponent matchRoundSummary(TeamData data, List<TeamRecord> teams) {
+        MutableComponent summary = Component.literal("第 " + Math.max(1, data.matchRound) + " 回合 | 小队胜场：")
+                .withStyle(ChatFormatting.GOLD);
+        for (int i = 0; i < teams.size(); i++) {
+            TeamRecord team = teams.get(i);
+            if (i > 0) {
+                summary.append(Component.literal("，").withStyle(ChatFormatting.GRAY));
+            }
+            summary.append(Component.literal(team.name + " "
+                    + Math.max(0, data.matchRoundWins.getOrDefault(team.key, 0)))
+                    .withStyle(scoreboardColorFor(data, team)));
+        }
+        return summary;
+    }
+
+    private static long safeAdd(long left, long right) {
+        if (right > 0L && left > Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
+        }
+        return Math.max(0L, left + right);
+    }
+
     private static List<TeamRecord> activeMatchTeams(TeamData data) {
         boolean changed = data.activeMatchTeams.removeIf(teamKey -> !data.teams.containsKey(teamKey));
         if (data.activeMatchTeams.isEmpty()) {
@@ -1644,7 +1884,11 @@ public final class DealtTeamManager {
 
     private static String displayName(MinecraftServer server, UUID playerId) {
         ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-        return player == null ? playerId.toString().substring(0, 8) : player.getGameProfile().getName();
+        if (player != null) {
+            return player.getGameProfile().getName();
+        }
+        return server.getProfileCache().get(playerId).map(profile -> profile.getName())
+                .orElse(playerId.toString().substring(0, 8));
     }
 
     private static TeamRecord team(TeamData data, String name) {
@@ -1790,6 +2034,23 @@ public final class DealtTeamManager {
     public record BornPointView(String name, String dimension, double x, double y, double z) {
     }
 
+    public record PersistentMemberView(UUID playerId, String name, boolean online) {
+    }
+
+    public record PersistentTeamView(String name, String leaderName, int memberCount, boolean joinRequested) {
+    }
+
+    public record PersistentInviteView(String teamName, String leaderName) {
+    }
+
+    public record PersistentJoinRequestView(UUID playerId, String name) {
+    }
+
+    public record PersistentSquadView(String teamName, UUID leaderId, List<PersistentMemberView> members,
+                                      List<PersistentTeamView> teams, List<PersistentInviteView> invitations,
+                                      List<PersistentJoinRequestView> joinRequests) {
+    }
+
     public record SpectatorAssignment(ServerPlayer spectator, ServerPlayer target) {
     }
 
@@ -1850,13 +2111,17 @@ public final class DealtTeamManager {
         private final LinkedHashMap<UUID, UUID> spectatorTargets = new LinkedHashMap<>();
         private final LinkedHashSet<String> activeMatchTeams = new LinkedHashSet<>();
         private final LinkedHashSet<UUID> pendingMatchRoundPlayers = new LinkedHashSet<>();
+        private final LinkedHashMap<String, Integer> matchRoundWins = new LinkedHashMap<>();
+        private final LinkedHashMap<UUID, Long> pendingRoundHaffAwards = new LinkedHashMap<>();
         private boolean spectatorMode;
         private boolean matchActive;
+        private int matchRound;
 
         private static TeamData load(CompoundTag tag) {
             TeamData data = new TeamData();
             data.spectatorMode = tag.getBoolean("SpectatorMode");
             data.matchActive = tag.getBoolean("MatchActive");
+            data.matchRound = Math.max(0, tag.getInt("MatchRound"));
             ListTag teams = tag.getList("Teams", Tag.TAG_COMPOUND);
             for (int i = 0; i < teams.size(); i++) {
                 CompoundTag teamTag = teams.getCompound(i);
@@ -1913,6 +2178,27 @@ public final class DealtTeamManager {
             }
             readUuids(tag.getList("PendingMatchRoundPlayers", Tag.TAG_STRING), data.pendingMatchRoundPlayers);
             data.pendingMatchRoundPlayers.removeIf(player -> teamFor(data, player) == null);
+            ListTag roundWinTags = tag.getList("MatchRoundWins", Tag.TAG_COMPOUND);
+            for (int i = 0; i < roundWinTags.size(); i++) {
+                CompoundTag winTag = roundWinTags.getCompound(i);
+                String teamKey = winTag.getString("Team");
+                if (data.activeMatchTeams.contains(teamKey)) {
+                    data.matchRoundWins.put(teamKey, Math.max(0, winTag.getInt("Wins")));
+                }
+            }
+            for (String teamKey : data.activeMatchTeams) {
+                data.matchRoundWins.putIfAbsent(teamKey, 0);
+            }
+            ListTag pendingAwardTags = tag.getList("PendingRoundHaffAwards", Tag.TAG_COMPOUND);
+            for (int i = 0; i < pendingAwardTags.size(); i++) {
+                CompoundTag awardTag = pendingAwardTags.getCompound(i);
+                if (awardTag.hasUUID("Player")) {
+                    long amount = Math.max(0L, awardTag.getLong("Amount"));
+                    if (amount > 0L) {
+                        data.pendingRoundHaffAwards.put(awardTag.getUUID("Player"), amount);
+                    }
+                }
+            }
 
             readUuids(tag.getList("TeamSpectators", Tag.TAG_STRING), data.teamSpectators);
             data.teamSpectators.removeIf(player -> teamFor(data, player) == null);
@@ -1970,8 +2256,28 @@ public final class DealtTeamManager {
 
             tag.putBoolean("SpectatorMode", spectatorMode);
             tag.putBoolean("MatchActive", matchActive);
+            tag.putInt("MatchRound", matchRound);
             tag.put("ActiveMatchTeams", writeStrings(activeMatchTeams));
             tag.put("PendingMatchRoundPlayers", writeUuids(pendingMatchRoundPlayers));
+            ListTag roundWinTags = new ListTag();
+            for (Map.Entry<String, Integer> entry : matchRoundWins.entrySet()) {
+                CompoundTag winTag = new CompoundTag();
+                winTag.putString("Team", entry.getKey());
+                winTag.putInt("Wins", Math.max(0, entry.getValue()));
+                roundWinTags.add(winTag);
+            }
+            tag.put("MatchRoundWins", roundWinTags);
+            ListTag pendingAwardTags = new ListTag();
+            for (Map.Entry<UUID, Long> entry : pendingRoundHaffAwards.entrySet()) {
+                if (entry.getValue() <= 0L) {
+                    continue;
+                }
+                CompoundTag awardTag = new CompoundTag();
+                awardTag.putUUID("Player", entry.getKey());
+                awardTag.putLong("Amount", entry.getValue());
+                pendingAwardTags.add(awardTag);
+            }
+            tag.put("PendingRoundHaffAwards", pendingAwardTags);
             tag.put("TeamSpectators", writeUuids(teamSpectators));
             ListTag targetTags = new ListTag();
             for (Map.Entry<UUID, UUID> entry : spectatorTargets.entrySet()) {

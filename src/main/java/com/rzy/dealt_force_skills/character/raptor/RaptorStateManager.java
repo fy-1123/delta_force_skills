@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.character.raptor;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.effect.RaptorHummingbirdMarkedEffect;
 import com.rzy.dealt_force_skills.entity.RaptorFalconDroneEntity;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -93,7 +94,9 @@ public final class RaptorStateManager {
 
     public static boolean isRaptor(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.RAPTOR_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.RAPTOR_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.RAPTOR_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -106,7 +109,7 @@ public final class RaptorStateManager {
         }
         tag.putBoolean(INITIALIZED, true);
         tag.putLong(FALCON_COOLDOWN_UNTIL, 0L);
-        tag.putInt(PULSE_CHARGES, PULSE_MAX_CHARGES);
+        tag.putInt(PULSE_CHARGES, pulseCapacity(player));
         tag.putLong(PULSE_NEXT_RECHARGE, 0L);
         tag.putLong(HUMMINGBIRD_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, RaptorTool.NONE.ordinal());
@@ -222,6 +225,26 @@ public final class RaptorStateManager {
                 owner, new S2C_RaptorRevealEntities(markers));
     }
 
+    public static void applyFalconHummingbird(ServerPlayer owner, List<? extends LivingEntity> targets,
+                                              boolean hummingbirdFalcon) {
+        if (owner == null || !hummingbirdFalcon) {
+            return;
+        }
+        int duration = CommanderStateManager.skillDuration(owner,
+                Math.max(HUMMINGBIRD_DURATION_TICKS, HUMMINGBIRD_REVEAL_TICKS));
+        int amplifier = hummingbirdAmplifier(owner);
+        for (LivingEntity target : targets) {
+            if (!target.isAlive()
+                    || !com.rzy.dealt_force_skills.util.PositionRevealHelper.isValidReconTarget(owner, target)) {
+                continue;
+            }
+            RaptorHummingbirdMarkedEffect.setOwner(target, owner);
+            target.addEffect(new MobEffectInstance(ModEffects.RAPTOR_HUMMINGBIRD_MARKED.get(),
+                    duration, amplifier,
+                    false, true, true), owner);
+        }
+    }
+
     public static boolean consumeFalcon(ServerPlayer player) {
         long now = SkillCooldownHelper.now(player);
         if (now < data(player).getLong(FALCON_COOLDOWN_UNTIL)) {
@@ -234,12 +257,13 @@ public final class RaptorStateManager {
 
     public static boolean consumePulseCharge(ServerPlayer player) {
         CompoundTag tag = data(player);
-        int charges = tag.getInt(PULSE_CHARGES);
+        int capacity = pulseCapacity(player);
+        int charges = Math.min(capacity, tag.getInt(PULSE_CHARGES));
         if (charges <= 0) {
             return false;
         }
         tag.putInt(PULSE_CHARGES, charges - 1);
-        if (charges - 1 < PULSE_MAX_CHARGES && tag.getLong(PULSE_NEXT_RECHARGE) <= 0L) {
+        if (charges - 1 < capacity && tag.getLong(PULSE_NEXT_RECHARGE) <= 0L) {
             tag.putLong(PULSE_NEXT_RECHARGE,
                     SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), PULSE_RECHARGE_TICKS));
         }
@@ -301,11 +325,11 @@ public final class RaptorStateManager {
     }
 
     public static int pulseCharges(Player player) {
-        return data(player).getInt(PULSE_CHARGES);
+        return Math.min(pulseCapacity(player), data(player).getInt(PULSE_CHARGES));
     }
 
     public static int pulseRechargeRemainingTicks(Player player) {
-        if (pulseCharges(player) >= PULSE_MAX_CHARGES) {
+        if (pulseCharges(player) >= pulseCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, PULSE_NEXT_RECHARGE);
@@ -360,7 +384,7 @@ public final class RaptorStateManager {
         NetworkHandler.sendToPlayer(new S2C_SyncRaptorState(
                 falconCooldownRemainingTicks(player),
                 pulseCharges(player),
-                PULSE_MAX_CHARGES,
+                pulseCapacity(player),
                 pulseRechargeRemainingTicks(player),
                 hummingbirdCooldownRemainingTicks(player),
                 equippedTool(player).ordinal(),
@@ -377,9 +401,10 @@ public final class RaptorStateManager {
             return;
         }
         EntityLookup lookup = entityById(player.serverLevel(), targetId);
+        double range = hummingbirdRange(player);
         if (!(lookup.entity() instanceof LivingEntity target)
                 || !target.isAlive()
-                || target.distanceTo(player) > HUMMINGBIRD_RANGE + 4.0D) {
+                || target.distanceTo(player) > range + 4.0D) {
             tag.putInt(HUMMINGBIRD_PENDING_TARGET, -1);
             tag.putInt(HUMMINGBIRD_PENDING_TICKS, 0);
             player.level().playSound(null, player.blockPosition(), ModSounds.RAPTOR_HUMMINGBIRD_LOST.get(),
@@ -396,7 +421,8 @@ public final class RaptorStateManager {
         }
         RaptorHummingbirdMarkedEffect.setOwner(target, player);
         target.addEffect(new MobEffectInstance(ModEffects.RAPTOR_HUMMINGBIRD_MARKED.get(),
-                HUMMINGBIRD_DURATION_TICKS, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.raptor.raptor_state_manager.effect.raptor_hummingbird_marked.0.amplifier", 0), false, true, true), player);
+                CommanderStateManager.skillDuration(player, HUMMINGBIRD_DURATION_TICKS),
+                hummingbirdAmplifier(player), false, true, true), player);
         ACTIVE_HUMMINGBIRD_TARGETS.put(player.getUUID(), target.getId());
         if (ReconRevealThrottle.tryStart(target, HUMMINGBIRD_REVEAL_TICKS)) {
             NetworkHandler.sendToPlayer(new S2C_RaptorRevealEntities(List.of(
@@ -602,11 +628,12 @@ public final class RaptorStateManager {
 
 
     private static Optional<LivingEntity> findHummingbirdTarget(ServerPlayer player) {
-        Optional<LivingEntity> lookTarget = findLookTarget(player, HUMMINGBIRD_RANGE);
+        double range = hummingbirdRange(player);
+        Optional<LivingEntity> lookTarget = findLookTarget(player, range);
         if (lookTarget.isPresent()) {
             return lookTarget;
         }
-        Optional<LivingEntity> revealed = findNearestRevealedTarget(player);
+        Optional<LivingEntity> revealed = findNearestRevealedTarget(player, range);
         if (revealed.isPresent()) {
             return revealed;
         }
@@ -631,8 +658,8 @@ public final class RaptorStateManager {
                         .findFirst());
     }
 
-    private static Optional<LivingEntity> findNearestRevealedTarget(ServerPlayer player) {
-        AABB box = player.getBoundingBox().inflate(HUMMINGBIRD_RANGE);
+    private static Optional<LivingEntity> findNearestRevealedTarget(ServerPlayer player, double range) {
+        AABB box = player.getBoundingBox().inflate(range);
         return player.serverLevel().getEntitiesOfClass(LivingEntity.class, box,
                         target -> target != player
                                 && target.isAlive()
@@ -640,6 +667,16 @@ public final class RaptorStateManager {
                                 && target.isCurrentlyGlowing())
                 .stream()
                 .min(Comparator.comparingDouble(player::distanceToSqr));
+    }
+
+    private static int hummingbirdAmplifier(Player player) {
+        int baseAmplifier = com.rzy.dealt_force_skills.config.DealtForceConfig.intValue(
+                "characters.raptor.raptor_state_manager.effect.raptor_hummingbird_marked.0.amplifier", 0);
+        return CommanderStateManager.skillEffectAmplifier(player, baseAmplifier);
+    }
+
+    private static double hummingbirdRange(Player player) {
+        return CommanderStateManager.skillRadius(player, HUMMINGBIRD_RANGE);
     }
 
     private static Optional<LivingEntity> findLookTarget(ServerPlayer player, double range) {
@@ -663,8 +700,10 @@ public final class RaptorStateManager {
 
     private static void rechargePulse(ServerPlayer player, long now) {
         CompoundTag tag = data(player);
-        int charges = tag.getInt(PULSE_CHARGES);
-        if (charges >= PULSE_MAX_CHARGES) {
+        int capacity = pulseCapacity(player);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(PULSE_CHARGES)));
+        tag.putInt(PULSE_CHARGES, charges);
+        if (charges >= capacity) {
             tag.putLong(PULSE_NEXT_RECHARGE, 0L);
             return;
         }
@@ -673,12 +712,12 @@ public final class RaptorStateManager {
             tag.putLong(PULSE_NEXT_RECHARGE, SkillCooldownHelper.until(player, now, PULSE_RECHARGE_TICKS));
             return;
         }
-        while (charges < PULSE_MAX_CHARGES && now >= next) {
+        while (charges < capacity && now >= next) {
             charges++;
             next += SkillCooldownHelper.ticks(player, PULSE_RECHARGE_TICKS);
         }
         tag.putInt(PULSE_CHARGES, charges);
-        tag.putLong(PULSE_NEXT_RECHARGE, charges >= PULSE_MAX_CHARGES ? 0L : next);
+        tag.putLong(PULSE_NEXT_RECHARGE, charges >= capacity ? 0L : next);
     }
 
     private static void cleanupFootprints(ServerLevel level, long now) {
@@ -727,6 +766,10 @@ public final class RaptorStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int pulseCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, PULSE_MAX_CHARGES);
     }
 
     private static String secondsText(int ticks) {

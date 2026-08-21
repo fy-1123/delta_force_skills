@@ -87,15 +87,15 @@ public class QuickCoverBlockEntity extends BlockEntity {
         }
     }
 
-    public static void damageCoverAt(Level level, BlockPos pos, int amount) {
+    public static boolean damageCoverAt(Level level, BlockPos pos, int amount) {
         if (!(level.getBlockEntity(pos) instanceof QuickCoverBlockEntity cover)) {
-            return;
+            return false;
         }
 
         QuickCoverBlockEntity root = cover.rootEntity();
         if (root == null) {
             destroyCoverAt(level, pos);
-            return;
+            return false;
         }
 
         int damage = Math.min(MAX_DAMAGE_PER_HIT, Math.max(1, amount));
@@ -105,6 +105,12 @@ public class QuickCoverBlockEntity extends BlockEntity {
         if (root.health <= 0) {
             destroyCoverAt(level, root.worldPosition);
         }
+        return true;
+    }
+
+    public boolean isOwnedBy(UUID owner) {
+        QuickCoverBlockEntity root = rootEntity();
+        return root != null && root.ownerId != null && root.ownerId.equals(owner);
     }
 
     public void onRemoved() {

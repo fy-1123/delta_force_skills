@@ -44,6 +44,15 @@ public final class SaeedTaczEquipment {
         tag.putInt(GUN_MAX_DUMMY_AMMO_TAG, Math.max(tag.getInt(GUN_MAX_DUMMY_AMMO_TAG), 9999));
     }
 
+    public static void clearReserveAmmo(ItemStack stack) {
+        if (stack == null || stack.isEmpty() || !isTaczGun(stack)) {
+            return;
+        }
+        CompoundTag tag = stack.getOrCreateTag();
+        tag.putInt(GUN_DUMMY_AMMO_TAG, 0);
+        tag.putInt(GUN_MAX_DUMMY_AMMO_TAG, 0);
+    }
+
     public static ResourceLocation gunId(ItemStack stack) {
         CompoundTag tag = stack.getTag();
         return tag == null ? null : ResourceLocation.tryParse(tag.getString(GUN_ID_TAG));

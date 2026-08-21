@@ -80,7 +80,8 @@ public final class ClientVyronHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != VyronTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.VYRON_ID))
+                && equippedTool != VyronTool.NONE;
     }
 
     public static int dashCooldownTicks() {

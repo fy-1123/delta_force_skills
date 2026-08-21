@@ -4,6 +4,7 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncVyronState;
@@ -57,7 +58,9 @@ public final class VyronStateManager {
 
     public static boolean isVyron(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.VYRON_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.VYRON_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.VYRON_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -76,7 +79,7 @@ public final class VyronStateManager {
         tag.putDouble(DASH_DIR_X, 0.0D);
         tag.putDouble(DASH_DIR_Z, 0.0D);
         tag.putLong(POWERED_UNTIL, 0L);
-        tag.putInt(BOMB_CHARGES, MAGNETIC_BOMB_MAX_CHARGES);
+        tag.putInt(BOMB_CHARGES, bombCapacity(player));
         tag.putLong(BOMB_NEXT_RECHARGE, 0L);
         tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, VyronTool.NONE.ordinal());
@@ -136,7 +139,7 @@ public final class VyronStateManager {
         Vec3 normalized = horizontal.normalize();
         long now = SkillCooldownHelper.now(player);
         boolean poweredBeforeDash = isPowered(player);
-        tag.putInt(DASH_TICKS, DASH_DURATION_TICKS);
+        tag.putInt(DASH_TICKS, CommanderStateManager.skillDuration(player, DASH_DURATION_TICKS));
         tag.putDouble(DASH_DIR_X, normalized.x);
         tag.putDouble(DASH_DIR_Z, normalized.z);
         tag.putLong(DASH_COOLDOWN_UNTIL, SkillCooldownHelper.until(player, now, DASH_COOLDOWN_TICKS));
@@ -150,7 +153,7 @@ public final class VyronStateManager {
     }
 
     private static boolean consumeDashStamina(ServerPlayer player) {
-        int cost = DASH_STAMINA_PERCENT_COST;
+        int cost = CommanderStateManager.skillCost(player, DASH_STAMINA_PERCENT_COST);
         if (cost <= 0) {
             return true;
         }
@@ -188,8 +191,11 @@ public final class VyronStateManager {
         if (!isVyron(player)) {
             return;
         }
-        data(player).putLong(POWERED_UNTIL, SkillCooldownHelper.now(player) + POWERED_DURATION_TICKS);
-        player.addEffect(new MobEffectInstance(ModEffects.VYRON_POWERED.get(), POWERED_DURATION_TICKS, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.vyron.vyron_state_manager.effect.vyron_powered.0.amplifier", 0), false, true, true));
+        int duration = CommanderStateManager.skillDuration(player, POWERED_DURATION_TICKS);
+        int amplifier = CommanderStateManager.skillEffectAmplifier(player,
+                com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.vyron.vyron_state_manager.effect.vyron_powered.0.amplifier", 0));
+        data(player).putLong(POWERED_UNTIL, SkillCooldownHelper.now(player) + duration);
+        player.addEffect(new MobEffectInstance(ModEffects.VYRON_POWERED.get(), duration, amplifier, false, true, true));
         RangedSoundHelper.playFollowingPlayer(player,
                 landing ? ModSounds.VYRON_POWERED_LAND.get() : ModSounds.VYRON_POWERED_ACTIVATE.get(),
                 SoundSource.PLAYERS, 0.85f, 1.0f, 32.0D);
@@ -210,7 +216,7 @@ public final class VyronStateManager {
     }
 
     public static int bombRechargeRemainingTicks(Player player) {
-        if (bombCharges(player) >= MAGNETIC_BOMB_MAX_CHARGES) {
+        if (bombCharges(player) >= bombCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, BOMB_NEXT_RECHARGE);
@@ -218,12 +224,13 @@ public final class VyronStateManager {
 
     public static boolean consumeBombCharge(ServerPlayer player) {
         CompoundTag tag = data(player);
-        int charges = Math.min(MAGNETIC_BOMB_MAX_CHARGES, tag.getInt(BOMB_CHARGES));
+        int capacity = bombCapacity(player);
+        int charges = Math.min(capacity, tag.getInt(BOMB_CHARGES));
         if (charges <= 0) {
             return false;
         }
         tag.putInt(BOMB_CHARGES, charges - 1);
-        if (charges == MAGNETIC_BOMB_MAX_CHARGES) {
+        if (charges == capacity) {
             tag.putLong(BOMB_NEXT_RECHARGE,
                     SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), MAGNETIC_BOMB_RECHARGE_TICKS));
         }
@@ -263,7 +270,7 @@ public final class VyronStateManager {
                 dashTicks(player),
                 poweredRemainingTicks(player),
                 bombCharges(player),
-                MAGNETIC_BOMB_MAX_CHARGES,
+                bombCapacity(player),
                 bombRechargeRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
                 equippedTool(player).ordinal()
@@ -343,16 +350,27 @@ public final class VyronStateManager {
 
     private static void recharge(ServerPlayer player, long now) {
         CompoundTag tag = data(player);
-        int charges = Math.min(MAGNETIC_BOMB_MAX_CHARGES, tag.getInt(BOMB_CHARGES));
+        int capacity = bombCapacity(player);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(BOMB_CHARGES)));
+        tag.putInt(BOMB_CHARGES, charges);
         long nextRecharge = tag.getLong(BOMB_NEXT_RECHARGE);
-        if (charges >= MAGNETIC_BOMB_MAX_CHARGES || nextRecharge <= 0L || now < nextRecharge) {
+        if (charges >= capacity) {
+            tag.putLong(BOMB_NEXT_RECHARGE, 0L);
+            return;
+        }
+        if (nextRecharge <= 0L) {
+            tag.putLong(BOMB_NEXT_RECHARGE,
+                    SkillCooldownHelper.until(player, now, MAGNETIC_BOMB_RECHARGE_TICKS));
+            return;
+        }
+        if (now < nextRecharge) {
             return;
         }
 
         do {
             charges++;
-            if (charges >= MAGNETIC_BOMB_MAX_CHARGES) {
-                tag.putInt(BOMB_CHARGES, MAGNETIC_BOMB_MAX_CHARGES);
+            if (charges >= capacity) {
+                tag.putInt(BOMB_CHARGES, capacity);
                 tag.putLong(BOMB_NEXT_RECHARGE, 0L);
                 return;
             }
@@ -365,6 +383,10 @@ public final class VyronStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int bombCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, MAGNETIC_BOMB_MAX_CHARGES);
     }
 
     private static CompoundTag data(Player player) {

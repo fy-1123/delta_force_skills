@@ -97,6 +97,10 @@ public class NoxDecoyEntity extends LivingEntity {
     @Override
     public void tick() {
         super.tick();
+        if (!level().isClientSide && level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL) {
+            discard();
+            return;
+        }
         setNoGravity(true);
         setDeltaMovement(Vec3.ZERO);
     }

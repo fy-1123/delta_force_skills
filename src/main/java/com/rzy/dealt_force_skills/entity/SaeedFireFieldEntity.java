@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.entity;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.character.saeed.SaeedGuardType;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
@@ -103,18 +104,24 @@ public class SaeedFireFieldEntity extends Entity implements ItemSupplier {
             AABB box = new AABB(position(), position()).inflate(radius);
             int burningTargets = 0;
             for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
-                if (isFriendlyTarget(target) || target.distanceToSqr(position()) > radius * radius) {
+                if (isFriendlyTarget(target) || TargetingUtil.isPlayerOwnedSummonOf(damageOwner, target)
+                        || target.distanceToSqr(position()) > radius * radius) {
                     continue;
                 }
                 target.invulnerableTime = 0;
                 boolean damaged;
+                float appliedDamage = damage;
+                if (KIND_IGNITION.equals(fieldKind) && owner instanceof AsaraTrooperEntity) {
+                    appliedDamage = target.getMaxHealth() * (0.04F / 0.6F)
+                            * Math.max(1, damageIntervalTicks) / 20.0F;
+                }
                 if (KIND_NAPALM.equals(fieldKind)) {
                     damaged = SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, damageOwner),
-                            damageOwner, damage);
+                            damageOwner, appliedDamage);
                     target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.saeed_fire_field_entity.effect.movement_slowdown.0.duration_ticks", 30), com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.saeed_fire_field_entity.effect.movement_slowdown.0.amplifier", 0), false, true, true));
                 } else {
                     damaged = SkillDamageHelper.hurt(target, damageSources().mobProjectile(this, damageOwner),
-                            damageOwner, damage);
+                            damageOwner, appliedDamage);
                 }
                 target.setSecondsOnFire(fireSeconds);
                 if (damaged) {

@@ -2,9 +2,11 @@ package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
 import com.rzy.dealt_force_skills.character.sineva.SinevaGrappleTargeting;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientSinevaHudState;
 import com.rzy.dealt_force_skills.network.C2S_SinevaGrappleChargeSound;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -21,6 +23,7 @@ import org.lwjgl.glfw.GLFW;
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID, value = Dist.CLIENT)
 public final class SinevaInputHandler {
     private static volatile int BLADE_WIRE_HOLD_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BLADE_WIRE_HOLD_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("client.sineva_input_handler.blade_wire_hold_ticks", 10));
+    private static volatile int CORE_LONG_HOLD_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CORE_LONG_HOLD_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("client.sineva_input_handler.core_long_hold_ticks", 15));
     private static final int GRAPPLE_CHARGE_TICKS = 30;
 
     private static boolean active1WasDown;
@@ -32,18 +35,41 @@ public final class SinevaInputHandler {
     private static int grappleHeldTicks;
     private static boolean grappleCharging;
     private static boolean grappleCancelled;
+    private static boolean commanderCoreWasDown;
+    private static int commanderCoreHeldTicks;
 
     private SinevaInputHandler() {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientSinevaHudState.shouldRender()) {
+        boolean nativeCharacter = ClientSinevaHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.SINEVA_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.SINEVA_ID, SkillSlot.ACTIVE_2);
+        boolean commanderCoreAvailable = ClientCommanderState.handlesSkill(
+                ModCharacters.SINEVA_ID, SkillSlot.CORE);
+        if (minecraft.player == null || (!active1Owned && !active2Owned && !commanderCoreAvailable)) {
             resetBladeWireInput();
             resetGrappleInput();
+            resetCommanderCoreInput();
             return;
         }
-        tickBladeWire();
-        tickGrapple(minecraft);
+        if (active1Owned) {
+            tickBladeWire();
+        } else {
+            resetBladeWireInput();
+        }
+        if (active2Owned) {
+            tickGrapple(minecraft);
+        } else {
+            resetGrappleInput();
+        }
+        if (commanderCoreAvailable) {
+            tickCommanderCore(minecraft);
+        } else {
+            resetCommanderCoreInput();
+        }
     }
 
     private static void tickBladeWire() {
@@ -132,9 +158,34 @@ public final class SinevaInputHandler {
         resetGrappleInput();
     }
 
+    private static void tickCommanderCore(Minecraft minecraft) {
+        if (KeybindRegister.CORE_SKILL == null || minecraft.player == null) {
+            resetCommanderCoreInput();
+            return;
+        }
+        boolean down = KeybindRegister.CORE_SKILL.isDown();
+        if (down) {
+            boolean selectedCore = commanderCoreWasDown || ClientCommanderState.handlesSkill(
+                    ModCharacters.SINEVA_ID, SkillSlot.CORE, minecraft.player.isShiftKeyDown());
+            if (!selectedCore) {
+                return;
+            }
+            commanderCoreWasDown = true;
+            commanderCoreHeldTicks++;
+            while (KeybindRegister.CORE_SKILL.consumeClick()) {
+            }
+            return;
+        }
+        if (commanderCoreWasDown) {
+            ClientCommanderState.useInheritedSkill(ModCharacters.SINEVA_ID, SkillSlot.CORE,
+                    commanderCoreHeldTicks >= CORE_LONG_HOLD_TICKS);
+        }
+        resetCommanderCoreInput();
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMouseButtonPre(InputEvent.MouseButton.Pre event) {
-        if ((!bladeWireHeld && !grappleCharging) || !ClientSinevaHudState.shouldRender()) {
+        if (!bladeWireHeld && !grappleCharging) {
             return;
         }
         if (event.getButton() != GLFW.GLFW_MOUSE_BUTTON_LEFT && event.getButton() != GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
@@ -157,7 +208,7 @@ public final class SinevaInputHandler {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onInteractionKey(InputEvent.InteractionKeyMappingTriggered event) {
-        if ((!bladeWireHeld && !grappleCharging) || !ClientSinevaHudState.shouldRender()) {
+        if (!bladeWireHeld && !grappleCharging) {
             return;
         }
 
@@ -219,8 +270,14 @@ public final class SinevaInputHandler {
         grappleCancelled = false;
     }
 
+    private static void resetCommanderCoreInput() {
+        commanderCoreWasDown = false;
+        commanderCoreHeldTicks = 0;
+    }
+
     public static void startGrappleUse() {
-        if (!ClientSinevaHudState.shouldRender()) {
+        if (!ClientSinevaHudState.shouldRender() && !ClientCommanderState.handlesSkill(
+                ModCharacters.SINEVA_ID, SkillSlot.ACTIVE_2)) {
             return;
         }
         ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2);
@@ -229,11 +286,13 @@ public final class SinevaInputHandler {
 
     /** Whether the player is currently holding the blade wire ready to throw. */
     public static boolean isBladeWireHeld() {
-        return bladeWireHeld && ClientSinevaHudState.shouldRender();
+        return bladeWireHeld && (ClientSinevaHudState.shouldRender()
+                || ClientCommanderState.handlesSkill(ModCharacters.SINEVA_ID, SkillSlot.ACTIVE_1));
     }
 
     public static boolean isGrappleCharging() {
-        return grappleCharging && ClientSinevaHudState.shouldRender();
+        return grappleCharging && (ClientSinevaHudState.shouldRender()
+                || ClientCommanderState.handlesSkill(ModCharacters.SINEVA_ID, SkillSlot.ACTIVE_2));
     }
 
     public static boolean isGrappleChargeFull() {

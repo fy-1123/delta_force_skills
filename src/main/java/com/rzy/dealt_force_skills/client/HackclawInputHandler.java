@@ -3,10 +3,12 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.hackclaw.HackclawTool;
 import com.rzy.dealt_force_skills.character.hackclaw.HackclawToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientHackclawHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.HackclawPathLineRenderer;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_HackclawToolAction;
@@ -40,14 +42,28 @@ public final class HackclawInputHandler {
 
     public static void tick(Minecraft minecraft) {
         HackclawPathLineRenderer.tick(minecraft);
-        if (minecraft.player == null || !ClientHackclawHudState.shouldRender()) {
+        boolean nativeCharacter = ClientHackclawHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.HACKCLAW_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.HACKCLAW_ID, SkillSlot.ACTIVE_2);
+        if (minecraft.player == null || (!active1Owned && !active2Owned
+                && !ClientHackclawHudState.hasEquippedTool())) {
             resetActive1();
             resetActive2();
             return;
         }
 
-        handleActive1Key();
-        handleActive2Key();
+        if (active1Owned) {
+            handleActive1Key();
+        } else {
+            resetActive1();
+        }
+        if (active2Owned) {
+            handleActive2Key();
+        } else {
+            resetActive2();
+        }
         if (ClientHackclawHudState.hasEquippedTool()) {
             releaseBlockedKey(minecraft.options.keyAttack);
             releaseBlockedKey(minecraft.options.keyUse);
@@ -186,7 +202,8 @@ public final class HackclawInputHandler {
                 equipped
                         ? () -> NetworkHandler.sendToServer(new C2S_HackclawToolAction(
                                 HackclawToolAction.THROW_HACKING_KNIFE))
-                        : () -> ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1));
+                        : () -> ClientCommanderState.useNativeOrInherited(
+                                ModCharacters.HACKCLAW_ID, SkillSlot.ACTIVE_1, false));
     }
 
     private static void beginFlashDroneThrow(boolean equipped) {
@@ -197,7 +214,8 @@ public final class HackclawInputHandler {
                 equipped
                         ? () -> NetworkHandler.sendToServer(new C2S_HackclawToolAction(
                                 HackclawToolAction.THROW_FLASH_DRONE, targetId))
-                        : () -> ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2));
+                        : () -> ClientCommanderState.useNativeOrInherited(
+                                ModCharacters.HACKCLAW_ID, SkillSlot.ACTIVE_2, false));
     }
 
     private static void resetActive1() {

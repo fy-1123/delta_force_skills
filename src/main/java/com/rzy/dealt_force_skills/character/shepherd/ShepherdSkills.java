@@ -81,7 +81,7 @@ public final class ShepherdSkills {
             com.rzy.dealt_force_skills.skill.SkillCooldownHelper.notifyCooldown(player, Component.translatable("message.dealt_force_skills.shepherd.trap_empty"));
             return true;
         }
-        if (ShepherdStateManager.countSonicTraps(player) >= ShepherdStateManager.SONIC_TRAP_ACTIVE_LIMIT) {
+        if (ShepherdStateManager.countSonicTraps(player) >= ShepherdStateManager.sonicTrapActiveLimit(player)) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.shepherd.trap_limit"), true);
             return true;
         }

@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.character.stinger;
 
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.entity.StingerSmokeDroneEntity;
 import com.rzy.dealt_force_skills.entity.StingerSmokeGrenadeEntity;
 import com.rzy.dealt_force_skills.entity.StingerStimProjectileEntity;
@@ -47,16 +49,20 @@ public final class StingerSkills {
         }
 
         StingerStimMode mode = StingerStateManager.stimMode(player);
-        if (StingerStateManager.equippedTool(player) != StingerTool.STIM_GUN
-                || StingerStateManager.stimCharges(player) <= 0) {
+        if (StingerStateManager.equippedTool(player) != StingerTool.STIM_GUN) {
             NetworkHandler.sendToPlayer(new S2C_StingerStimLockStatus(false, mode.ordinal(), 0, STIM_LOCK_STATUS_TICKS), player);
             return;
         }
 
-        List<ServerPlayer> targets = lockedPlayers(player, mode);
+        List<StimTarget> targets = lockedTargets(player, mode).stream()
+                .filter(target -> !target.consumesCharge() || StingerStateManager.stimCharges(player) > 0)
+                .toList();
         NetworkHandler.sendToPlayer(new S2C_StingerStimLockStatus(false, mode.ordinal(), targets.size(), STIM_LOCK_STATUS_TICKS), player);
-        for (ServerPlayer target : targets) {
-            NetworkHandler.sendToPlayer(new S2C_StingerStimLockStatus(true, mode.ordinal(), 0, STIM_LOCK_STATUS_TICKS), target);
+        for (StimTarget target : targets) {
+            if (target.entity() instanceof ServerPlayer targetPlayer) {
+                NetworkHandler.sendToPlayer(new S2C_StingerStimLockStatus(
+                        true, target.mode().ordinal(), 0, STIM_LOCK_STATUS_TICKS), targetPlayer);
+            }
         }
     }
 
@@ -217,26 +223,24 @@ public final class StingerSkills {
         if (StingerStateManager.equippedTool(player) != StingerTool.STIM_GUN) {
             return false;
         }
-        if (StingerStateManager.stimCharges(player) <= 0) {
-            com.rzy.dealt_force_skills.skill.SkillCooldownHelper.notifyCooldown(player, Component.translatable("message.dealt_force_skills.stinger.stim_empty"));
-            return true;
-        }
-
         StingerStimMode mode = StingerStateManager.stimMode(player);
-        List<ServerPlayer> targets = lockedPlayers(player, mode);
+        List<StimTarget> targets = lockedTargets(player, mode);
         if (targets.isEmpty()) {
             if (StingerStateManager.consumeStimCharge(player)) {
                 spawnStimProjectile(player, null, mode);
+            } else {
+                com.rzy.dealt_force_skills.skill.SkillCooldownHelper.notifyCooldown(player,
+                        Component.translatable("message.dealt_force_skills.stinger.stim_empty"));
             }
             return true;
         }
 
         int fired = 0;
-        for (ServerPlayer target : targets) {
-            if (!StingerStateManager.consumeStimCharge(player)) {
-                break;
+        for (StimTarget target : targets) {
+            if (target.consumesCharge() && !StingerStateManager.consumeStimCharge(player)) {
+                continue;
             }
-            spawnStimProjectile(player, target, mode);
+            spawnStimProjectile(player, target.entity(), target.mode());
             fired++;
         }
         if (fired <= 0) {
@@ -245,7 +249,7 @@ public final class StingerSkills {
         return true;
     }
 
-    private static void spawnStimProjectile(ServerPlayer player, ServerPlayer target, StingerStimMode mode) {
+    private static void spawnStimProjectile(ServerPlayer player, LivingEntity target, StingerStimMode mode) {
         ServerLevel level = player.serverLevel();
         StingerStimProjectileEntity projectile = new StingerStimProjectileEntity(
                 ModEntities.STINGER_STIM_PROJECTILE.get(),
@@ -273,21 +277,41 @@ public final class StingerSkills {
                 SoundSource.PLAYERS, 0.85f, mode == StingerStimMode.HEAL ? 1.12f : 0.88f);
     }
 
-    private static List<ServerPlayer> lockedPlayers(ServerPlayer player, StingerStimMode mode) {
+    private static List<StimTarget> lockedTargets(ServerPlayer player, StingerStimMode selectedMode) {
         Vec3 eye = player.getEyePosition();
         Vec3 look = player.getLookAngle().normalize();
         double rangeSqr = STIM_LOCK_RANGE * STIM_LOCK_RANGE;
-        return player.serverLevel().getEntitiesOfClass(ServerPlayer.class, player.getBoundingBox().inflate(STIM_LOCK_RANGE),
-                        target -> target != player
-                                && TargetingUtil.isTargetablePlayer(target)
-                                && (mode == StingerStimMode.HEAL
-                                ? DealtTeamManager.areTeammates(player, target)
-                                : !DealtTeamManager.areTeammates(player, target))
+        boolean mixedAmmo = CommanderStateManager.hasBranchUpgrade(
+                player, CommanderBranchUpgrade.STINGER_MIXED_AMMO);
+        return player.serverLevel().getEntitiesOfClass(LivingEntity.class,
+                        player.getBoundingBox().inflate(STIM_LOCK_RANGE),
+                        target -> isStimLockTarget(player, target, selectedMode, mixedAmmo)
                                 && target.distanceToSqr(player) <= rangeSqr
                                 && isInStimLockCone(eye, look, target))
                 .stream()
-                .sorted(Comparator.comparingDouble(player::distanceToSqr))
+                .map(target -> new StimTarget(
+                        target,
+                        mixedAmmo
+                                ? (TargetingUtil.isHostileLivingFor(player, target)
+                                ? StingerStimMode.SUPPRESS : StingerStimMode.HEAL)
+                                : selectedMode,
+                        target instanceof ServerPlayer))
+                .sorted(Comparator.comparingDouble(target -> player.distanceToSqr(target.entity())))
                 .toList();
+    }
+
+    private static boolean isStimLockTarget(ServerPlayer player, LivingEntity target,
+                                            StingerStimMode selectedMode, boolean mixedAmmo) {
+        if (target == player || !TargetingUtil.isTargetableLiving(target)) {
+            return false;
+        }
+        if (target instanceof ServerPlayer targetPlayer) {
+            boolean teammate = DealtTeamManager.areTeammates(player, targetPlayer);
+            return mixedAmmo
+                    ? !teammate || selectedMode == StingerStimMode.HEAL
+                    : (selectedMode == StingerStimMode.HEAL ? teammate : !teammate);
+        }
+        return mixedAmmo && TargetingUtil.isHostileLivingFor(player, target);
     }
 
     private static boolean isInStimLockCone(Vec3 eye, Vec3 look, LivingEntity target) {
@@ -304,5 +328,8 @@ public final class StingerSkills {
         }
         double offAxis = Math.sqrt(Math.max(0.0D, 1.0D - alignment * alignment)) * distance;
         return alignment >= STIM_LOCK_DIRECT_ALIGNMENT || offAxis <= STIM_LOCK_MAX_OFF_AXIS;
+    }
+
+    private record StimTarget(LivingEntity entity, StingerStimMode mode, boolean consumesCharge) {
     }
 }

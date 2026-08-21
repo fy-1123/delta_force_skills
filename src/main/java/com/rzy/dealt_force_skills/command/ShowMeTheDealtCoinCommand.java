@@ -1,6 +1,7 @@
 package com.rzy.dealt_force_skills.command;
 
 import com.mojang.brigadier.arguments.LongArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
@@ -24,6 +25,9 @@ public final class ShowMeTheDealtCoinCommand {
     private static final SimpleCommandExceptionType NO_ACTIVE_CURRENCY =
             new SimpleCommandExceptionType(Component.translatable(
                     "commands.dealt_force_skills.showmethedealtcoin.no_active_currency"));
+    private static final SimpleCommandExceptionType INVALID_CURRENCY =
+            new SimpleCommandExceptionType(Component.translatable(
+                    "commands.dealt_force_skills.showmethedealtcoin.invalid_currency"));
 
     private ShowMeTheDealtCoinCommand() {
     }
@@ -41,29 +45,32 @@ public final class ShowMeTheDealtCoinCommand {
         return Commands.literal(operation.literal)
                 .then(Commands.argument("targets", EntityArgument.players())
                         .then(Commands.argument("amount", LongArgumentType.longArg(operation.minimumAmount))
-                                .executes(context -> execute(
-                                        context.getSource(),
-                                        operation,
-                                        EntityArgument.getPlayers(context, "targets"),
-                                        LongArgumentType.getLong(context, "amount")
-                                ))));
+                                .then(Commands.argument("currency", StringArgumentType.word())
+                                        .suggests((context, builder) -> {
+                                            DealtCurrencyRegistry.providers().forEach(provider -> builder.suggest(provider.id()));
+                                            return builder.buildFuture();
+                                        })
+                                        .executes(context -> execute(
+                                                context.getSource(),
+                                                operation,
+                                                EntityArgument.getPlayers(context, "targets"),
+                                                LongArgumentType.getLong(context, "amount"),
+                                                StringArgumentType.getString(context, "currency")
+                                        )))));
     }
 
-    private static int execute(CommandSourceStack source, Operation operation, Collection<ServerPlayer> targets, long amount)
+    private static int execute(CommandSourceStack source, Operation operation, Collection<ServerPlayer> targets,
+                               long amount, String currencyId)
             throws CommandSyntaxException {
+        DealtCurrencyProvider selected = DealtCurrencyRegistry.findById(currencyId)
+                .orElseThrow(INVALID_CURRENCY::create);
         int changed = 0;
-        int skipped = 0;
         ServerPlayer singleTarget = null;
         DealtCurrencyProvider singleProvider = null;
         long singleBalance = 0L;
 
         for (ServerPlayer target : targets) {
-            Optional<DealtCurrencyProvider> provider = DealtCurrencyRegistry.find(target);
-            if (provider.isEmpty()) {
-                skipped++;
-                continue;
-            }
-            DealtCurrencyProvider active = provider.get();
+            DealtCurrencyProvider active = selected;
             long balance = operation.apply(active, target, amount);
             target.sendSystemMessage(Component.translatable(
                     "commands.dealt_force_skills.showmethedealtcoin.received." + operation.literal,
@@ -86,10 +93,9 @@ public final class ShowMeTheDealtCoinCommand {
                     amount, provider.displayName(), target.getDisplayName(), balance), true);
         } else {
             int changedCount = changed;
-            int skippedCount = skipped;
             source.sendSuccess(() -> Component.translatable(
                     "commands.dealt_force_skills.showmethedealtcoin.success." + operation.literal + ".multiple",
-                    amount, changedCount, skippedCount), true);
+                    amount, changedCount, 0), true);
         }
         return changed;
     }

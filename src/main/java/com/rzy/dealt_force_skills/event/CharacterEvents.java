@@ -7,6 +7,8 @@ import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.CharacterSkinSync;
 import com.rzy.dealt_force_skills.character.catdad.CatDadStateManager;
 import com.rzy.dealt_force_skills.character.chamber.ChamberStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderSupportManager;
 import com.rzy.dealt_force_skills.character.corps.CorpsStateManager;
 import com.rzy.dealt_force_skills.character.department.DepartmentOfTransportationStateManager;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfStateManager;
@@ -34,12 +36,18 @@ import com.rzy.dealt_force_skills.character.uluru.UluruStateManager;
 import com.rzy.dealt_force_skills.character.undead.UndeadStateManager;
 import com.rzy.dealt_force_skills.character.vlinder.VlinderStateManager;
 import com.rzy.dealt_force_skills.character.vyron.VyronStateManager;
+import com.rzy.dealt_force_skills.block.HvkAsaraArenaBlockEntity;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.C2S_RequestConfigSnapshot;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem;
 import com.rzy.dealt_force_skills.effect.InjuryManager;
 import com.rzy.dealt_force_skills.network.S2C_SyncSelectedCharacter;
+import com.rzy.dealt_force_skills.registry.ModGameRules;
 import com.rzy.dealt_force_skills.shop.HaffCoinManager;
+import com.rzy.dealt_force_skills.shop.DealtShopAccessManager;
+import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
+import mccfk.DeltaForce.java.Eeconomy.EeconomyManager;
+import mccfk.DeltaForce.java.data.PlayerCharacterStore;
 import com.rzy.dealt_force_skills.shop.LexNinjiaCurrencyManager;
 import com.rzy.dealt_force_skills.shop.UndeadSoulManager;
 import com.rzy.dealt_force_skills.skill.HeldToolVisualSync;
@@ -55,6 +63,7 @@ import net.minecraftforge.fml.common.Mod;
 public class CharacterEvents {
     @SubscribeEvent
     public static void onPlayerClone(PlayerEvent.Clone event) {
+        HvkAsaraArenaBlockEntity.copyPlayerSelections(event.getOriginal(), event.getEntity());
         CharacterSelectionManager.copySelectedCharacter(event.getOriginal(), event.getEntity());
         SinevaStateManager.copyState(event.getOriginal(), event.getEntity());
         UluruStateManager.copyState(event.getOriginal(), event.getEntity());
@@ -69,7 +78,11 @@ public class CharacterEvents {
         StingerStateManager.copyState(event.getOriginal(), event.getEntity());
         ManbaStateManager.copyState(event.getOriginal(), event.getEntity());
         NikaidouHiroStateManager.copyState(event.getOriginal(), event.getEntity());
-        NikaidouHiroWitchificationStateManager.copyState(event.getOriginal(), event.getEntity());
+        if (event.isWasDeath() && event.getEntity() instanceof ServerPlayer respawnedPlayer) {
+            NikaidouHiroWitchificationStateManager.resetAfterDeath(respawnedPlayer);
+        } else {
+            NikaidouHiroWitchificationStateManager.copyState(event.getOriginal(), event.getEntity());
+        }
         CatDadStateManager.copyState(event.getOriginal(), event.getEntity());
         DepartmentOfTransportationStateManager.copyState(event.getOriginal(), event.getEntity());
         UndeadStateManager.copyState(event.getOriginal(), event.getEntity());
@@ -84,10 +97,14 @@ public class CharacterEvents {
         GhrothStateManager.copyState(event.getOriginal(), event.getEntity());
         ChamberStateManager.copyState(event.getOriginal(), event.getEntity());
         CorpsStateManager.copyState(event.getOriginal(), event.getEntity());
+        CommanderStateManager.copyState(event.getOriginal(), event.getEntity());
         HaffCoinManager.copy(event.getOriginal(), event.getEntity());
         UndeadSoulManager.copy(event.getOriginal(), event.getEntity());
         LexNinjiaCurrencyManager.copy(event.getOriginal(), event.getEntity());
-        InjuryManager.copyInjuries(event.getOriginal(), event.getEntity());
+        SpecialOperationsBaseManager.copy(event.getOriginal(), event.getEntity());
+        if (!event.isWasDeath()) {
+            InjuryManager.copyInjuries(event.getOriginal(), event.getEntity());
+        }
         if (event.getEntity() instanceof ServerPlayer player) {
             CharacterSkinSync.syncToTracking(player);
         }
@@ -96,9 +113,15 @@ public class CharacterEvents {
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            PlayerCharacterStore.init();
+            CharacterSelectionManager.migrateStoredSelection(player);
+            SpecialOperationsBaseManager.migrateLegacyDolls(player);
+            EeconomyManager.getInstance().initPlayerData(player.getGameProfile().getName());
             DfsEquipmentItem.removeDuplicatedEquippedHelmet(player);
+            DealtShopAccessManager.handlePlayerLogin(player);
             String selectedCharacterId = CharacterSelectionManager.getSelectedCharacterId(player).orElse("");
             CharacterAvailability.syncToClient(player);
+            ModGameRules.syncToClient(player);
             C2S_RequestConfigSnapshot.sendSnapshot(player, player.hasPermissions(2));
             NetworkHandler.sendToPlayer(new S2C_SyncSelectedCharacter(
                     selectedCharacterId, CharacterSelectionManager.isNormalPlayer(player)), player);
@@ -108,6 +131,8 @@ public class CharacterEvents {
             UndeadSoulManager.sync(player);
             LexNinjiaCurrencyManager.sync(player);
             CorpsStateManager.applyPendingDecay(player);
+            CommanderStateManager.initializeIfNeeded(player);
+            CommanderStateManager.syncToClient(player);
 
             CharacterSelectionManager.getSelectedCharacter(player).ifPresent(character -> {
                 if (player.getServer() != null
@@ -126,10 +151,12 @@ public class CharacterEvents {
 
     @SubscribeEvent
     public static void onPlayerStartTracking(PlayerEvent.StartTracking event) {
-        if (event.getEntity() instanceof ServerPlayer watcher
-                && event.getTarget() instanceof ServerPlayer target) {
-            CharacterSkinSync.syncOneTo(target, watcher);
-            HeldToolVisualSync.syncOneTo(target, watcher);
+        if (event.getEntity() instanceof ServerPlayer watcher) {
+            if (event.getTarget() instanceof ServerPlayer target) {
+                CharacterSkinSync.syncOneTo(target, watcher);
+                HeldToolVisualSync.syncOneTo(target, watcher);
+            }
+            CommanderSupportManager.syncTrackedVehicle(watcher, event.getTarget());
         }
     }
 
@@ -138,6 +165,10 @@ public class CharacterEvents {
         if (event.phase != TickEvent.Phase.END) return;
         if (!(event.player instanceof ServerPlayer player)) return;
 
+        // Attribute modifiers are player-owned, not character-owned. Reconcile
+        // Commander modifiers before dispatching the currently selected role so
+        // a switch/clone cannot leak max-health or step height into that role.
+        CommanderStateManager.cleanupIfNotCommander(player);
         RaptorStateManager.recordFootprint(player);
         MorseStateManager.recordObservedPlayerActivity(player);
         NTwoStateManager.tickGlobal(player);
@@ -173,6 +204,7 @@ public class CharacterEvents {
             GamblerStateManager.syncToClient(player);
             SaeedStateManager.tick(player);
             GhrothStateManager.syncToClient(player);
+            CommanderStateManager.syncToClient(player);
             ChamberStateManager.syncToClient(player);
             HeldToolVisualSync.sync(player);
         }

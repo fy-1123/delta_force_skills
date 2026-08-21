@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.character.tempest.TempestStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.util.TargetingUtil;
@@ -14,6 +16,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -249,6 +252,9 @@ public class TempestWallDrillStingerEntity extends Projectile implements ItemSup
                     SoundSource.PLAYERS, 0.85F, 1.0F);
             level.playSound(null, blockPosition(), ModSounds.TEMPEST_WALL_DRILL_CHARGE_START.get(),
                     SoundSource.PLAYERS, 0.72F, 1.0F);
+            if (hasInstantTriggerUpgrade(level)) {
+                releaseDisarm();
+            }
         }
     }
 
@@ -273,6 +279,9 @@ public class TempestWallDrillStingerEntity extends Projectile implements ItemSup
                     SoundSource.PLAYERS, 0.85F, 1.08F);
             level.playSound(null, target.blockPosition(), ModSounds.TEMPEST_WALL_DRILL_CHARGE_START.get(),
                     SoundSource.PLAYERS, 0.72F, 1.04F);
+            if (hasInstantTriggerUpgrade(level)) {
+                releaseDisarm();
+            }
         }
     }
 
@@ -325,9 +334,19 @@ public class TempestWallDrillStingerEntity extends Projectile implements ItemSup
             }
         }
 
-        AABB box = new AABB(origin, origin.add(direction.scale(RELEASE_RANGE))).inflate(RELEASE_HALF_WIDTH + 1.0D);
+        boolean instantTrigger = owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.TEMPEST_INSTANT_TRIGGER);
+        AABB box = instantTrigger
+                ? new AABB(origin, origin).inflate(10.0D)
+                : new AABB(origin, origin.add(direction.scale(RELEASE_RANGE))).inflate(RELEASE_HALF_WIDTH + 1.0D);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
             Vec3 center = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
+            if (instantTrigger) {
+                if (center.distanceToSqr(origin) <= 100.0D) {
+                    applyDisarm(level, target, owner, disarmed);
+                }
+                continue;
+            }
             Vec3 toTarget = center.subtract(origin);
             double along = toTarget.dot(direction);
             if (along < 0.0D || along > RELEASE_RANGE) {
@@ -341,6 +360,11 @@ public class TempestWallDrillStingerEntity extends Projectile implements ItemSup
             applyDisarm(level, target, owner, disarmed);
         }
         discard();
+    }
+
+    private boolean hasInstantTriggerUpgrade(ServerLevel level) {
+        return owner(level) instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.TEMPEST_INSTANT_TRIGGER);
     }
 
     private static double headAnchorOffset(LivingEntity target) {

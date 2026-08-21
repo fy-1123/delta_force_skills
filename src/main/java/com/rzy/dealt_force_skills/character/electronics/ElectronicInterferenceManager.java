@@ -4,8 +4,11 @@ import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterDefinition;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.entity.GizmoSmokeTrapEntity;
+import com.rzy.dealt_force_skills.entity.AcceleratedTroopsEntity;
 import com.rzy.dealt_force_skills.entity.GizmoSpiderNestTrapEntity;
 import com.rzy.dealt_force_skills.entity.GizmoSpiderlingEntity;
 import com.rzy.dealt_force_skills.entity.GizmoTBoyEntity;
@@ -41,9 +44,19 @@ public final class ElectronicInterferenceManager {
     }
 
     public static boolean tryBlockSkillUse(ServerPlayer player, CharacterDefinition character, SkillSlot slot) {
+        if (ModCharacters.D_WOLF_ID.equals(character.id())
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.DWOLF_MODIFIED_SKELETON)) {
+            return false;
+        }
         if (isElectronicSkill(character, slot)
                 && (player.hasEffect(ModEffects.RAPTOR_ELECTROMAGNETIC_INTERFERENCE.get())
                 || player.hasEffect(ModEffects.VLINDER_MEDICAL_WASTE_INTERFERENCE.get()))) {
+            player.displayClientMessage(Component.translatable(
+                    "message.dealt_force_skills.electronic_interference_blocked"), true);
+            return true;
+        }
+
+        if (isElectronicSkill(character, slot) && insideAcceleratedTroopsInterference(player)) {
             player.displayClientMessage(Component.translatable(
                     "message.dealt_force_skills.electronic_interference_blocked"), true);
             return true;
@@ -83,6 +96,17 @@ public final class ElectronicInterferenceManager {
             return field;
         }
         return null;
+    }
+
+    private static boolean insideAcceleratedTroopsInterference(ServerPlayer player) {
+        double radius = Math.max(0.0D, com.rzy.dealt_force_skills.config.DealtBossesConfig.doubleValue(
+                "accelerated_troops.interference_radius", 20.0D));
+        if (radius <= 0.0D) {
+            return false;
+        }
+        AABB box = player.getBoundingBox().inflate(radius);
+        return !player.serverLevel().getEntitiesOfClass(AcceleratedTroopsEntity.class, box,
+                entity -> entity.isAlive() && entity.distanceToSqr(player) <= radius * radius).isEmpty();
     }
 
     public static int disruptElectronicDevices(HackclawInterferenceFieldEntity field) {

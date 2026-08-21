@@ -2,15 +2,18 @@
   "required": true,
   "package": "com.rzy.dealt_force_skills.mixin",
   "refmap": "dealt_force_skills.refmap.json",
+  "plugin": "com.rzy.dealt_force_skills.mixin.DealtForceMixinConfigPlugin",
   "compatibilityLevel": "JAVA_17",
   "minVersion": "0.8",
   "mixins": [
     "LivingEntityUseItemAccessor",
+    "pmmo.CoreObjectModifierMapMixin",
     "tacz.AbstractGunItemMixin",
     "tacz.AttachmentDataUtilsMixin"
   ],
   "client": [
     "client.AbstractClientPlayerSkinMixin",
+    "client.HookAuthorChargeSoundPitchMixin",
     "client.HvkClimbableMixin",
     "client.MinecraftSpectatorOutlineMixin",
     "client.PlayerRendererSkinMixin"

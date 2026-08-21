@@ -3,10 +3,12 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.stinger.StingerTool;
 import com.rzy.dealt_force_skills.character.stinger.StingerToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientStingerHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_StingerToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -47,7 +49,15 @@ public final class StingerInputHandler {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientStingerHudState.shouldRender()) {
+        boolean nativeCharacter = ClientStingerHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.STINGER_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.STINGER_ID, SkillSlot.ACTIVE_2);
+        boolean coreOwned = nativeCharacter || coreWasDown || minecraft.player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.STINGER_ID, SkillSlot.CORE, minecraft.player.isShiftKeyDown());
+        if (minecraft.player == null || (!active1Owned && !active2Owned && !coreOwned
+                && !ClientStingerHudState.hasEquippedTool())) {
             resetActive1();
             resetActive2();
             resetCore();
@@ -55,10 +65,24 @@ public final class StingerInputHandler {
             return;
         }
 
-        handleActive1Key();
-        handleActive2Key();
-        handleCoreKey();
-        spawnDownedMarkers(minecraft);
+        if (active1Owned) {
+            handleActive1Key();
+        } else {
+            resetActive1();
+        }
+        if (active2Owned) {
+            handleActive2Key();
+        } else {
+            resetActive2();
+        }
+        if (coreOwned) {
+            handleCoreKey();
+        } else {
+            resetCore();
+        }
+        if (nativeCharacter || ClientCommanderState.inherits(ModCharacters.STINGER_ID)) {
+            spawnDownedMarkers(minecraft);
+        }
 
         if (ClientStingerHudState.hasEquippedTool()) {
             releaseBlockedKey(minecraft.options.keyAttack);
@@ -70,7 +94,9 @@ public final class StingerInputHandler {
     }
 
     public static boolean ownsCoreSkill() {
-        return ClientStingerHudState.shouldRender();
+        var player = Minecraft.getInstance().player;
+        return ClientStingerHudState.shouldRender() || coreWasDown || player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.STINGER_ID, SkillSlot.CORE, player.isShiftKeyDown());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -190,7 +216,8 @@ public final class StingerInputHandler {
                 equipped
                         ? () -> NetworkHandler.sendToServer(new C2S_StingerToolAction(
                                 StingerToolAction.THROW_SMOKE_GRENADE))
-                        : () -> ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1));
+                        : () -> ClientCommanderState.useNativeOrInherited(
+                                ModCharacters.STINGER_ID, SkillSlot.ACTIVE_1, false));
     }
 
     private static void beginStimFire() {
@@ -216,7 +243,7 @@ public final class StingerInputHandler {
             active2HeldTicks++;
             if (active2HeldTicks >= DRONE_GUIDED_HOLD_TICKS && !sentDroneGuidedLaunch) {
                 sentDroneGuidedLaunch = true;
-                ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2, true);
+                ClientCommanderState.useNativeOrInherited(ModCharacters.STINGER_ID, SkillSlot.ACTIVE_2, true);
             }
             return;
         }
@@ -225,7 +252,7 @@ public final class StingerInputHandler {
             if (sentDroneGuidedLaunch) {
                 NetworkHandler.sendToServer(new C2S_StingerToolAction(StingerToolAction.STOP_SMOKE_DRONE_GUIDE));
             } else {
-                ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2);
+                ClientCommanderState.useNativeOrInherited(ModCharacters.STINGER_ID, SkillSlot.ACTIVE_2, false);
             }
         }
         resetActive2();
@@ -244,13 +271,13 @@ public final class StingerInputHandler {
             }
             if (coreHeldTicks >= CORE_LONG_HOLD_TICKS && !sentCoreLong) {
                 sentCoreLong = true;
-                ClientCharacterSelectionState.useSkill(SkillSlot.CORE, true);
+                ClientCommanderState.useNativeOrInherited(ModCharacters.STINGER_ID, SkillSlot.CORE, true);
             }
             return;
         }
 
         if (coreWasDown && !sentCoreLong) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.CORE, false);
+            ClientCommanderState.useNativeOrInherited(ModCharacters.STINGER_ID, SkillSlot.CORE, false);
         }
         resetCore();
     }

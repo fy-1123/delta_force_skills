@@ -118,7 +118,8 @@ public final class ClientVlinderHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != VlinderTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.VLINDER_ID))
+                && equippedTool != VlinderTool.NONE;
     }
 
     public static int medicalCharges() { return medicalCharges; }

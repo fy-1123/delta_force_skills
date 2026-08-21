@@ -119,7 +119,8 @@ public final class ClientGizmoHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != GizmoTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.GIZMO_ID))
+                && equippedTool != GizmoTool.NONE;
     }
 
     public static int smokeCharges() {

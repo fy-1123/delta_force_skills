@@ -5,34 +5,55 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.client.character.ClientNoxHudState;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderHandEvent;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.client.event.RenderNameTagEvent;
 import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID, value = Dist.CLIENT)
 public final class UndeadPlayerVisuals {
+    private static final EquipmentSlot[] HIDDEN_EQUIPMENT_SLOTS = {
+            EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND, EquipmentSlot.HEAD,
+            EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
+    };
     private static final Set<Integer> ROTATED_PLAYERS = new HashSet<>();
+    private static final Map<UUID, Map<EquipmentSlot, ItemStackSnapshot>> YSM_HIDDEN_EQUIPMENT = new HashMap<>();
 
     private UndeadPlayerVisuals() {
+    }
+
+    public static void resetTransientState() {
+        restoreYsmEquipment(Minecraft.getInstance());
+        ROTATED_PLAYERS.clear();
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onHidePlayerPre(RenderPlayerEvent.Pre event) {
+        if (shouldHideCompletely(event.getEntity())) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onRenderPlayerPre(RenderPlayerEvent.Pre event) {
         Player player = event.getEntity();
-        if (shouldHideCompletely(player)) {
-            event.setCanceled(true);
-            return;
-        }
         if (player == Minecraft.getInstance().player
                 || !player.hasEffect(ModEffects.UNDEAD_HUNTER_SCATTER.get())) {
             return;
@@ -72,10 +93,76 @@ public final class UndeadPlayerVisuals {
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onRenderLevelStart(RenderLevelStageEvent event) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_SKY && isYesSteveModelLoaded()) {
+            hideYsmEquipment(Minecraft.getInstance());
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onRenderLevelEnd(RenderLevelStageEvent event) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+            restoreYsmEquipment(Minecraft.getInstance());
+        }
+    }
+
+    private static void hideYsmEquipment(Minecraft minecraft) {
+        restoreYsmEquipment(minecraft);
+        if (minecraft.level == null) {
+            return;
+        }
+        for (Player player : minecraft.level.players()) {
+            if (!shouldHideCompletely(player)) {
+                continue;
+            }
+            EnumMap<EquipmentSlot, ItemStackSnapshot> snapshot = new EnumMap<>(EquipmentSlot.class);
+            for (EquipmentSlot slot : HIDDEN_EQUIPMENT_SLOTS) {
+                net.minecraft.world.item.ItemStack stack = player.getItemBySlot(slot);
+                if (!stack.isEmpty()) {
+                    snapshot.put(slot, new ItemStackSnapshot(stack));
+                    player.setItemSlot(slot, net.minecraft.world.item.ItemStack.EMPTY);
+                }
+            }
+            if (!snapshot.isEmpty()) {
+                YSM_HIDDEN_EQUIPMENT.put(player.getUUID(), snapshot);
+            }
+        }
+    }
+
+    private static void restoreYsmEquipment(Minecraft minecraft) {
+        if (YSM_HIDDEN_EQUIPMENT.isEmpty()) {
+            return;
+        }
+        if (minecraft.level == null) {
+            YSM_HIDDEN_EQUIPMENT.clear();
+            return;
+        }
+        for (Map.Entry<UUID, Map<EquipmentSlot, ItemStackSnapshot>> entry
+                : new HashMap<>(YSM_HIDDEN_EQUIPMENT).entrySet()) {
+            Player player = minecraft.level.getPlayerByUUID(entry.getKey());
+            if (player != null) {
+                entry.getValue().forEach((slot, snapshot) -> player.setItemSlot(slot, snapshot.stack()));
+            }
+            YSM_HIDDEN_EQUIPMENT.remove(entry.getKey());
+        }
+    }
+
+    private static boolean isYesSteveModelLoaded() {
+        return ModList.get().getMods().stream().anyMatch(modInfo -> {
+            String id = modInfo.getModId().toLowerCase(Locale.ROOT);
+            return id.equals("yes_steve_model") || id.equals("yesstevemodel") || id.equals("ysm")
+                    || id.contains("yes_steve") || id.contains("yessteve");
+        });
+    }
+
     private static boolean shouldHideCompletely(Player player) {
         return player.hasEffect(ModEffects.UNDEAD_TRUE_INVISIBILITY.get())
                 || player.hasEffect(ModEffects.DEPARTMENT_CONCEALMENT.get())
                 || (player.hasEffect(ModEffects.NOX_STEALTH.get())
                 && !ClientNoxHudState.isEntityRevealed(player.getId()));
+    }
+
+    private record ItemStackSnapshot(net.minecraft.world.item.ItemStack stack) {
     }
 }

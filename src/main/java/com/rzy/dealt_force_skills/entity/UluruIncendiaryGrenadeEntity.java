@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.character.uluru.UluruExplosionHelper;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModEntities;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import net.minecraft.core.BlockPos;
@@ -28,6 +30,7 @@ import net.minecraftforge.network.NetworkHooks;
 public class UluruIncendiaryGrenadeEntity extends Projectile implements ItemSupplier {
     private static volatile double FIRE_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("FIRE_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.uluruincendiarygrenadeentity.fire_radius", 6.0));
     private static volatile double BOUNCE_FACTOR = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BOUNCE_FACTOR", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.uluruincendiarygrenadeentity.bounce_factor", 0.68));
+    private boolean earthFire;
     public UluruIncendiaryGrenadeEntity(EntityType<? extends UluruIncendiaryGrenadeEntity> type, Level level) {
         super(type, level);
     }
@@ -35,6 +38,8 @@ public class UluruIncendiaryGrenadeEntity extends Projectile implements ItemSupp
     public UluruIncendiaryGrenadeEntity(EntityType<? extends UluruIncendiaryGrenadeEntity> type, Level level, LivingEntity owner) {
         super(type, level);
         setOwner(owner);
+        earthFire = owner instanceof net.minecraft.world.entity.player.Player player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.ULURU_EARTH_FIRE);
     }
 
     @Override
@@ -78,10 +83,12 @@ public class UluruIncendiaryGrenadeEntity extends Projectile implements ItemSupp
 
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
+        earthFire = tag.getBoolean("EarthFire");
     }
 
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
+        tag.putBoolean("EarthFire", earthFire);
     }
 
     @Override
@@ -131,18 +138,20 @@ public class UluruIncendiaryGrenadeEntity extends Projectile implements ItemSupp
         }
 
         LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
+        double radius = earthFire ? FIRE_RADIUS * 3.0D : FIRE_RADIUS;
         serverLevel.playSound(null, center.x, center.y, center.z, ModSounds.INCENDIARY_EXPLODE.get(),
                 SoundSource.PLAYERS, 1.2f, 1.0f);
         serverLevel.sendParticles(ParticleTypes.FLAME, center.x, center.y + 0.2, center.z,
-                130, FIRE_RADIUS * 0.82, 0.45, FIRE_RADIUS * 0.82, 0.02);
+                earthFire ? 300 : 130, radius * 0.82, 0.45, radius * 0.82, 0.02);
         serverLevel.sendParticles(ParticleTypes.LAVA, center.x, center.y + 0.2, center.z,
-                36, FIRE_RADIUS * 0.55, 0.35, FIRE_RADIUS * 0.55, 0.05);
+                earthFire ? 90 : 36, radius * 0.55, 0.35, radius * 0.55, 0.05);
 
-        UluruExplosionHelper.damageRadius(serverLevel, center, this, owner, FIRE_RADIUS,
+        UluruExplosionHelper.damageRadius(serverLevel, center, this, owner, radius,
                 12.0f, 12.0f, false, true, 20, false);
-        UluruExplosionHelper.destroyQuickCovers(serverLevel, center, FIRE_RADIUS);
+        UluruExplosionHelper.destroyQuickCovers(serverLevel, center, radius);
 
         UluruFireFieldEntity field = new UluruFireFieldEntity(ModEntities.ULURU_FIRE_FIELD.get(), serverLevel, owner);
+        field.setEarthFire(earthFire);
         field.setPos(center.x, center.y, center.z);
         serverLevel.addFreshEntity(field);
         discard();

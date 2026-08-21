@@ -39,6 +39,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
+import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -222,7 +223,9 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         Map<Item, Integer> stock = collectStock(sources);
         long stockFingerprint = stockFingerprint(stock);
         PlanResult plan = cachedPlanResult;
-        if (plan == null || !plan.usableFor(recipeId, stockFingerprint) || !canConsume(plan.rawCost(), sources)) {
+        if (plan == null || !plan.usableFor(recipeId, stockFingerprint)
+                || (!canConsume(plan.rawCost(), sources)
+                && !canConsumeWithRedemption(player, plan.rawCost(), sources))) {
             cachedPlanResult = null;
             int requestId = rememberedDetailRequestId(player, recipeId);
             BasicRecipeDetail basic = basicRecipeDetail(player, recipeId, requestId, null);
@@ -368,7 +371,10 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                     }
                     break;
                 }
-                trace.addLine(directIngredientLine(input, stock));
+                RecipeTreeLine line = directIngredientLine(input, stock);
+                if (line != null) {
+                    trace.addLine(line);
+                }
             }
 
             CraftabilityStatus status = forcedTruncationReason == null
@@ -400,7 +406,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         ItemStack[] rawChoices = input.ingredient.getItems();
         List<ItemStack> choices = ingredientChoices(rawChoices, input.count, Integer.MAX_VALUE);
         if (choices.isEmpty()) {
-            return new RecipeTreeLine(ItemStack.EMPTY, 1, true, true);
+            return null;
         }
         ItemStack display = choices.get(0);
         ItemStack available = stockedChoiceWithFullCount(choices, stock);
@@ -413,7 +419,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
     private static ItemStack stockedChoiceWithFullCount(List<ItemStack> choices, Map<Item, Integer> stock) {
         for (ItemStack choice : choices) {
-            if (!choice.isEmpty() && stock.getOrDefault(choice.getItem(), 0) >= choice.getCount()) {
+            if (isCraftableStack(choice) && stock.getOrDefault(choice.getItem(), 0) >= choice.getCount()) {
                 return choice;
             }
         }
@@ -489,7 +495,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         PlanCancelToken cancelToken = new PlanCancelToken();
         long stockFingerprint = stockFingerprint(basic.stock());
         SlicedPlanner planner = new SlicedPlanner(recipeId, requestId, basic.recipe(), basic.stock(),
-                recipeIndex, limits, cancelToken, stockFingerprint, basic.sourceStats());
+                recipeIndex, limits, cancelToken, stockFingerprint, basic.sourceStats(), player);
         activePlanningJob = new PlanningJob(player.getUUID(), recipeId, requestId, basic, limits,
                 cancelToken, planner);
         NetworkHandler.sendToPlayer(new S2C_HvkConstructorDetail(
@@ -531,6 +537,11 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         activePlanningJob = null;
         if (job.cancelToken().cancelled()) {
             return;
+        }
+        if ((result.status() == CraftabilityStatus.MISSING || result.status() == CraftabilityStatus.TRUNCATED)
+                && !result.rawCost().isEmpty()
+                && canConsumeWithRedemption(player, result.rawCost(), collectSources())) {
+            result = result.asCraftable();
         }
         if (result.status() == CraftabilityStatus.CRAFTABLE) {
             cachedPlanResult = result;
@@ -669,10 +680,12 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
     private boolean craftOne(ServerPlayer player, SelectedRecipe recipe, Map<Item, Integer> rawCost) {
         List<SourceSlot> sources = collectSources();
-        if (!canConsume(rawCost, sources)) {
+        if (!canConsume(rawCost, sources) && !canConsumeWithRedemption(player, rawCost, sources)) {
             return false;
         }
-        consume(rawCost, sources);
+        if (!consume(rawCost, sources, player)) {
+            return false;
+        }
         deliverResult(player, recipe.result, 1);
         return true;
     }
@@ -768,6 +781,9 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         if (owner != null && owner.level() == level
                 && owner.distanceToSqr(worldPosition.getX() + 0.5D, worldPosition.getY() + 0.5D,
                 worldPosition.getZ() + 0.5D) <= OWNER_INVENTORY_RANGE * OWNER_INVENTORY_RANGE) {
+            for (SpecialOperationsBaseManager.WarehouseEntry entry : SpecialOperationsBaseManager.warehouseEntries(owner)) {
+                sources.add(new WarehouseSourceSlot(owner, entry.slot(), entry.stack()));
+            }
             Inventory inventory = owner.getInventory();
             for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
                 sources.add(new PlayerSourceSlot(inventory, slot));
@@ -835,7 +851,42 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         return true;
     }
 
-    private static void consume(Map<Item, Integer> rawCost, List<SourceSlot> sources) {
+    private static boolean canConsumeWithRedemption(ServerPlayer player, Map<Item, Integer> rawCost,
+                                                    List<SourceSlot> sources) {
+        Map<Item, Integer> available = collectStock(sources);
+        long totalRedemptionCost = 0L;
+        for (Map.Entry<Item, Integer> entry : rawCost.entrySet()) {
+            int missing = entry.getValue() - available.getOrDefault(entry.getKey(), 0);
+            if (missing > 0) {
+                long cost = SpecialOperationsBaseManager.redemptionCostMatching(
+                        player, stack -> stack.getItem() == entry.getKey(), missing);
+                if (cost < 0L || totalRedemptionCost > Long.MAX_VALUE - cost) {
+                    return false;
+                }
+                totalRedemptionCost += cost;
+            }
+        }
+        return SpecialOperationsBaseManager.havocCoins(player) >= totalRedemptionCost;
+    }
+
+    private static boolean consume(Map<Item, Integer> rawCost, List<SourceSlot> sources, ServerPlayer player) {
+        Map<Item, Integer> available = collectStock(sources);
+        long totalRedemptionCost = 0L;
+        for (Map.Entry<Item, Integer> entry : rawCost.entrySet()) {
+            int missing = entry.getValue() - available.getOrDefault(entry.getKey(), 0);
+            if (missing <= 0) {
+                continue;
+            }
+            long cost = SpecialOperationsBaseManager.redemptionCostMatching(
+                    player, stack -> stack.getItem() == entry.getKey(), missing);
+            if (cost < 0L || totalRedemptionCost > Long.MAX_VALUE - cost) {
+                return false;
+            }
+            totalRedemptionCost += cost;
+        }
+        if (SpecialOperationsBaseManager.havocCoins(player) < totalRedemptionCost) {
+            return false;
+        }
         for (Map.Entry<Item, Integer> entry : rawCost.entrySet()) {
             int remaining = entry.getValue();
             for (SourceSlot source : sources) {
@@ -844,7 +895,16 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 }
                 remaining -= source.extract(entry.getKey(), remaining);
             }
+            if (remaining > 0) {
+                ItemStack purchased = SpecialOperationsBaseManager.redeemCheapestMatching(player,
+                        stack -> stack.getItem() == entry.getKey(), remaining);
+                remaining -= purchased.isEmpty() ? 0 : purchased.getCount();
+            }
+            if (remaining > 0) {
+                return false;
+            }
         }
+        return true;
     }
 
     private static Map<Item, Integer> copyCost(Map<Item, Integer> rawCost) {
@@ -886,16 +946,10 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
     private static List<CraftingOption> prioritizedOptions(List<CraftingOption> options, PlanState state,
                                                            PlanningContext context) {
-        if (options.size() <= 1) {
-            return options;
-        }
-        // Deep scoring with cache to avoid redundant recursive calculations
-        Map<String, Integer> scoreCache = new HashMap<>();
-        List<CraftingOption> sorted = new ArrayList<>(options);
-        sorted.sort(Comparator.comparingInt((CraftingOption option) ->
-            scoreRecipeDeep(option, state, context, new HashSet<>(), 0, scoreCache)
-        ).reversed());
-        return sorted;
+        // The advanced template constructor deliberately keeps recipe order.  Recursive
+        // availability/Havoc-cost scoring makes redemption planning branch too deeply;
+        // each missing item is handled by processItem's per-level redemption fallback.
+        return options;
     }
 
     private static int scoreRecipeDeep(CraftingOption recipe, PlanState state, PlanningContext context,
@@ -922,7 +976,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             int bestChoiceScore = 0;
 
             for (ItemStack choice : choices) {
-                if (choice.isEmpty()) {
+                if (!isCraftableStack(choice)) {
                     continue;
                 }
 
@@ -1137,11 +1191,11 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     private static List<ItemStack> previewIngredients(List<RecipeInput> inputs) {
         List<ItemStack> ingredients = new ArrayList<>();
         for (RecipeInput input : inputs) {
-            if (input.ingredient.isEmpty()) {
+            if (input.count <= 0 || !hasCraftableItem(input.ingredient)) {
                 continue;
             }
             for (ItemStack choice : input.ingredient.getItems()) {
-                if (!choice.isEmpty()) {
+                if (isCraftableStack(choice)) {
                     ItemStack preview = choice.copy();
                     preview.setCount(saturatedMultiply(Math.max(1, choice.getCount()), input.count));
                     ingredients.add(preview);
@@ -1164,7 +1218,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             return List.of();
         }
         for (ItemStack choice : rawChoices) {
-            if (!choice.isEmpty()) {
+            if (isCraftableStack(choice)) {
                 ItemStack copy = choice.copy();
                 copy.setCount(saturatedMultiply(Math.max(1, choice.getCount()), countMultiplier));
                 choices.add(copy);
@@ -1187,8 +1241,10 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     private static List<ItemStack> stacksFromCounts(Map<Item, Integer> counts) {
         List<ItemStack> stacks = new ArrayList<>();
         counts.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getKey() != Items.AIR
+                        && entry.getValue() != null && entry.getValue() > 0)
                 .sorted(Comparator.comparing(entry -> itemKey(entry.getKey())))
-                .forEach(entry -> stacks.add(new ItemStack(entry.getKey(), Math.max(1, entry.getValue()))));
+                .forEach(entry -> stacks.add(new ItemStack(entry.getKey(), entry.getValue())));
         return List.copyOf(stacks);
     }
 
@@ -1288,9 +1344,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         }
         List<RecipeInput> inputs = new ArrayList<>();
         for (Ingredient ingredient : recipe.getIngredients()) {
-            if (!ingredient.isEmpty()) {
-                inputs.add(new RecipeInput(ingredient, 1));
-            }
+            addRecipeInput(inputs, ingredient, 1);
         }
         return List.copyOf(inputs);
     }
@@ -1305,8 +1359,8 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 try {
                     field.setAccessible(true);
                     Object value = field.get(recipe);
-                    if (value instanceof Ingredient ingredient && !ingredient.isEmpty()) {
-                        inputs.add(new RecipeInput(ingredient, 1));
+                    if (value instanceof Ingredient ingredient) {
+                        addRecipeInput(inputs, ingredient, 1);
                     }
                 } catch (ReflectiveOperationException | RuntimeException ignored) {
                     return List.of();
@@ -1329,13 +1383,19 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         List<RecipeInput> inputs = new ArrayList<>();
         for (Object entry : inputObjects) {
             Object ingredientObject = invokeNoArgs(entry, "getIngredient");
-            if (!(ingredientObject instanceof Ingredient ingredient) || ingredient.isEmpty()) {
+            if (!(ingredientObject instanceof Ingredient ingredient)) {
                 continue;
             }
             int count = intValue(invokeNoArgs(entry, "getCount"), 1);
-            inputs.add(new RecipeInput(ingredient, count));
+            addRecipeInput(inputs, ingredient, count);
         }
         return List.copyOf(inputs);
+    }
+
+    private static void addRecipeInput(List<RecipeInput> inputs, Ingredient ingredient, int count) {
+        if (inputs != null && count > 0 && hasCraftableItem(ingredient)) {
+            inputs.add(new RecipeInput(ingredient, count));
+        }
     }
 
     private static Iterable<?> iterableFrom(Object object) {
@@ -1355,9 +1415,25 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
     private static int intValue(Object value, int fallback) {
         if (value instanceof Number number) {
-            return Math.max(1, number.intValue());
+            return number.intValue();
         }
         return fallback;
+    }
+
+    private static boolean hasCraftableItem(Ingredient ingredient) {
+        if (ingredient == null || ingredient.isEmpty()) {
+            return false;
+        }
+        for (ItemStack choice : ingredient.getItems()) {
+            if (isCraftableStack(choice)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCraftableStack(ItemStack stack) {
+        return stack != null && !stack.isEmpty() && stack.getItem() != Items.AIR && stack.getCount() > 0;
     }
 
     private static int clamp(int value, int min, int max) {
@@ -1377,8 +1453,11 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     }
 
     private static boolean hasInputs(List<RecipeInput> inputs) {
+        if (inputs == null || inputs.isEmpty()) {
+            return false;
+        }
         for (RecipeInput input : inputs) {
-            if (!input.ingredient.isEmpty()) {
+            if (input != null && input.count > 0 && hasCraftableItem(input.ingredient)) {
                 return true;
             }
         }
@@ -1482,6 +1561,33 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         @Override
         public boolean refinedStorage() {
             return "refinedstorage_network".equals(sourceType);
+        }
+    }
+
+    private static final class WarehouseSourceSlot implements SourceSlot {
+        private final ServerPlayer owner;
+        private final int slot;
+        private final ItemStack cached;
+
+        private WarehouseSourceSlot(ServerPlayer owner, int slot, ItemStack cached) {
+            this.owner = owner;
+            this.slot = slot;
+            this.cached = cached.copy();
+        }
+
+        @Override
+        public ItemStack stack() {
+            return cached;
+        }
+
+        @Override
+        public int extract(Item item, int max) {
+            if (cached.isEmpty() || cached.getItem() != item) {
+                return 0;
+            }
+            ItemStack removed = SpecialOperationsBaseManager.extractWarehouse(owner, slot, max);
+            cached.shrink(removed.getCount());
+            return removed.getCount();
         }
     }
 
@@ -1692,14 +1798,15 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
         private SlicedPlanner(ResourceLocation recipeId, int requestId, SelectedRecipe recipe,
                               Map<Item, Integer> stock, RecipeIndex recipeIndex, PlanLimits limits,
-                              PlanCancelToken cancelToken, long stockFingerprint, SourceStats sourceStats) {
+                              PlanCancelToken cancelToken, long stockFingerprint, SourceStats sourceStats,
+                              ServerPlayer redemptionPlayer) {
             this.recipeId = recipeId;
             this.requestId = requestId;
             this.limits = limits == null ? planLimits() : limits;
             this.cancelToken = cancelToken;
             this.stockFingerprint = stockFingerprint;
             this.sourceStats = sourceStats == null ? SourceStats.empty() : sourceStats;
-            this.context = new PlanningContext(recipeIndex, this.limits, cancelToken);
+            this.context = new PlanningContext(recipeIndex, this.limits, cancelToken, redemptionPlayer);
             ArrayDeque<PlanGoal> goals = new ArrayDeque<>();
             appendRecipeInputs(goals, recipe.inputs(), this.limits.maxDepth(), Set.of());
             frontier.add(new PlannerSearchState(new PlanState(new HashMap<>(stock)), goals));
@@ -1763,7 +1870,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             if (choices.isEmpty()) {
                 PlanState failed = state.plan().copy();
                 ItemStack[] rawChoices = goal.input().ingredient().getItems();
-                if (rawChoices.length > 0 && !rawChoices[0].isEmpty()) {
+                if (rawChoices.length > 0 && isCraftableStack(rawChoices[0])) {
                     int needed = saturatedMultiply(Math.max(1, rawChoices[0].getCount()), goal.input().count());
                     failed.addMissing(rawChoices[0].getItem(), needed);
                 }
@@ -1776,7 +1883,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             if (bestChoice.isEmpty()) {
                 PlanState failed = state.plan().copy();
                 ItemStack[] rawChoices = goal.input().ingredient().getItems();
-                if (rawChoices.length > 0 && !rawChoices[0].isEmpty()) {
+                if (rawChoices.length > 0 && isCraftableStack(rawChoices[0])) {
                     int needed = saturatedMultiply(Math.max(1, rawChoices[0].getCount()), goal.input().count());
                     failed.addMissing(rawChoices[0].getItem(), needed);
                 }
@@ -1806,15 +1913,9 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
         private static List<ItemStack> prioritizedIngredientChoices(List<ItemStack> choices, PlanState plan,
                                                                     PlanningContext context, RecipeInput input) {
-            if (choices.size() <= 1) {
-                return choices;
-            }
-            List<ItemStack> sorted = new ArrayList<>(choices);
-            sorted.sort(Comparator
-                    .comparingInt((ItemStack stack) -> ingredientChoiceScore(stack, plan, context, input))
-                    .reversed()
-                    .thenComparing(stack -> itemKey(stack.getItem())));
-            return sorted;
+            // Do not rank alternatives by stock or redemption cost for this block.  The
+            // first declared choice is explored, and missing leaves can redeem locally.
+            return choices;
         }
 
         private static int ingredientChoiceScore(ItemStack stack, PlanState plan, PlanningContext context,
@@ -1836,6 +1937,14 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             // Second priority: we have some of this item, prefer using what we have
             if (available > 0) {
                 return score + 5_000_000;
+            }
+
+            // A directly redeemable alternative is preferable to descending into an
+            // unavailable recipe tree. Equal-tier alternatives are ordered by the
+            // actual Havoc Coin cost in prioritizedIngredientChoices.
+            long redemptionCost = context.redemptionCost(stack.getItem(), needed);
+            if (redemptionCost >= 0L) {
+                return score + 2_000_000;
             }
 
             // Third priority: we can craft this from materials we already have
@@ -1878,7 +1987,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 int bestChoiceScore = 0;
 
                 for (ItemStack choice : choices) {
-                    if (choice.isEmpty()) {
+                    if (!isCraftableStack(choice)) {
                         continue;
                     }
 
@@ -1939,7 +2048,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         private static boolean blockedChoiceRequiresCraft(ItemStack choice, PlanState plan, int needed,
                                                           Set<Item> blockedItems) {
             return choice != null
-                    && !choice.isEmpty()
+                    && isCraftableStack(choice)
                     && blockedItems != null
                     && blockedItems.contains(choice.getItem())
                     && plan.availableCount(choice.getItem()) < needed;
@@ -1970,7 +2079,13 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 return;
             }
             if (goal.path().contains(item)) {
-                pushMissing(state, base, item, missing, null);
+                if (context.redemptionCost(item, missing) >= 0L) {
+                    PlanState redeemed = base.copy();
+                    redeemed.takeRedeemed(item, missing);
+                    push(redeemed, copyGoals(state.goals()));
+                } else {
+                    pushMissing(state, base, item, missing, null);
+                }
                 return;
             }
 
@@ -1978,8 +2093,15 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             boolean pushed = false;
             Set<Item> childPath = new HashSet<>(goal.path());
             childPath.add(item);
-            // FIX: Only explore the best option to prevent exponential state explosion
-            // Original code explored ALL options, causing frontier to grow exponentially
+            // A missing item with a valid redemption entry is already a complete,
+            // bounded solution. Resolve it immediately instead of expanding a deep
+            // intermediate recipe chain that can exhaust the planning budget.
+            if (context.redemptionCost(item, missing) >= 0L) {
+                PlanState redeemed = base.copy();
+                redeemed.takeRedeemed(item, missing);
+                push(redeemed, copyGoals(state.goals()));
+                return;
+            }
             for (int i = options.size() - 1; i >= 0; i--) {
                 CraftingOption option = options.get(i);
                 if (option.result().isEmpty() || option.result().getCount() <= 0) {
@@ -2023,7 +2145,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                                                           Set<Item> blockedItems, int crafts) {
             ItemStack[] choices = input.ingredient().getItems();
             for (ItemStack choice : choices) {
-                if (choice == null || choice.isEmpty()) {
+                if (!isCraftableStack(choice)) {
                     continue;
                 }
                 int needed = saturatedMultiply(
@@ -2101,7 +2223,13 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                     sourceStats.totalItems(), context.nodes(), context.maxObservedDepth(),
                     context.elapsedNanos() / 1_000_000L, finalTruncated, finalReason,
                     frontier.size(), visitedStates.size(), memo.size());
-            Map<Item, Integer> rawCost = success ? copyCost(plan.rawCost) : Map.of();
+            PlanState paymentPlan = plan != null ? plan
+                    : (finalStatus == CraftabilityStatus.TRUNCATED ? bestMissing : null);
+            Map<Item, Integer> rawCost = paymentPlan != null
+                    && (success || finalStatus == CraftabilityStatus.MISSING
+                    || finalStatus == CraftabilityStatus.TRUNCATED)
+                    ? paymentPlan.paymentCost()
+                    : Map.of();
             Map<Item, Integer> missing = finalStatus == CraftabilityStatus.MISSING
                     ? missingResult(plan)
                     : Map.of();
@@ -2136,7 +2264,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         private static void appendRecipeInputs(ArrayDeque<PlanGoal> goals, List<RecipeInput> inputs,
                                                int depth, Set<Item> path, int multiplier) {
             for (RecipeInput input : inputs) {
-                if (!input.ingredient().isEmpty()) {
+                if (input != null && input.count() > 0 && hasCraftableItem(input.ingredient())) {
                     goals.addLast(PlanGoal.ingredient(input.scaled(multiplier), depth, path));
                 }
             }
@@ -2212,9 +2340,11 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         private final RecipeIndex recipeIndex;
         private final PlanLimits limits;
         private final PlanCancelToken cancelToken;
+        private final ServerPlayer redemptionPlayer;
         private final long startedNanos = System.nanoTime();
         private final Map<Item, List<CraftingOption>> optionsByItem = new HashMap<>();
         private final Map<Ingredient, List<ItemStack>> ingredientCandidates = new IdentityHashMap<>();
+        private final Map<Item, Map<Integer, Long>> redemptionCostCache = new HashMap<>();
         private int nodes;
         private int maxObservedDepth;
         private int workUnits;
@@ -2227,9 +2357,15 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         }
 
         private PlanningContext(RecipeIndex recipeIndex, PlanLimits limits, PlanCancelToken cancelToken) {
+            this(recipeIndex, limits, cancelToken, null);
+        }
+
+        private PlanningContext(RecipeIndex recipeIndex, PlanLimits limits, PlanCancelToken cancelToken,
+                                ServerPlayer redemptionPlayer) {
             this.recipeIndex = recipeIndex == null ? RecipeIndex.emptyIndex() : recipeIndex;
             this.limits = limits == null ? planLimits() : limits;
             this.cancelToken = cancelToken;
+            this.redemptionPlayer = redemptionPlayer;
         }
 
         private void addWork(int work) {
@@ -2319,6 +2455,15 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             return optionsByItem.computeIfAbsent(item, this::loadRecipeOptions);
         }
 
+        private long redemptionCost(Item item, int count) {
+            if (redemptionPlayer == null || item == null || item == Items.AIR || count <= 0) {
+                return -1L;
+            }
+            Map<Integer, Long> byCount = redemptionCostCache.computeIfAbsent(item, ignored -> new HashMap<>());
+            return byCount.computeIfAbsent(count, requested -> SpecialOperationsBaseManager.redemptionCostMatching(
+                    redemptionPlayer, stack -> stack.getItem() == item, requested));
+        }
+
         private List<CraftingOption> loadRecipeOptions(Item item) {
             return recipeIndex.optionsFor(item);
         }
@@ -2330,49 +2475,9 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
         private List<ItemStack> loadIngredientCandidates(RecipeInput input, Ingredient ingredient) {
             ItemStack[] rawChoices = ingredient.getItems();
-            List<ItemStack> candidates = new ArrayList<>(ingredientChoices(rawChoices, 1, MAX_RECIPE_TREE_ALTERNATIVES));
-
-            // FIX: Expand candidates to include items that can craft into the required ingredients
-            // Example: if recipe needs iron_ingot, also consider iron_block (which can decompose to ingots)
-            Set<Item> seen = new HashSet<>();
-            for (ItemStack choice : candidates) {
-                if (!choice.isEmpty()) {
-                    seen.add(choice.getItem());
-                }
-            }
-
-            // For each original choice, find items that can craft it
-            for (ItemStack choice : rawChoices) {
-                if (choice.isEmpty() || candidates.size() >= MAX_RECIPE_TREE_ALTERNATIVES) {
-                    break;
-                }
-                Item targetItem = choice.getItem();
-                List<CraftingOption> options = recipeIndex.optionsFor(targetItem);
-
-                for (CraftingOption option : options) {
-                    if (candidates.size() >= MAX_RECIPE_TREE_ALTERNATIVES) {
-                        break;
-                    }
-                    // Check if this is a simple 1-input decomposition recipe (e.g., iron_block -> 9x iron_ingot)
-                    if (option.inputs().size() == 1 && !option.result().isEmpty()) {
-                        RecipeInput input0 = option.inputs().get(0);
-                        ItemStack[] inputChoices = input0.ingredient().getItems();
-                        for (ItemStack inputChoice : inputChoices) {
-                            if (!inputChoice.isEmpty() && seen.add(inputChoice.getItem())) {
-                                // Add the source item (e.g., iron_block) as a candidate
-                                ItemStack expanded = inputChoice.copy();
-                                expanded.setCount(Math.max(1, inputChoice.getCount()));
-                                candidates.add(expanded);
-                                if (candidates.size() >= MAX_RECIPE_TREE_ALTERNATIVES) {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            return candidates;
+            // Only recipe-declared alternatives are valid here. Recipes that produce an alternative
+            // are traversed later by processItem and must not become direct ingredient substitutes.
+            return ingredientChoices(rawChoices, 1, MAX_RECIPE_TREE_ALTERNATIVES);
         }
     }
 
@@ -2431,18 +2536,34 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             return surplus.getOrDefault(item, 0) + stock.getOrDefault(item, 0);
         }
 
+        private void takeRedeemed(Item item, int count) {
+            if (item == null || item == Items.AIR || count <= 0) {
+                return;
+            }
+            rawCost.merge(item, count, Integer::sum);
+            surplus.merge(item, count, Integer::sum);
+        }
+
         private void addSurplus(Item item, int count) {
             surplus.merge(item, count, Integer::sum);
         }
 
         private void addMissing(Item item, int count) {
-            if (item != null && count > 0) {
+            if (item != null && item != Items.AIR && count > 0) {
                 missing.merge(item, count, Integer::sum);
             }
         }
 
         private Map<Item, Integer> missing() {
             return copyCost(missing);
+        }
+
+        private Map<Item, Integer> paymentCost() {
+            Map<Item, Integer> result = copyCost(rawCost);
+            for (Map.Entry<Item, Integer> entry : missing.entrySet()) {
+                result.merge(entry.getKey(), entry.getValue(), Integer::sum);
+            }
+            return result;
         }
 
         private void mergeMissingInto(Map<Item, Integer> target) {
@@ -2540,6 +2661,11 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                     && stockFingerprint == currentStockFingerprint
                     && !truncated;
         }
+
+        private PlanResult asCraftable() {
+            return new PlanResult(recipeId, requestId, CraftabilityStatus.CRAFTABLE, rawCost, workUnits,
+                    Map.of(), false, "none", nodes, maxDepth, elapsedNanos, stockFingerprint);
+        }
     }
 
     private static final class PlanCancelToken {
@@ -2568,7 +2694,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     private record RecipeInput(Ingredient ingredient, int count) {
         private RecipeInput {
             ingredient = ingredient == null ? Ingredient.EMPTY : ingredient;
-            count = Math.max(1, count);
+            count = Math.max(0, count);
         }
 
         private RecipeInput scaled(int multiplier) {
@@ -2670,7 +2796,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             List<ItemStack> copied = new ArrayList<>();
             Set<Item> seen = new HashSet<>();
             for (ItemStack alternative : alternatives) {
-                if (alternative != null && !alternative.isEmpty() && seen.add(alternative.getItem())) {
+                if (isCraftableStack(alternative) && seen.add(alternative.getItem())) {
                     copied.add(alternative.copy());
                     if (copied.size() >= MAX_RECIPE_TREE_ALTERNATIVES) {
                         break;

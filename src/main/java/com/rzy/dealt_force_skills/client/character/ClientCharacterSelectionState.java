@@ -7,7 +7,7 @@ import com.rzy.dealt_force_skills.character.CharacterDefinition;
 import com.rzy.dealt_force_skills.character.CharacterRole;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
-import com.rzy.dealt_force_skills.client.screen.CharacterSelectionScreen;
+import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import com.rzy.dealt_force_skills.network.C2S_SelectCharacter;
 import com.rzy.dealt_force_skills.network.C2S_UseCharacterSkill;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -104,6 +104,7 @@ public final class ClientCharacterSelectionState {
         ClientVlinderHudState.reset();
         ClientTempestHudState.reset();
         ClientSaeedHudState.reset();
+        ClientCommanderState.reset();
         ClientGhrothState.reset();
         ClientSinevaRenderState.reset();
         ClientHackclawCoreVisualState.reset();
@@ -132,6 +133,10 @@ public final class ClientCharacterSelectionState {
         selectedCharacterId = characterId == null || characterId.isBlank() ? null : characterId;
         ClientCharacterSelectionState.normalPlayer = normalPlayer && selectedCharacterId == null;
         ClientCharacterSkinState.syncLocalSelectedCharacter(selectedCharacterId);
+        // Commander owns the inherited character state packets as well. Keep those
+        // client snapshots alive while Commander is selected so inherited HUD bars
+        // and input state do not disappear between selection syncs.
+        if (!isSelectedCharacter(ModCharacters.COMMANDER_ID)) {
         if (!isSelectedCharacter(ModCharacters.SINEVA_ID)) {
             ClientSinevaHudState.reset();
         }
@@ -216,28 +221,20 @@ public final class ClientCharacterSelectionState {
         if (!isSelectedCharacter(ModCharacters.GHROTH_ID)) {
             ClientGhrothState.reset();
         }
+        }
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (hasSelectedCharacter() && minecraft.screen instanceof CharacterSelectionScreen) {
-            minecraft.setScreen(null);
-        }
     }
 
     public static void syncCharacterAvailability(Map<String, String> reasons) {
         unavailableReasons.clear();
         unavailableReasons.putAll(reasons);
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen instanceof CharacterSelectionScreen screen) {
-            screen.refreshCharacterWidgets();
-        }
     }
 
     public static void syncSelectionCatalog(List<CharacterBranch> branches) {
         selectionCatalog = branches == null ? List.of() : List.copyOf(branches);
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen instanceof CharacterSelectionScreen screen) {
-            screen.refreshCharacterWidgets();
-        }
     }
 
     public static List<CharacterBranch> selectionCatalog() {
@@ -304,12 +301,8 @@ public final class ClientCharacterSelectionState {
             return;
         }
 
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen instanceof CharacterSelectionScreen) {
-            return;
-        }
+        DFGUI_MAIN.openToOperator();
         promptedForCurrentWorld = true;
-        minecraft.setScreen(new CharacterSelectionScreen());
     }
 
     public static void selectCharacter(String characterId) {
@@ -323,7 +316,6 @@ public final class ClientCharacterSelectionState {
 
         promptedForCurrentWorld = true;
         NetworkHandler.sendToServer(new C2S_SelectCharacter(characterId));
-        Minecraft.getInstance().setScreen(null);
     }
 
     public static boolean canReselectInCurrentMode() {

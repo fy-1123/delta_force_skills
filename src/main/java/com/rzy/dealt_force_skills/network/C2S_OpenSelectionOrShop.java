@@ -31,14 +31,12 @@ public class C2S_OpenSelectionOrShop {
             if (CharacterSelectionManager.hasCharacterReselection(player)) {
                 CharacterAvailability.syncToClient(player);
                 NetworkHandler.sendToPlayer(new S2C_OpenCharacterSelection(true), player);
+            } else if (player.isShiftKeyDown() && HaffShopManager.shouldOpenShop(player, true)) {
+                HaffShopManager.openShop(player, true);
             } else if (LexNinjiaShopManager.shouldOpen(player)) {
                 LexNinjiaShopManager.open(player);
             } else if (UndeadShopManager.shouldOpen(player)) {
                 UndeadShopManager.open(player);
-            } else if (SaeedStateManager.isSaeed(player)
-                    && player.isShiftKeyDown()
-                    && HaffShopManager.shouldOpenShop(player, true)) {
-                HaffShopManager.openShop(player, true);
             } else if (SaeedRecruitManager.shouldOpen(player)) {
                 SaeedRecruitManager.open(player);
             } else if (GhrothArmoryManager.shouldOpen(player)) {

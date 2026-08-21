@@ -131,6 +131,67 @@ public final class DealtBossesConfig {
         intValue("beacon.loot.experience", 5345);
         intValue("beacon.summon.delay_ticks", 40);
         intValue("beacon.summon.cooldown_ticks", 60 * 20);
+
+        intValue("accelerated_troops.squad_size", 6);
+        doubleValue("accelerated_troops.member_max_health", 125.0D);
+        doubleValue("accelerated_troops.member_armor", 20.0D);
+        doubleValue("accelerated_troops.armor_toughness", 0.0D);
+        doubleValue("accelerated_troops.melee_damage", 4.0D);
+        doubleValue("accelerated_troops.movement_speed", 0.1D);
+        doubleValue("accelerated_troops.follow_range", 75.0D);
+        doubleValue("accelerated_troops.knockback_resistance", 0.5D);
+        intValue("accelerated_troops.warning_duration_ticks", 20 * 20);
+        migrateAcceleratedWarningDuration();
+        intValue("accelerated_troops.warning_segment_ticks", 8 * 20);
+        intValue("accelerated_troops.music_repeat_ticks", 121 * 20);
+        intValue("accelerated_troops.shoot_interval_ticks", 2);
+        doubleValue("accelerated_troops.formation_max_distance", 6.0D);
+        doubleValue("accelerated_troops.roll_distance", 4.0D);
+        intValue("accelerated_troops.roll_cooldown_ticks", 6 * 20);
+        floatValue("accelerated_troops.non_player_damage_multiplier", 0.05F);
+        floatValue("accelerated_troops.shield_durability", 750.0F);
+        intValue("accelerated_troops.shield_recovery_ticks", 120 * 20);
+        floatValue("accelerated_troops.repeated_player_damage_bonus", 0.10F);
+        floatValue("accelerated_troops.attacker_switch_heal_fraction", 0.10F);
+        intValue("accelerated_troops.attacker_switch_heal_cooldown_ticks", 5 * 20);
+        doubleValue("accelerated_troops.interference_radius", 20.0D);
+        intValue("accelerated_troops.utility_window_ticks", 16 * 20);
+        intValue("accelerated_troops.utility_uses_per_window", 8);
+        intValue("accelerated_troops.utility_min_interval_ticks", 12);
+        doubleValue("accelerated_troops.utility_near_distance", 12.0D);
+        intValue("accelerated_troops.utility_obstacle_threshold", 8);
+        intValue("accelerated_troops.spawn_chance_percent", 25);
+        intValue("accelerated_troops.spawn_min_distance", 128);
+        intValue("accelerated_troops.spawn_max_distance", 256);
+        intValue("accelerated_troops.respawn_lockout_ticks", 30 * 60 * 20);
+        floatValue("accelerated_troops.loot.premium_coffee_chance", 0.75F);
+        intValue("accelerated_troops.loot.premium_coffee_min_count", 3);
+        intValue("accelerated_troops.loot.premium_coffee_max_count", 6);
+        floatValue("accelerated_troops.loot.respawn_beacon_chance", 0.50F);
+        intValue("accelerated_troops.portable_ads.active_ticks", 15 * 20);
+        intValue("accelerated_troops.portable_ads.cooldown_ticks", 60 * 20);
+        acceleratedPayload("triple_hand_cannon", 4.0D, 12.0F, 0, 24);
+        acceleratedPayload("tiger_cannon", 5.5D, 16.0F, 30, 32);
+        acceleratedPayload("quick_flash", 7.0D, 1.0F, 80, 16);
+        acceleratedPayload("wall_drill", 4.0D, 8.0F, 80, 24);
+        acceleratedPayload("suppression_stim", 4.0D, 4.0F, 160, 22);
+        acceleratedPayload("tear_gas", 5.0D, 2.0F, 160, 30);
+        acceleratedPayload("medical_waste", 6.0D, 2.0F, 160, 30);
+        acceleratedPayload("composite_incendiary", 6.0D, 10.0F, 120, 30);
+        acceleratedPayload("spiderling", 3.5D, 10.0F, 200, 18);
+        acceleratedPayload("frag", 5.0D, 14.0F, 0, 30);
+        acceleratedPayload("dewar", 5.5D, 5.0F, 120, 24);
+        acceleratedPayload("shock_arrow", 4.0D, 8.0F, 50, 20);
+        acceleratedPayload("shock_orb", 7.0D, 4.0F, 80, 28);
+        acceleratedPayload("pulse", 10.0D, 1.0F, 100, 28);
+    }
+
+    private static void acceleratedPayload(String id, double radius, float damage, int effectTicks, int fuseTicks) {
+        String root = "accelerated_troops.payload." + id + ".";
+        doubleValue(root + "radius", radius);
+        floatValue(root + "damage", damage);
+        intValue(root + "effect_ticks", effectTicks);
+        intValue(root + "fuse_ticks", fuseTicks);
     }
 
     public static int intValue(String path, int defaultValue) {
@@ -218,6 +279,15 @@ public final class DealtBossesConfig {
         Object attack = current.get("beacon.attack_range");
         if (attack instanceof Number attackNumber && Math.abs(attackNumber.doubleValue() - 30.0D) < 0.0001D) {
             current.set("beacon.attack_range", 40.0D);
+            dirty = true;
+        }
+    }
+
+    private static void migrateAcceleratedWarningDuration() {
+        CommentedFileConfig current = config();
+        Object raw = current.get("accelerated_troops.warning_duration_ticks");
+        if (raw instanceof Number number && number.intValue() == 18 * 20) {
+            current.set("accelerated_troops.warning_duration_ticks", 20 * 20);
             dirty = true;
         }
     }

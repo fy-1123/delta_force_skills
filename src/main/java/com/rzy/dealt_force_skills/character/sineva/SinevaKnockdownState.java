@@ -25,6 +25,9 @@ public final class SinevaKnockdownState {
         if (!(target instanceof ServerPlayer player) || ticks <= 0 || !player.isAlive()) {
             return;
         }
+        if (player.hasEffect(ModEffects.SHAKEHANDS.get())) {
+            return;
+        }
 
         Vec3 away = horizontalAway(attacker, player);
         float yaw = yawToward(attacker, player);

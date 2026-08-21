@@ -11,6 +11,10 @@ import com.rzy.dealt_force_skills.character.catdad.CatDadSkills;
 import com.rzy.dealt_force_skills.character.catdad.CatDadStateManager;
 import com.rzy.dealt_force_skills.character.chamber.ChamberSkills;
 import com.rzy.dealt_force_skills.character.chamber.ChamberStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderSkillContext;
+import com.rzy.dealt_force_skills.character.commander.CommanderSkillChoice;
+import com.rzy.dealt_force_skills.character.commander.CommanderSkills;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.corps.CorpsSkills;
 import com.rzy.dealt_force_skills.character.corps.CorpsStateManager;
 import com.rzy.dealt_force_skills.character.department.DepartmentOfTransportationSkills;
@@ -201,6 +205,10 @@ public final class SkillDispatcher {
             ChamberStateManager.initializeIfNeeded(player);
             ChamberStateManager.syncToClient(player);
         }
+        if (ModCharacters.COMMANDER_ID.equals(character.id())) {
+            CommanderStateManager.initializeIfNeeded(player);
+            CommanderStateManager.syncToClient(player);
+        }
         player.displayClientMessage(
                 Component.translatable("message.dealt_force_skills.character_selected",
                         character.displayName()),
@@ -298,8 +306,41 @@ public final class SkillDispatcher {
                     if (ModCharacters.CHAMBER_ID.equals(character.id())) {
                         ChamberStateManager.tick(player);
                     }
+                    if (ModCharacters.COMMANDER_ID.equals(character.id())) {
+                        CommanderStateManager.tick(player);
+                        for (String sourceId : CommanderStateManager.inheritedRuntimeSources(player)) {
+                            tickInheritedState(player, sourceId);
+                        }
+                        if (!CommanderStateManager.inheritedRuntimeSources(player)
+                                .contains(ModCharacters.D_WOLF_ID)
+                                && DWolfStateManager.hasOngoingRuntimeState(player)) {
+                            DWolfStateManager.tick(player);
+                        }
+                    }
                     SkillSoundFeedback.tick(player, character.id());
                 });
+    }
+
+    private static void tickInheritedState(ServerPlayer player, String characterId) {
+        CommanderSkillContext.run(player, characterId, () -> {
+            if (ModCharacters.SINEVA_ID.equals(characterId)) SinevaStateManager.tick(player);
+            else if (ModCharacters.ULURU_ID.equals(characterId)) UluruStateManager.tick(player);
+            else if (ModCharacters.D_WOLF_ID.equals(characterId)) DWolfStateManager.tick(player);
+            else if (ModCharacters.CORPS_ID.equals(characterId)) CorpsStateManager.tick(player);
+            else if (ModCharacters.GIZMO_ID.equals(characterId)) GizmoStateManager.tick(player);
+            else if (ModCharacters.SHEPHERD_ID.equals(characterId)) ShepherdStateManager.tick(player);
+            else if (ModCharacters.N_TWO_ID.equals(characterId)) NTwoStateManager.tick(player);
+            else if (ModCharacters.LUNA_ID.equals(characterId)) LunaStateManager.tick(player);
+            else if (ModCharacters.HACKCLAW_ID.equals(characterId)) HackclawStateManager.tick(player);
+            else if (ModCharacters.VYRON_ID.equals(characterId)) VyronStateManager.tick(player);
+            else if (ModCharacters.NOX_ID.equals(characterId)) NoxStateManager.tick(player);
+            else if (ModCharacters.STINGER_ID.equals(characterId)) StingerStateManager.tick(player);
+            else if (ModCharacters.MORSE_ID.equals(characterId)) MorseStateManager.tick(player);
+            else if (ModCharacters.TOXIK_ID.equals(characterId)) ToxikStateManager.tick(player);
+            else if (ModCharacters.RAPTOR_ID.equals(characterId)) RaptorStateManager.tick(player);
+            else if (ModCharacters.VLINDER_ID.equals(characterId)) VlinderStateManager.tick(player);
+            else if (ModCharacters.TEMPEST_ID.equals(characterId)) TempestStateManager.tick(player);
+        });
     }
 
     private static boolean finishSkillUse(ServerPlayer player, String characterId, SkillSlot slot, boolean alternate, boolean handled) {
@@ -311,36 +352,7 @@ public final class SkillDispatcher {
     }
 
     public static boolean useSkill(ServerPlayer player, SkillSlot slot, boolean alternate) {
-        if (player.isSpectator()) {
-            return false;
-        }
-
-        if (UluruLoiteringMissileEntity.isPlayerControlling(player)
-                || RaptorFalconDroneEntity.isPlayerControlling(player)) {
-            return false;
-        }
-
-        if (player.hasEffect(ModEffects.STUN.get())
-                || player.hasEffect(ModEffects.WEBBED.get())
-                || player.hasEffect(ModEffects.N_TWO_FROZEN.get())
-                || player.hasEffect(ModEffects.TEMPEST_DISARMED.get())
-                || StingerStateManager.isDowned(player)
-                || VlinderStateManager.isDowned(player)
-                || CatDadStateManager.isDowned(player)
-                || TempestStateManager.isActionLocked(player)
-                || NikaidouHiroWitchificationStateManager.isActionLocked(player)
-                || UndeadStateManager.isRitualDancing(player)
-                || RoundStartFreezeManager.isFrozen(player)) {
-            player.displayClientMessage(Component.translatable("message.dealt_force_skills.stunned"), true);
-            return false;
-        }
-
-        if (!slot.canBeTriggeredByKey()) {
-            return false;
-        }
-
-        if (GamblerArenaManager.blocksSkillUse(player)) {
-            player.displayClientMessage(Component.translatable("message.dealt_force_skills.gambler.arena.skill_blocked"), true);
+        if (!passesInputGuards(player, slot)) {
             return false;
         }
 
@@ -362,6 +374,85 @@ public final class SkillDispatcher {
         }
         SkillSoundFeedback.beginAttempt(player);
         MorseStateManager.recordPlayerAction(player);
+
+        if (ModCharacters.COMMANDER_ID.equals(character.id())) {
+            boolean handled = CommanderSkills.useSkill(player, slot, alternate);
+            CommanderStateManager.syncToClient(player);
+            return finishSkillUse(player, character.id(), slot, alternate, handled);
+        }
+
+        return dispatchCharacterSkill(player, character, slot, alternate);
+    }
+
+    public static boolean useCommanderSelectedSkill(ServerPlayer player, CommanderSkillChoice choice,
+                                                     boolean inheritedAlternate) {
+        if (choice == null || !passesInputGuards(player, choice.skillSlot())) {
+            return false;
+        }
+        Optional<CharacterDefinition> selected = CharacterSelectionManager.getSelectedCharacter(player);
+        if (selected.isEmpty() || !ModCharacters.COMMANDER_ID.equals(selected.get().id())) {
+            return false;
+        }
+        if (ElectronicInterferenceManager.tryBlockSkillUse(player, selected.get(), choice.skillSlot())) {
+            return true;
+        }
+        SkillSoundFeedback.beginAttempt(player);
+        MorseStateManager.recordPlayerAction(player);
+        boolean handled = CommanderSkills.useSelectedSkill(player, choice, inheritedAlternate);
+        return finishSkillUse(player, selected.get().id(), choice.skillSlot(), inheritedAlternate, handled);
+    }
+
+    private static boolean passesInputGuards(ServerPlayer player, SkillSlot slot) {
+        if (player == null || player.isSpectator() || slot == null) {
+            return false;
+        }
+        if (UluruLoiteringMissileEntity.isPlayerControlling(player)
+                || RaptorFalconDroneEntity.isPlayerControlling(player)) {
+            return false;
+        }
+        if (player.hasEffect(ModEffects.STUN.get())
+                || player.hasEffect(ModEffects.WEBBED.get())
+                || player.hasEffect(ModEffects.N_TWO_FROZEN.get())
+                || player.hasEffect(ModEffects.TEMPEST_DISARMED.get())
+                || StingerStateManager.isDowned(player)
+                || VlinderStateManager.isDowned(player)
+                || CatDadStateManager.isDowned(player)
+                || TempestStateManager.isActionLocked(player)
+                || NikaidouHiroWitchificationStateManager.isActionLocked(player)
+                || UndeadStateManager.isRitualDancing(player)
+                || RoundStartFreezeManager.isFrozen(player)) {
+            player.displayClientMessage(Component.translatable("message.dealt_force_skills.stunned"), true);
+            return false;
+        }
+        if (!slot.canBeTriggeredByKey()) {
+            return false;
+        }
+        if (GamblerArenaManager.blocksSkillUse(player)) {
+            player.displayClientMessage(Component.translatable(
+                    "message.dealt_force_skills.gambler.arena.skill_blocked"), true);
+            return false;
+        }
+        return true;
+    }
+
+    public static boolean useInheritedSkill(ServerPlayer player, String characterId, SkillSlot slot, boolean alternate) {
+        Optional<CharacterDefinition> source = ModCharacters.get(characterId);
+        if (source.isEmpty() || source.get().role() == com.rzy.dealt_force_skills.character.CharacterRole.BOSS
+                || source.get().role() == com.rzy.dealt_force_skills.character.CharacterRole.SPECIAL
+                || source.get().skill(slot).filter(SkillDefinition::implemented).isEmpty()) {
+            return false;
+        }
+        if (ElectronicInterferenceManager.tryBlockSkillUse(player, source.get(), slot)) {
+            return true;
+        }
+        SkillSoundFeedback.beginAttempt(player);
+        MorseStateManager.recordPlayerAction(player);
+        return CommanderSkillContext.run(player, characterId,
+                () -> dispatchCharacterSkill(player, source.get(), slot, alternate));
+    }
+
+    private static boolean dispatchCharacterSkill(ServerPlayer player, CharacterDefinition character,
+                                                  SkillSlot slot, boolean alternate) {
 
         if (ModCharacters.SINEVA_ID.equals(character.id())) {
             boolean handled = SinevaSkills.useSkill(player, slot, alternate);
@@ -532,7 +623,8 @@ public final class SkillDispatcher {
 
         player.displayClientMessage(
                 Component.translatable("message.dealt_force_skills.skill_placeholder",
-                        skill.get().displayName(),
+                        character.skill(slot).map(SkillDefinition::displayName)
+                                .orElse(Component.literal("-")),
                         character.displayName()),
                 true
         );

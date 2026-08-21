@@ -30,18 +30,21 @@ import java.util.UUID;
 public class BladeWireBlockEntity extends BlockEntity {
     private static volatile int MAX_CORE_HEALTH = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("MAX_CORE_HEALTH", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("deployables.bladewireblockentity.max_core_health", 120));
     private static volatile int STEP_SOUND_COOLDOWN_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("STEP_SOUND_COOLDOWN_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("deployables.blade_wire_block_entity.step_sound_cooldown_ticks", 24));
+    private static volatile int LIFETIME_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BLADE_WIRE_LIFETIME_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("deployables.blade_wire_block_entity.lifetime_ticks", 3_600));
     private static final String STEP_SOUND_NEXT_TICK = "DealtForceSinevaWireStepSoundNextTick";
     private static final String OWNER = "Owner";
     private static final String CORE_POS = "CorePos";
     private static final String CORE = "Core";
     private static final String LINKED_WIRE_COUNT = "LinkedWireCount";
     private static final String CORE_HEALTH = "CoreHealth";
+    private static final String EXPIRES_AT = "ExpiresAt";
 
     private UUID ownerId;
     private BlockPos corePos;
     private boolean core;
     private int linkedWireCount;
     private int coreHealth = MAX_CORE_HEALTH;
+    private long expiresAt;
     private int clientAge;
 
     public BladeWireBlockEntity(BlockPos pos, BlockState state) {
@@ -55,6 +58,7 @@ public class BladeWireBlockEntity extends BlockEntity {
         this.core = true;
         this.corePos = worldPosition;
         this.coreHealth = MAX_CORE_HEALTH;
+        this.expiresAt = level == null ? 0L : level.getGameTime() + Math.max(1, LIFETIME_TICKS);
         setChanged();
     }
 
@@ -77,6 +81,16 @@ public class BladeWireBlockEntity extends BlockEntity {
             return;
         }
         if (!(level instanceof ServerLevel serverLevel)) return;
+
+        if (be.core) {
+            if (be.expiresAt <= 0L) {
+                be.expiresAt = level.getGameTime() + Math.max(1, LIFETIME_TICKS);
+                be.setChanged();
+            } else if (level.getGameTime() >= be.expiresAt) {
+                level.removeBlock(pos, false);
+                return;
+            }
+        }
 
         if (!be.core && !isBladeWireCore(level, be.corePos)) {
             level.removeBlock(pos, false);
@@ -244,6 +258,7 @@ public class BladeWireBlockEntity extends BlockEntity {
         tag.putBoolean(CORE, core);
         tag.putInt(LINKED_WIRE_COUNT, linkedWireCount);
         tag.putInt(CORE_HEALTH, coreHealth);
+        tag.putLong(EXPIRES_AT, expiresAt);
         if (corePos != null) {
             CompoundTag coreTag = new CompoundTag();
             coreTag.putInt("X", corePos.getX());
@@ -260,6 +275,7 @@ public class BladeWireBlockEntity extends BlockEntity {
         core = tag.getBoolean(CORE);
         linkedWireCount = tag.getInt(LINKED_WIRE_COUNT);
         coreHealth = tag.contains(CORE_HEALTH, net.minecraft.nbt.Tag.TAG_INT) ? tag.getInt(CORE_HEALTH) : MAX_CORE_HEALTH;
+        expiresAt = tag.getLong(EXPIRES_AT);
         if (tag.contains(CORE_POS, net.minecraft.nbt.Tag.TAG_COMPOUND)) {
             CompoundTag coreTag = tag.getCompound(CORE_POS);
             corePos = new BlockPos(coreTag.getInt("X"), coreTag.getInt("Y"), coreTag.getInt("Z"));

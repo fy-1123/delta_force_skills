@@ -14,6 +14,8 @@ public final class SpecialWorkBlockConfig {
     private static final String HVK_CLONE_PROTOTYPE = "work_blocks.hvk_clone_prototype.enabled";
     private static final String HVK_ADVANCED_TREASURE_COMPASS = "work_blocks.hvk_advanced_treasure_compass.enabled";
     private static final String INTERDIMENSIONAL_BLOCK = "work_blocks.interdimensional_block.enabled";
+    private static final String HVK_ASARA_ARENA = "work_blocks.hvk_asara_arena.enabled";
+    private static final String HVK_ENCHANT_INFUSION = "work_blocks.hvk_enchant_infusion.enabled";
 
     private SpecialWorkBlockConfig() {
     }
@@ -38,6 +40,14 @@ public final class SpecialWorkBlockConfig {
         return DealtForceConfig.booleanValue(INTERDIMENSIONAL_BLOCK, true);
     }
 
+    public static boolean isHvkAsaraArenaEnabled() {
+        return DealtForceConfig.booleanValue(HVK_ASARA_ARENA, true);
+    }
+
+    public static boolean isHvkEnchantInfusionEnabled() {
+        return DealtForceConfig.booleanValue(HVK_ENCHANT_INFUSION, true);
+    }
+
     public static boolean isDisabledItem(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return false;
@@ -47,6 +57,12 @@ public final class SpecialWorkBlockConfig {
         }
         if (stack.is(ModItems.HVK_ADVANCED_DISASSEMBLY_BEAM_EMITTER.get())) {
             return !isHvkDisassemblerEnabled();
+        }
+        if (stack.is(ModItems.HVK_ASARA_ARENA.get())) {
+            return !isHvkAsaraArenaEnabled();
+        }
+        if (stack.is(ModItems.HVK_ENCHANT_INFUSION.get())) {
+            return !isHvkEnchantInfusionEnabled();
         }
         if (stack.is(ModItems.HVK_CLONE_PROTOTYPE.get())) {
             return !isHvkClonePrototypeEnabled();

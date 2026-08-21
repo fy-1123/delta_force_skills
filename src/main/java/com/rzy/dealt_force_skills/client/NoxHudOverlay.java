@@ -1,7 +1,9 @@
 package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.nox.NoxTool;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientNoxHudState;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -10,7 +12,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -24,12 +25,14 @@ public final class NoxHudOverlay {
 
     @SubscribeEvent
     public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        if (!VanillaGuiOverlay.HOTBAR.id().equals(event.getOverlay().id())) {
+        if (!SkillHudRenderCompat.shouldRender(event)) {
             return;
         }
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.options.hideGui || !ClientNoxHudState.shouldDisplay()) {
+        boolean nativeDisplay = ClientNoxHudState.shouldDisplay();
+        boolean inherited = ClientCommanderState.inherits(ModCharacters.NOX_ID);
+        if (minecraft.player == null || minecraft.options.hideGui || !nativeDisplay && !inherited) {
             return;
         }
 
@@ -39,6 +42,10 @@ public final class NoxHudOverlay {
         int y = ClientHudLayout.y(Math.max(8, graphics.guiHeight() - 68));
 
         drawStatus(graphics, font);
+
+        if (!nativeDisplay) {
+            return;
+        }
 
         drawSlot(graphics, font, x, y, 0xFF2F3544, KeybindRegister.CORE_SKILL,
                 Component.translatable("character.dealt_force_skills.nox.skill.silent_step"),

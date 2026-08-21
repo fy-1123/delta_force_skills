@@ -33,10 +33,16 @@ import com.rzy.dealt_force_skills.character.vyron.VyronStateManager;
 import com.rzy.dealt_force_skills.effect.MorseFlashedEffect;
 import com.rzy.dealt_force_skills.effect.NoxDelayedWoundEffect;
 import com.rzy.dealt_force_skills.effect.ToxikFireflyInterferenceEffect;
+import com.rzy.dealt_force_skills.effect.InjuryManager;
 import com.rzy.dealt_force_skills.entity.RaptorFalconDroneEntity;
 import com.rzy.dealt_force_skills.entity.UluruLoiteringMissileEntity;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.registries.ForgeRegistries;
+
+import java.util.ArrayList;
 
 public final class SkillRoundResetHelper {
     private SkillRoundResetHelper() {
@@ -103,6 +109,13 @@ public final class SkillRoundResetHelper {
         player.removeEffect(ModEffects.VLINDER_VITAL_DOWNED.get());
         player.removeEffect(ModEffects.VLINDER_RESCUE_PROTECTION.get());
         player.removeEffect(ModEffects.VLINDER_PLASMA_INJECTED.get());
+        InjuryManager.clearAll(player);
+        for (MobEffectInstance instance : new ArrayList<>(player.getActiveEffects())) {
+            ResourceLocation id = ForgeRegistries.MOB_EFFECTS.getKey(instance.getEffect());
+            if (id != null && DealtForceSkillsMod.MODID.equals(id.getNamespace())) {
+                player.removeEffect(instance.getEffect());
+            }
+        }
     }
 
     private static void clearRuntimeControllers(ServerPlayer player) {

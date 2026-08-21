@@ -98,7 +98,8 @@ public final class ClientHackclawHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != HackclawTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.HACKCLAW_ID))
+                && equippedTool != HackclawTool.NONE;
     }
 
     public static int knifeCharges() {

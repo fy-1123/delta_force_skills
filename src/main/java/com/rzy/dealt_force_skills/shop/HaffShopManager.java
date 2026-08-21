@@ -9,7 +9,6 @@ import com.rzy.dealt_force_skills.character.saeed.SaeedStateManager;
 import com.rzy.dealt_force_skills.config.DealtShopSetConfig;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_OpenHaffShop;
-import com.rzy.dealt_force_skills.registry.ModGameRules;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -25,12 +24,11 @@ public final class HaffShopManager {
         return shouldOpenShop(player, false);
     }
 
-    public static boolean shouldOpenShop(ServerPlayer player, boolean allowSaeed) {
-        return (player.serverLevel().getGameRules().getBoolean(ModGameRules.DEALT_FORCE_SHOP)
-                || ChamberStateManager.hasHaffPassive(player))
-                && !LexNinjiaStateManager.isLexNinjia(player)
+    public static boolean shouldOpenShop(ServerPlayer player, boolean allowSpecialCharacters) {
+        return DealtShopAccessManager.isAllowed(DealtShopAccessManager.Service.SHOP, player)
+                && (allowSpecialCharacters || (!LexNinjiaStateManager.isLexNinjia(player)
                 && !GhrothStateManager.isGhroth(player)
-                && (allowSaeed || !SaeedStateManager.isSaeed(player))
+                && !SaeedStateManager.isSaeed(player)))
                 && HaffCoinManager.canUseShop(player);
     }
 
@@ -38,8 +36,8 @@ public final class HaffShopManager {
         openShop(player, false);
     }
 
-    public static void openShop(ServerPlayer player, boolean allowSaeed) {
-        if (!shouldOpenShop(player, allowSaeed)) {
+    public static void openShop(ServerPlayer player, boolean allowSpecialCharacters) {
+        if (!shouldOpenShop(player, allowSpecialCharacters)) {
             return;
         }
         NetworkHandler.sendToPlayer(new S2C_OpenHaffShop(HaffCoinManager.get(player), DfsShopCatalog.entries()), player);

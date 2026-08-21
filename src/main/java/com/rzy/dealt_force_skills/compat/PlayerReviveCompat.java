@@ -47,6 +47,7 @@ public final class PlayerReviveCompat {
     private static Method getBleedingMethod;
     private static Method startBleedingMethod;
     private static Method reviveMethod;
+    private static Method killMethod;
     private static Method removePlayerAsHelperMethod;
     private static Method revivingPlayersMethod;
     private static Method timeLeftMethod;
@@ -274,6 +275,10 @@ public final class PlayerReviveCompat {
             ServerPlayer helper = firstSupportHelper(helpers);
             boolean fullHeal = stingerHelper;
             if (revive(target, fullHeal) && helper != null) {
+                if (stingerHelper) {
+                    StingerStateManager.markRescueCooldown(helper);
+                    StingerStateManager.markRescueCooldown(target);
+                }
                 DfsAchievements.onRescue(helper, target, false, rescueSource(helper));
             }
         }
@@ -297,6 +302,11 @@ public final class PlayerReviveCompat {
                 continue;
             }
             if (!helper.isAlive() || helper.level() != target.level()) {
+                removePlayerAsHelper(helper);
+                continue;
+            }
+            if (StingerStateManager.isStinger(helper)
+                    && !StingerStateManager.rescueCooldownReady(helper)) {
                 removePlayerAsHelper(helper);
                 continue;
             }
@@ -347,8 +357,16 @@ public final class PlayerReviveCompat {
             for (ServerPlayer downed : trulyDowned) {
                 downed.displayClientMessage(Component.translatable(
                         "message.dealt_force_skills.playerrevive.team_wipe"), true);
-                downed.kill();
+                bleedOutPreservingAttacker(downed);
             }
+        }
+    }
+
+    private static void bleedOutPreservingAttacker(ServerPlayer player) {
+        try {
+            killMethod.invoke(null, player);
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            player.kill();
         }
     }
 
@@ -454,6 +472,7 @@ public final class PlayerReviveCompat {
                 getBleedingMethod = serverClass.getMethod("getBleeding", Player.class);
                 startBleedingMethod = serverClass.getMethod("startBleeding", Player.class, DamageSource.class);
                 reviveMethod = serverClass.getMethod("revive", Player.class);
+                killMethod = serverClass.getMethod("kill", Player.class);
                 removePlayerAsHelperMethod = serverClass.getMethod("removePlayerAsHelper", Player.class);
 
                 Class<?> bleedingClass = Class.forName("team.creative.playerrevive.cap.Bleeding");
@@ -467,6 +486,7 @@ public final class PlayerReviveCompat {
                 getBleedingMethod = null;
                 startBleedingMethod = null;
                 reviveMethod = null;
+                killMethod = null;
                 removePlayerAsHelperMethod = null;
                 revivingPlayersMethod = null;
                 timeLeftMethod = null;

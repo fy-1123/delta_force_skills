@@ -1,6 +1,7 @@
 package com.rzy.dealt_force_skills.skill;
 
 import com.rzy.dealt_force_skills.registry.ModGameRules;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -54,6 +55,8 @@ public final class SkillCooldownHelper {
         }
         int level = ModGameRules.effectiveExperienceLevel(player);
         double multiplier = Math.max(0.0D, 1.0D - level * REDUCTION_PER_LEVEL);
+        multiplier *= com.rzy.dealt_force_skills.arena.HvkAsaraArenaManager.cooldownMultiplier(player);
+        multiplier *= CommanderStateManager.skillCooldownMultiplier(player);
         return Math.max(1, (int) Math.ceil(baseTicks * multiplier));
     }
 

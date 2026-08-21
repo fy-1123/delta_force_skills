@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
@@ -51,6 +53,7 @@ public class LunaShockArrowEntity extends Projectile implements ItemSupplier, Bl
     private static final Map<UUID, Integer> PULL_TICKS = new HashMap<>();
 
     private boolean bounceEnabled;
+    private boolean highPressureArrow;
     private boolean bounced;
     private boolean stuck;
     private int pulseTicksRemaining = MAX_PULSE_TICKS;
@@ -65,6 +68,8 @@ public class LunaShockArrowEntity extends Projectile implements ItemSupplier, Bl
         super(type, level);
         setOwner(owner);
         this.bounceEnabled = bounceEnabled;
+        highPressureArrow = owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.LUNA_HIGH_PRESSURE_ARROW);
     }
 
     @Override
@@ -128,6 +133,7 @@ public class LunaShockArrowEntity extends Projectile implements ItemSupplier, Bl
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         bounceEnabled = tag.getBoolean("BounceEnabled");
+        highPressureArrow = tag.getBoolean("HighPressureArrow");
         bounced = tag.getBoolean("Bounced");
         stuck = tag.getBoolean("Stuck");
         pulseTicksRemaining = tag.getInt("PulseTicksRemaining");
@@ -147,6 +153,7 @@ public class LunaShockArrowEntity extends Projectile implements ItemSupplier, Bl
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
         tag.putBoolean("BounceEnabled", bounceEnabled);
+        tag.putBoolean("HighPressureArrow", highPressureArrow);
         tag.putBoolean("Bounced", bounced);
         tag.putBoolean("Stuck", stuck);
         tag.putInt("PulseTicksRemaining", pulseTicksRemaining);
@@ -279,13 +286,16 @@ public class LunaShockArrowEntity extends Projectile implements ItemSupplier, Bl
         Vec3 center = position();
         RangedSoundHelper.playThrottled(serverLevel, center, ModSounds.LUNA_SHOCK_ARROW_PULSE.get(),
                 SoundSource.PLAYERS, 0.8f, 1.0f, 18.0D, 4, 3.0D);
+        double effectiveRadius = highPressureArrow ? PULSE_RADIUS * 2.5D : PULSE_RADIUS;
         serverLevel.sendParticles(ParticleTypes.ELECTRIC_SPARK, center.x, center.y, center.z,
-                18, 0.55D, 0.35D, 0.55D, 0.03D);
-        AABB box = new AABB(center, center).inflate(PULSE_RADIUS);
+                highPressureArrow ? 36 : 18,
+                Math.max(0.55D, effectiveRadius * 0.35D), 0.35D,
+                Math.max(0.55D, effectiveRadius * 0.35D), 0.03D);
+        AABB box = new AABB(center, center).inflate(effectiveRadius);
         for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box,
                 entity -> TargetingUtil.isSelfOrHostileLivingFor(owner, entity)
-                        && entity.distanceToSqr(center) <= PULSE_RADIUS * PULSE_RADIUS)) {
-            if (!hasLineOfSight(center, target)) {
+                        && entity.distanceToSqr(center) <= effectiveRadius * effectiveRadius)) {
+            if (!highPressureArrow && !hasLineOfSight(center, target)) {
                 continue;
             }
             target.invulnerableTime = 0;

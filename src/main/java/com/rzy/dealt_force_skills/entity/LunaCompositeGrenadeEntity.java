@@ -1,11 +1,13 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -202,22 +204,27 @@ public class LunaCompositeGrenadeEntity extends Projectile implements ItemSuppli
 
         LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
         ServerPlayer ownerPlayer = owner instanceof ServerPlayer player ? player : null;
+        double radius = CommanderStateManager.skillRadius(ownerPlayer, RADIUS);
+        double falloff = CommanderStateManager.skillDamageFalloff(ownerPlayer, 0.1D);
         RangedSoundHelper.playThrottled(serverLevel, center, ModSounds.LUNA_GRENADE_EXPLODE.get(),
                 SoundSource.PLAYERS, 1.25f, 1.0f, 26.0D, 3, 4.0D);
         serverLevel.sendParticles(ParticleTypes.EXPLOSION, center.x, center.y + 0.2D, center.z,
                 14, 0.8D, 0.35D, 0.8D, 0.02D);
         serverLevel.sendParticles(ParticleTypes.CLOUD, center.x, center.y + 0.2D, center.z,
-                90, RADIUS * 0.68D, 0.5D, RADIUS * 0.68D, 0.05D);
+                90, radius * 0.68D, 0.5D, radius * 0.68D, 0.05D);
 
-        AABB box = new AABB(center, center).inflate(RADIUS);
+        AABB box = new AABB(center, center).inflate(radius);
         for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
+            if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)) {
+                continue;
+            }
             Vec3 targetCenter = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
             double distance = targetCenter.distanceTo(center);
-            if (distance > RADIUS || !hasLineOfSight(center, targetCenter)) {
+            if (distance > radius || !hasLineOfSight(center, targetCenter)) {
                 continue;
             }
 
-            float baseDamage = 100.0f * Math.max(0.0f, 1.0f - (float) distance * 0.1f);
+            float baseDamage = 100.0f * Math.max(0.0f, 1.0f - (float) (distance * falloff));
             if (baseDamage <= 0.0f) {
                 continue;
             }

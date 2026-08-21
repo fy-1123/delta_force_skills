@@ -9,7 +9,9 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ModSounds {
@@ -33,6 +35,14 @@ public class ModSounds {
             reg("hvk_constructor_craft_start");
     public static final RegistryObject<SoundEvent> HVK_CONSTRUCTOR_CRAFT_FINISH =
             reg("hvk_constructor_craft_finish");
+    public static final RegistryObject<SoundEvent> HVK_ASARA_ARENA_OPEN = reg("hvk_asara_arena_open");
+    public static final RegistryObject<SoundEvent> HVK_ASARA_ARENA_START = reg("hvk_asara_arena_start");
+    public static final RegistryObject<SoundEvent> HVK_ASARA_ARENA_FAILURE = reg("hvk_asara_arena_failure");
+    public static final RegistryObject<SoundEvent> HVK_ASARA_ARENA_SUCCESS = reg("hvk_asara_arena_success");
+    public static final RegistryObject<SoundEvent> HVK_ENCHANT_INFUSION_UPGRADE =
+            reg("hvk_enchant_infusion_upgrade");
+    public static final RegistryObject<SoundEvent> HVK_ENCHANT_INFUSION_DOWNGRADE_OR_CLEAR =
+            reg("hvk_enchant_infusion_downgrade_or_clear");
     public static final RegistryObject<SoundEvent> HVK_DISASSEMBLER_USE =
             reg("hvk_disassembler_use");
     public static final RegistryObject<SoundEvent> HVK_DISASSEMBLER_REPEL =
@@ -508,9 +518,73 @@ public class ModSounds {
     public static final RegistryObject<SoundEvent> INTERDIMENSIONAL_BLOCK_USE_10 = reg("interdimensional_block_use_10");
     public static final RegistryObject<SoundEvent> INTERDIMENSIONAL_BLOCK_BURIED = reg("interdimensional_block_buried");
 
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_WARNING_1 = reg("accelerated_troops_warning_1");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_WARNING_2 = reg("accelerated_troops_warning_2");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_WARNING_3_1 = reg("accelerated_troops_warning_3_1");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_WARNING_3_2 = reg("accelerated_troops_warning_3_2");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_COMBAT_1 = reg("accelerated_troops_combat_1");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_COMBAT_2 = reg("accelerated_troops_combat_2");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_COMBAT_3 = reg("accelerated_troops_combat_3");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_COMBAT_4 = reg("accelerated_troops_combat_4");
+    public static final RegistryObject<SoundEvent> ACCELERATED_TROOPS_BATTLE_MUSIC = reg("accelerated_troops_battle_music");
+
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_EQUIP = reg("hook_author_equip");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_UNEQUIP = reg("hook_author_unequip");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_CHARGE_STEP = reg("hook_author_charge_step");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_RELEASE = reg("hook_author_release");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_RELEASE_EXTRA = reg("hook_author_release_extra");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_HISS = reg("hook_author_hiss");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_USE = reg("hook_author_use");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_LOCK = reg("hook_author_lock");
+    public static final RegistryObject<SoundEvent> HOOK_AUTHOR_EXECUTE = reg("hook_author_execute");
+    public static final List<RegistryObject<SoundEvent>> HOOK_AUTHOR_78 = registerIndexed("hook_author_78_", 15);
+
+    public static final RegistryObject<SoundEvent> COMMANDER_MARK_1 = reg("commander_mark_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_MARK_2 = reg("commander_mark_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_SMOKE_1 = reg("commander_smoke_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_SMOKE_2 = reg("commander_smoke_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_LIGHTNING = reg("commander_lightning");
+    public static final RegistryObject<SoundEvent> COMMANDER_MEDICAL_1 = reg("commander_medical_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_MEDICAL_2 = reg("commander_medical_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_QUICK_REVIVE_1 = reg("commander_quick_revive_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_QUICK_REVIVE_2 = reg("commander_quick_revive_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_ARTILLERY_1 = reg("commander_artillery_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_ARTILLERY_2 = reg("commander_artillery_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_VEHICLE_1 = reg("commander_vehicle_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_VEHICLE_2 = reg("commander_vehicle_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_EQUIPMENT_1 = reg("commander_equipment_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_EQUIPMENT_2 = reg("commander_equipment_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_DRONE_START = reg("commander_drone_start");
+    public static final RegistryObject<SoundEvent> COMMANDER_DRONE_LAND = reg("commander_drone_land");
+    public static final RegistryObject<SoundEvent> COMMANDER_BEACON_1 = reg("commander_beacon_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_BEACON_2 = reg("commander_beacon_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_MISSILE_FLY = reg("commander_missile_fly");
+    public static final RegistryObject<SoundEvent> COMMANDER_MISSILE_1 = reg("commander_missile_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_MISSILE_2 = reg("commander_missile_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_EXPLOSION_1 = reg("commander_explosion_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_EXPLOSION_2 = reg("commander_explosion_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_EXPLOSION_3 = reg("commander_explosion_3");
+    public static final RegistryObject<SoundEvent> COMMANDER_EXPLOSION_4 = reg("commander_explosion_4");
+    public static final RegistryObject<SoundEvent> COMMANDER_ALARM = reg("commander_alarm");
+    public static final RegistryObject<SoundEvent> COMMANDER_MISSILE_READY = reg("commander_missile_ready");
+    public static final RegistryObject<SoundEvent> COMMANDER_SMOKE_READY = reg("commander_smoke_ready");
+    public static final RegistryObject<SoundEvent> COMMANDER_NUCLEAR_RELEASE = reg("commander_nuclear_release");
+    public static final RegistryObject<SoundEvent> COMMANDER_MARK_KILL_1 = reg("commander_mark_kill_1");
+    public static final RegistryObject<SoundEvent> COMMANDER_MARK_KILL_2 = reg("commander_mark_kill_2");
+    public static final RegistryObject<SoundEvent> COMMANDER_MARK_KILL_3 = reg("commander_mark_kill_3");
+    public static final RegistryObject<SoundEvent> COMMANDER_ARTILLERY_READY = reg("commander_artillery_ready");
+    public static final RegistryObject<SoundEvent> COMMANDER_VEHICLE_READY = reg("commander_vehicle_ready");
+    public static final RegistryObject<SoundEvent> COMMANDER_BEACON_READY = reg("commander_beacon_ready");
+
     private static RegistryObject<SoundEvent> reg(String id) {
         return SOUNDS.register(id, () -> SoundEvent.createVariableRangeEvent(
                 ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, id)));
+    }
+
+    private static List<RegistryObject<SoundEvent>> registerIndexed(String prefix, int count) {
+        List<RegistryObject<SoundEvent>> result = new ArrayList<>(count);
+        for (int i = 1; i <= count; i++) result.add(reg(prefix + i));
+        return Collections.unmodifiableList(result);
     }
 
     private static RegistryObject<SoundEvent> regFixed(String id, float range) {

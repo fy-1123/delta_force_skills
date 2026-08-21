@@ -9,9 +9,13 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
+import mccfk.DeltaForce.java.network.C2S_CreateMarker;
+import mccfk.DeltaForce.java.network.S2C_SyncMarkers;
+import mccfk.DeltaForce.java.network.C2S_DfWarehouseAction;
+import mccfk.DeltaForce.java.network.S2C_DfWarehouseSnapshot;
 
 public class NetworkHandler {
-    private static final String PROTOCOL = "43";
+    private static final String PROTOCOL = "68";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "main"),
@@ -67,6 +71,41 @@ public class NetworkHandler {
                     .decoder(C2S_AdvancedWorkBlockAction::decode)
                     .consumerMainThread(C2S_AdvancedWorkBlockAction::handle).add();
 
+            CHANNEL.messageBuilder(C2S_ConfigureHvkAdvancedSpawner.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_ConfigureHvkAdvancedSpawner::encode)
+                    .decoder(C2S_ConfigureHvkAdvancedSpawner::decode)
+                    .consumerMainThread(C2S_ConfigureHvkAdvancedSpawner::handle).add();
+
+            CHANNEL.messageBuilder(S2C_OpenHvkAdvancedSpawner.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_OpenHvkAdvancedSpawner::encode)
+                    .decoder(S2C_OpenHvkAdvancedSpawner::decode)
+                    .consumerMainThread(S2C_OpenHvkAdvancedSpawner::handle).add();
+
+            CHANNEL.messageBuilder(C2S_HvkEnchantInfusionAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_HvkEnchantInfusionAction::encode)
+                    .decoder(C2S_HvkEnchantInfusionAction::decode)
+                    .consumerMainThread(C2S_HvkEnchantInfusionAction::handle).add();
+
+            CHANNEL.messageBuilder(S2C_OpenHvkEnchantInfusion.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_OpenHvkEnchantInfusion::encode)
+                    .decoder(S2C_OpenHvkEnchantInfusion::decode)
+                    .consumerMainThread(S2C_OpenHvkEnchantInfusion::handle).add();
+
+            CHANNEL.messageBuilder(C2S_ConfigureHvkAsaraArena.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_ConfigureHvkAsaraArena::encode)
+                    .decoder(C2S_ConfigureHvkAsaraArena::decode)
+                    .consumerMainThread(C2S_ConfigureHvkAsaraArena::handle).add();
+
+            CHANNEL.messageBuilder(S2C_OpenHvkAsaraArena.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_OpenHvkAsaraArena::encode)
+                    .decoder(S2C_OpenHvkAsaraArena::decode)
+                    .consumerMainThread(S2C_OpenHvkAsaraArena::handle).add();
+
+            CHANNEL.messageBuilder(S2C_HvkAsaraArenaStatus.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_HvkAsaraArenaStatus::encode)
+                    .decoder(S2C_HvkAsaraArenaStatus::decode)
+                    .consumerMainThread(S2C_HvkAsaraArenaStatus::handle).add();
+
             CHANNEL.messageBuilder(C2S_EternalLoveBlessingCapture.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_EternalLoveBlessingCapture::encode)
                     .decoder(C2S_EternalLoveBlessingCapture::decode)
@@ -116,6 +155,16 @@ public class NetworkHandler {
                     .encoder(C2S_SinevaShieldBash::encode)
                     .decoder(C2S_SinevaShieldBash::decode)
                     .consumerMainThread(C2S_SinevaShieldBash::handle).add();
+
+            CHANNEL.messageBuilder(C2S_EmptyHandExtinguish.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_EmptyHandExtinguish::encode)
+                    .decoder(C2S_EmptyHandExtinguish::decode)
+                    .consumerMainThread(C2S_EmptyHandExtinguish::handle).add();
+
+            CHANNEL.messageBuilder(C2S_HookAuthorBlessingInput.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_HookAuthorBlessingInput::encode)
+                    .decoder(C2S_HookAuthorBlessingInput::decode)
+                    .consumerMainThread(C2S_HookAuthorBlessingInput::handle).add();
 
             CHANNEL.messageBuilder(C2S_SinevaShieldCharge.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_SinevaShieldCharge::encode)
@@ -751,6 +800,93 @@ public class NetworkHandler {
                     .encoder(S2C_ConfigApplyResult::encode)
                     .decoder(S2C_ConfigApplyResult::decode)
                     .consumerMainThread(S2C_ConfigApplyResult::handle).add();
+
+            CHANNEL.messageBuilder(S2C_SyncModGameRules.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_SyncModGameRules::encode)
+                    .decoder(S2C_SyncModGameRules::decode)
+                    .consumerMainThread(S2C_SyncModGameRules::handle).add();
+
+            CHANNEL.messageBuilder(C2S_SpecialOperationsBaseAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_SpecialOperationsBaseAction::encode)
+                    .decoder(C2S_SpecialOperationsBaseAction::decode)
+                    .consumerMainThread(C2S_SpecialOperationsBaseAction::handle).add();
+
+            CHANNEL.messageBuilder(S2C_SpecialOperationsBaseSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_SpecialOperationsBaseSnapshot::encode)
+                    .decoder(S2C_SpecialOperationsBaseSnapshot::decode)
+                    .consumerMainThread(S2C_SpecialOperationsBaseSnapshot::handle).add();
+
+            CHANNEL.messageBuilder(C2S_GtiSpecialOperationsAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_GtiSpecialOperationsAction::encode).decoder(C2S_GtiSpecialOperationsAction::decode)
+                    .consumerMainThread(C2S_GtiSpecialOperationsAction::handle).add();
+            CHANNEL.messageBuilder(S2C_OpenGtiSpecialOperations.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_OpenGtiSpecialOperations::encode).decoder(S2C_OpenGtiSpecialOperations::decode)
+                    .consumerMainThread(S2C_OpenGtiSpecialOperations::handle).add();
+            CHANNEL.messageBuilder(S2C_OpenGtiTradingHall.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_OpenGtiTradingHall::encode).decoder(S2C_OpenGtiTradingHall::decode)
+                    .consumerMainThread(S2C_OpenGtiTradingHall::handle).add();
+            CHANNEL.messageBuilder(C2S_CreateMarker.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_CreateMarker::encode).decoder(C2S_CreateMarker::decode)
+                    .consumerMainThread(C2S_CreateMarker::handle).add();
+            CHANNEL.messageBuilder(S2C_SyncMarkers.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_SyncMarkers::encode).decoder(S2C_SyncMarkers::decode)
+                    .consumerMainThread(S2C_SyncMarkers::handle).add();
+            CHANNEL.messageBuilder(C2S_DfWarehouseAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_DfWarehouseAction::encode).decoder(C2S_DfWarehouseAction::decode)
+                    .consumerMainThread(C2S_DfWarehouseAction::handle).add();
+            CHANNEL.messageBuilder(S2C_DfWarehouseSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_DfWarehouseSnapshot::encode).decoder(S2C_DfWarehouseSnapshot::decode)
+                    .consumerMainThread(S2C_DfWarehouseSnapshot::handle).add();
+            CHANNEL.messageBuilder(C2S_OpenOwnShop.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_OpenOwnShop::encode).decoder(C2S_OpenOwnShop::decode)
+                    .consumerMainThread(C2S_OpenOwnShop::handle).add();
+            CHANNEL.messageBuilder(C2S_StartPageAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_StartPageAction::encode).decoder(C2S_StartPageAction::decode)
+                    .consumerMainThread(C2S_StartPageAction::handle).add();
+            CHANNEL.messageBuilder(S2C_StartPageSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_StartPageSnapshot::encode).decoder(S2C_StartPageSnapshot::decode)
+                    .consumerMainThread(S2C_StartPageSnapshot::handle).add();
+
+            CHANNEL.messageBuilder(S2C_CommanderSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_CommanderSnapshot::encode)
+                    .decoder(S2C_CommanderSnapshot::decode)
+                    .consumerMainThread(S2C_CommanderSnapshot::handle).add();
+            CHANNEL.messageBuilder(C2S_SetCommanderSkill.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_SetCommanderSkill::encode)
+                    .decoder(C2S_SetCommanderSkill::decode)
+                    .consumerMainThread(C2S_SetCommanderSkill::handle).add();
+            CHANNEL.messageBuilder(C2S_ToggleCommanderPassive.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_ToggleCommanderPassive::encode)
+                    .decoder(C2S_ToggleCommanderPassive::decode)
+                    .consumerMainThread(C2S_ToggleCommanderPassive::handle).add();
+            CHANNEL.messageBuilder(C2S_UseCommanderInheritedSkill.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_UseCommanderInheritedSkill::encode)
+                    .decoder(C2S_UseCommanderInheritedSkill::decode)
+                    .consumerMainThread(C2S_UseCommanderInheritedSkill::handle).add();
+            CHANNEL.messageBuilder(C2S_BuyCommanderUpgrade.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_BuyCommanderUpgrade::encode)
+                    .decoder(C2S_BuyCommanderUpgrade::decode)
+                    .consumerMainThread(C2S_BuyCommanderUpgrade::handle).add();
+            CHANNEL.messageBuilder(C2S_BuyCommanderBranchUpgrade.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_BuyCommanderBranchUpgrade::encode)
+                    .decoder(C2S_BuyCommanderBranchUpgrade::decode)
+                    .consumerMainThread(C2S_BuyCommanderBranchUpgrade::handle).add();
+            CHANNEL.messageBuilder(C2S_OpenCommanderScreen.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_OpenCommanderScreen::encode)
+                    .decoder(C2S_OpenCommanderScreen::decode)
+                    .consumerMainThread(C2S_OpenCommanderScreen::handle).add();
+            CHANNEL.messageBuilder(S2C_OpenCommanderScreen.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_OpenCommanderScreen::encode)
+                    .decoder(S2C_OpenCommanderScreen::decode)
+                    .consumerMainThread(S2C_OpenCommanderScreen::handle).add();
+            CHANNEL.messageBuilder(C2S_CommanderSupport.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_CommanderSupport::encode)
+                    .decoder(C2S_CommanderSupport::decode)
+                    .consumerMainThread(C2S_CommanderSupport::handle).add();
+            CHANNEL.messageBuilder(S2C_CommanderVehicleState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_CommanderVehicleState::encode)
+                    .decoder(S2C_CommanderVehicleState::decode)
+                    .consumerMainThread(S2C_CommanderVehicleState::handle).add();
         });
     }
 

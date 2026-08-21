@@ -90,7 +90,8 @@ public class ModCreativeTabs {
                         output.accept(ModItems.SPECIAL_EQUIPMENT_SUPPLY.get());
                         output.accept(ModItems.DRIFTWOOD.get());
                         output.accept(ModItems.LUCKY_COIN.get());
-                        output.accept(ModItems.ETERNAL_LOVE_BLESSING.get());
+            output.accept(ModItems.ETERNAL_LOVE_BLESSING.get());
+            output.accept(ModItems.HOOK_AUTHOR_BLESSING.get());
                         output.accept(ModItems.RAVEN_SHADOW_EXTRACT.get());
                         output.accept(ModItems.DARK_ZONE_RAINBOW_INJECTION.get());
                         output.accept(ModItems.EXPERIMENTAL_IRON_CURTAIN_CATALYST.get());
@@ -158,14 +159,28 @@ public class ModCreativeTabs {
                         output.accept(ModItems.HVK_BRAIN_UNIT.get());
                         output.accept(ModItems.BEACON_BRAIN_UNIT.get());
                         output.accept(ModItems.BEACON_BOSS_SPAWN_EGG.get());
+                        output.accept(ModItems.ACCELERATED_TROOPS_SPAWN_EGG.get());
+                        output.accept(ModItems.PORTABLE_ADS_DEVICE.get());
+                        output.accept(ModItems.RESPAWN_BEACON.get());
+                        output.accept(ModItems.ASARA_FLAMETHROWER_SPAWN_EGG.get());
+                        output.accept(ModItems.ASARA_MACHINE_GUNNER_SPAWN_EGG.get());
+                        output.accept(ModItems.ASARA_SHIELD_TROOPER_SPAWN_EGG.get());
+                        output.accept(ModItems.ASARA_ROCKET_TROOPER_SPAWN_EGG.get());
+                        output.accept(ModItems.ASARA_SNIPER_SPAWN_EGG.get());
+                        output.accept(ModItems.ASARA_SENTRY_SNIPER_SPAWN_EGG.get());
+                        output.accept(ModItems.ASARA_GUARD_SOLDIER_SPAWN_EGG.get());
+                        output.accept(ModItems.HVK_ASARA_ARENA.get());
+                        output.accept(ModItems.HVK_ENCHANT_INFUSION.get());
                         output.accept(ModItems.PROGRAMMABLE_PROCESSOR.get());
                         output.accept(ModItems.HVK_ADVANCED_STANDARD_TEMPLATE_CONSTRUCTOR.get());
                         output.accept(ModItems.HVK_ADVANCED_DISASSEMBLY_BEAM_EMITTER.get());
+                        output.accept(ModItems.HVK_ADVANCED_SPAWNER.get());
                         output.accept(ModItems.HVK_CLONE_PROTOTYPE.get());
                         output.accept(ModItems.HVK_ADVANCED_TREASURE_COMPASS.get());
                         output.accept(ModItems.HVK_TREASURE_CHEST_BOX.get());
                         output.accept(ModItems.HVK_UNIVERSAL_GLUE.get());
                         output.accept(ModItems.INTERDIMENSIONAL_BLOCK.get());
+                        output.accept(ModItems.GTI_SPECIAL_OPERATIONS.get());
                     })
                     .build());
 }

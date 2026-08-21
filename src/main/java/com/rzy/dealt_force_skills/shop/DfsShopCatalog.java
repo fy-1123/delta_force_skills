@@ -158,6 +158,24 @@ public final class DfsShopCatalog {
                 .findFirst();
     }
 
+    public static Optional<HaffPriceUpdate> setHaffPrice(ItemStack stack, int price) {
+        if (stack == null || stack.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Spec spec : BASE_ENTRIES) {
+            if (stack.is(spec.item().get())) {
+                DealtForceShopConfig.setIntValue("haff_shop.items." + spec.id() + ".price", price);
+                return Optional.of(new HaffPriceUpdate(spec.id(), price));
+            }
+        }
+        return TaczShopCatalog.find(stack).map(entry -> {
+            String path = "haff_shop.tacz." + entry.type().configSection()
+                    + "." + TaczShopCatalog.configKey(entry.id()) + ".price";
+            DealtForceShopConfig.setIntValue(path, price);
+            return new HaffPriceUpdate(entry.entryId(), price);
+        });
+    }
+
     public static ItemStack buildPurchasedStack(String entryId) {
         Optional<Entry> found = find(entryId);
         return found.map(entry -> entry.preview().copy()).orElse(ItemStack.EMPTY);
@@ -268,5 +286,8 @@ public final class DfsShopCatalog {
     }
 
     public record Entry(String id, Category category, DfsItemQuality quality, int price, ItemStack preview) {
+    }
+
+    public record HaffPriceUpdate(String entryId, int price) {
     }
 }

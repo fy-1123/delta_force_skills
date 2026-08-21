@@ -138,10 +138,7 @@ public class DepartmentOverheatLaserEntity extends Entity implements ItemSupplie
         DamageSource source = SkillDamageHelper.departmentLaser(level, this, owner);
         LivingEntity ownerLiving = owner instanceof LivingEntity living ? living : null;
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
-            if (ownerId != null && ownerId.equals(target.getUUID())) {
-                continue;
-            }
-            if (!TargetingUtil.isTargetableLiving(target) || !hitEntities.add(target.getUUID())) {
+            if (!TargetingUtil.isHostileLivingFor(owner, target) || !hitEntities.add(target.getUUID())) {
                 continue;
             }
             if (!intersectsBeam(target, from, to)) {

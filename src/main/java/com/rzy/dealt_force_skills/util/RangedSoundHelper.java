@@ -34,6 +34,23 @@ public final class RangedSoundHelper {
         playFollowingEntity(level, player, sound, source, volume, pitch, radius);
     }
 
+    public static void playForPlayer(ServerPlayer player, SoundEvent sound, SoundSource source,
+                                     float volume, float pitch) {
+        if (player == null || sound == null) {
+            return;
+        }
+        player.connection.send(new ClientboundSoundEntityPacket(
+                Holder.direct(sound), source, player, volume, pitch,
+                player.serverLevel().getRandom().nextLong()));
+    }
+
+    public static void stopForPlayer(ServerPlayer player, SoundEvent sound, SoundSource source) {
+        if (player == null || sound == null) {
+            return;
+        }
+        player.connection.send(new ClientboundStopSoundPacket(sound.getLocation(), source));
+    }
+
     public static void playFollowingEntity(ServerLevel level, Entity entity, SoundEvent sound, SoundSource source,
                                            float volume, float pitch, double radius) {
         Vec3 position = entity.position();

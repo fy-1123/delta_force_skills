@@ -49,7 +49,7 @@ public class GizmoSpiderlingEntity extends Entity implements ItemSupplier, Block
     private static final int CRAWL_SOUND_INTERVAL_TICKS = 13;
     private static volatile double SPEED = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SPEED", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmospiderlingentity.speed", 0.2));
     private static volatile double EXPLOSION_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("EXPLOSION_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmospiderlingentity.explosion_radius", 1.5));
-    private static volatile double PLAYER_TARGET_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("PLAYER_TARGET_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmospiderlingentity.player_target_radius", 2.0));
+    private static volatile double PLAYER_TARGET_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("PLAYER_TARGET_RADIUS", () -> Math.max(6.0, com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmospiderlingentity.player_target_radius", 6.0)));
     private static volatile double WALL_CLIMB_MAX_HEIGHT = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("WALL_CLIMB_MAX_HEIGHT", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmo_spiderling.wall_climb_max_height", 7.5));
     private static final DustParticleOptions RED_MARKER = new DustParticleOptions(new Vector3f(1.0f, 0.05f, 0.02f), 1.0f);
 
@@ -57,14 +57,21 @@ public class GizmoSpiderlingEntity extends Entity implements ItemSupplier, Block
     private float health = 4.0f;
     private double dirX;
     private double dirZ = 1.0D;
+    private boolean smartSpider;
 
     public GizmoSpiderlingEntity(EntityType<? extends GizmoSpiderlingEntity> type, Level level) {
         super(type, level);
     }
 
     public GizmoSpiderlingEntity(EntityType<? extends GizmoSpiderlingEntity> type, Level level, UUID ownerId) {
+        this(type, level, ownerId, false);
+    }
+
+    public GizmoSpiderlingEntity(EntityType<? extends GizmoSpiderlingEntity> type, Level level, UUID ownerId,
+                                 boolean smartSpider) {
         this(type, level);
         this.ownerId = ownerId;
+        this.smartSpider = smartSpider;
     }
 
     @Override
@@ -100,7 +107,7 @@ public class GizmoSpiderlingEntity extends Entity implements ItemSupplier, Block
             return;
         }
 
-        findNearestPlayerTarget(serverLevel).ifPresent(target -> setTravelDirection(target.position().subtract(position())));
+        findNearestTarget(serverLevel).ifPresent(target -> setTravelDirection(target.position().subtract(position())));
         crawl();
         playCrawlSound(serverLevel);
         revealToNearbyPlayers(serverLevel);
@@ -128,6 +135,7 @@ public class GizmoSpiderlingEntity extends Entity implements ItemSupplier, Block
         health = tag.contains("Health") ? tag.getFloat("Health") : 4.0f;
         dirX = tag.getDouble("DirX");
         dirZ = tag.contains("DirZ") ? tag.getDouble("DirZ") : 1.0D;
+        smartSpider = tag.getBoolean("SmartSpider");
         syncDirection();
     }
 
@@ -139,6 +147,7 @@ public class GizmoSpiderlingEntity extends Entity implements ItemSupplier, Block
         tag.putFloat("Health", health);
         tag.putDouble("DirX", dirX);
         tag.putDouble("DirZ", dirZ);
+        tag.putBoolean("SmartSpider", smartSpider);
     }
 
     @Override
@@ -215,23 +224,30 @@ public class GizmoSpiderlingEntity extends Entity implements ItemSupplier, Block
         entityData.set(DATA_DIR_Z, (float) dirZ);
     }
 
-    private Optional<ServerPlayer> findNearestPlayerTarget(ServerLevel level) {
+    private Optional<LivingEntity> findNearestTarget(ServerLevel level) {
         Entity owner = ownerId == null ? null : level.getEntity(ownerId);
-        AABB box = new AABB(position(), position()).inflate(PLAYER_TARGET_RADIUS);
+        double radius = smartSpider ? 50.0D : PLAYER_TARGET_RADIUS;
+        AABB box = new AABB(position(), position()).inflate(radius);
+        if (smartSpider) {
+            return level.getEntitiesOfClass(LivingEntity.class, box,
+                            target -> TargetingUtil.isHostileLivingFor(owner, target)
+                                    && target.distanceToSqr(this) <= radius * radius)
+                    .stream()
+                    .min(Comparator.comparingDouble(target -> target.distanceToSqr(this)));
+        }
         return level.getEntitiesOfClass(ServerPlayer.class, box,
                         player -> TargetingUtil.isHostileLivingFor(owner, player)
-                                && player.distanceToSqr(this) <= PLAYER_TARGET_RADIUS * PLAYER_TARGET_RADIUS)
+                                && player.distanceToSqr(this) <= radius * radius)
                 .stream()
-                .min(Comparator.comparingDouble(player -> player.distanceToSqr(this)));
+                .min(Comparator.comparingDouble(player -> player.distanceToSqr(this)))
+                .map(player -> (LivingEntity) player);
     }
 
     private LivingEntity findContactTarget(ServerLevel level) {
+        Entity owner = ownerId == null ? null : level.getEntity(ownerId);
         AABB box = getBoundingBox().inflate(0.28D);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
-            if (!TargetingUtil.isTargetableLiving(target)) {
-                continue;
-            }
-            if (ownerId != null && target.getUUID().equals(ownerId)) {
+            if (!TargetingUtil.isHostileLivingFor(owner, target)) {
                 continue;
             }
             return target;
@@ -250,7 +266,7 @@ public class GizmoSpiderlingEntity extends Entity implements ItemSupplier, Block
 
         AABB box = new AABB(position(), position()).inflate(EXPLOSION_RADIUS);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
-            if (!TargetingUtil.isTargetableLiving(target)) {
+            if (!TargetingUtil.isHostileLivingFor(owner, target)) {
                 continue;
             }
             if (!isInsideExplosion(target)) {

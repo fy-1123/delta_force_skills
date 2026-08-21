@@ -2,10 +2,13 @@ package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfStateManager;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientDWolfHudState;
 import com.rzy.dealt_force_skills.client.visual.DWolfPlaceholderVisuals;
 import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
@@ -48,7 +51,16 @@ public final class DWolfInputHandler {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientDWolfHudState.shouldRender()) {
+        boolean nativeCharacter = ClientDWolfHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.D_WOLF_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.D_WOLF_ID, SkillSlot.ACTIVE_2);
+        boolean coreOwned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.D_WOLF_ID, SkillSlot.CORE);
+        boolean passiveOwned = ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID);
+        if (minecraft.player == null || (!active1Owned && !active2Owned && !coreOwned
+                && !passiveOwned && !ClientDWolfHudState.hasHandCannonEquipped())) {
             active2WasDown = false;
             active2HeldTicks = 0;
             slideKeyWasDown = false;
@@ -65,9 +77,11 @@ public final class DWolfInputHandler {
 
         handlePendingHandCannonAnimations();
         handlePendingSmokeThrow();
-        handleSkillKeys();
-        handleSlide(minecraft);
-        handleOverloadSelfReward(minecraft);
+        handleSkillKeys(active1Owned, active2Owned);
+        if (nativeCharacter || ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID)) {
+            handleSlide(minecraft);
+        }
+        handleOverloadSelfReward(minecraft, coreOwned);
         if (ClientDWolfHudState.hasHandCannonEquipped()) {
             releaseBlockedKey(minecraft.options.keyAttack);
             releaseBlockedKey(minecraft.options.keyUse);
@@ -86,18 +100,24 @@ public final class DWolfInputHandler {
 
     public static void acceptSlide() {
         Player player = Minecraft.getInstance().player;
-        if (player == null || !ClientDWolfHudState.shouldRender()) {
+        boolean commanderSlide = player != null
+                && ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID)
+                && ClientCommanderState.ownsBranchUpgrade(CommanderBranchUpgrade.DWOLF_EFFICIENT_STAMINA);
+        if (player == null || (!ClientDWolfHudState.shouldRender()
+                && !ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID))) {
             return;
         }
 
-        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.consumeLocalPercent(
-                player,
-                DWolfStateManager.SLIDE_STAMINA_PERCENT_COST
-        );
-        if (result != ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
-            player.displayClientMessage(Component.translatable(result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH
-                    ? "message.dealt_force_skills.d_wolf.not_enough_stamina"
-                    : "message.dealt_force_skills.d_wolf.parcool_stamina_unavailable"), true);
+        if (!commanderSlide) {
+            ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.consumeLocalPercent(
+                    player,
+                    ClientCommanderState.skillCost(DWolfStateManager.SLIDE_STAMINA_PERCENT_COST)
+            );
+            if (result != ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
+                player.displayClientMessage(Component.translatable(result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH
+                        ? "message.dealt_force_skills.d_wolf.not_enough_stamina"
+                        : "message.dealt_force_skills.d_wolf.parcool_stamina_unavailable"), true);
+            }
         }
         localSlideTicks = DWolfStateManager.SLIDE_TICKS;
         localSlideCooldownTicks = SLIDE_LOCAL_COOLDOWN_TICKS;
@@ -105,7 +125,8 @@ public final class DWolfInputHandler {
     }
 
     public static boolean isSmokeHeldForVisual() {
-        return ClientDWolfHudState.shouldRender() && (active2WasDown || pendingSmokeThrowTicks > 0);
+        return (ClientDWolfHudState.shouldRender() || ClientCommanderState.inherits(ModCharacters.D_WOLF_ID))
+                && (active2WasDown || pendingSmokeThrowTicks > 0);
     }
 
     public static boolean isSmokeHighThrowPreview() {
@@ -113,13 +134,14 @@ public final class DWolfInputHandler {
     }
 
     public static boolean isSlideActiveForVisual() {
-        return ClientDWolfHudState.shouldRender() && (ClientDWolfHudState.slideTicks() > 0 || localSlideTicks > 0);
+        return (ClientDWolfHudState.shouldRender() || ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID))
+                && (ClientDWolfHudState.slideTicks() > 0 || localSlideTicks > 0);
     }
 
     public static boolean ownsCoreSkill() {
         return KeybindRegister.CORE_SKILL != null
                 && KeybindRegister.CORE_SKILL.isDown()
-                && isOverloadRewardCandidate(Minecraft.getInstance());
+                && isOverloadRewardCandidate(Minecraft.getInstance(), true);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -189,12 +211,16 @@ public final class DWolfInputHandler {
         }
     }
 
-    private static void handleSkillKeys() {
-        while (KeybindRegister.ACTIVE_SKILL_1 != null && KeybindRegister.ACTIVE_SKILL_1.consumeClick()) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1);
+    private static void handleSkillKeys(boolean active1Owned, boolean active2Owned) {
+        if (active1Owned) {
+            while (KeybindRegister.ACTIVE_SKILL_1 != null && KeybindRegister.ACTIVE_SKILL_1.consumeClick()) {
+                ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1);
+            }
         }
 
-        if (KeybindRegister.ACTIVE_SKILL_2 == null) {
+        if (!active2Owned || KeybindRegister.ACTIVE_SKILL_2 == null) {
+            active2WasDown = false;
+            active2HeldTicks = 0;
             return;
         }
         if (pendingSmokeThrowTicks > 0) {
@@ -279,8 +305,8 @@ public final class DWolfInputHandler {
         slideKeyWasDown = true;
     }
 
-    private static void handleOverloadSelfReward(Minecraft minecraft) {
-        if (!ownsCoreSkill()) {
+    private static void handleOverloadSelfReward(Minecraft minecraft, boolean coreOwned) {
+        if (!coreOwned || !ownsCoreSkill()) {
             overloadRewardHoldTicks = 0;
             return;
         }
@@ -298,11 +324,14 @@ public final class DWolfInputHandler {
         }
     }
 
-    private static boolean isOverloadRewardCandidate(Minecraft minecraft) {
+    private static boolean isOverloadRewardCandidate(Minecraft minecraft, boolean requireSelectedCore) {
         Player player = minecraft.player;
+        boolean selectedCore = ClientDWolfHudState.shouldRender()
+                || player != null && ClientCommanderState.handlesSkill(ModCharacters.D_WOLF_ID,
+                SkillSlot.CORE, player.isShiftKeyDown());
         return player != null
                 && minecraft.screen == null
-                && ClientDWolfHudState.shouldRender()
+                && (!requireSelectedCore || selectedCore)
                 && ClientDWolfHudState.overloadActiveTicks() > 0
                 && !ClientDWolfHudState.hasHandCannonEquipped()
                 && player.getMainHandItem().isEmpty()
@@ -317,7 +346,12 @@ public final class DWolfInputHandler {
     }
 
     private static boolean hasSlideStamina(Player player) {
-        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.canConsumeLocalPercent(player, DWolfStateManager.SLIDE_STAMINA_PERCENT_COST);
+        if (ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID)
+                && ClientCommanderState.ownsBranchUpgrade(CommanderBranchUpgrade.DWOLF_EFFICIENT_STAMINA)) {
+            return true;
+        }
+        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.canConsumeLocalPercent(
+                player, ClientCommanderState.skillCost(DWolfStateManager.SLIDE_STAMINA_PERCENT_COST));
         if (result == ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
             return true;
         }

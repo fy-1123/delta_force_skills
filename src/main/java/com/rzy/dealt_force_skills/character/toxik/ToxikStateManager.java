@@ -3,6 +3,9 @@ package com.rzy.dealt_force_skills.character.toxik;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
+import com.rzy.dealt_force_skills.character.stinger.StingerStateManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncToxikState;
 import com.rzy.dealt_force_skills.entity.ToxikFireflyEntity;
@@ -84,7 +87,9 @@ public final class ToxikStateManager {
 
     public static boolean isToxik(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.TOXIK_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.TOXIK_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.TOXIK_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -97,7 +102,7 @@ public final class ToxikStateManager {
         }
         tag.putBoolean(INITIALIZED, true);
         tag.putLong(ADRENALINE_COOLDOWN_UNTIL, 0L);
-        tag.putInt(TEAR_GAS_CHARGES, TEAR_GAS_MAX_CHARGES);
+        tag.putInt(TEAR_GAS_CHARGES, tearGasCapacity(player));
         tag.putLong(TEAR_GAS_NEXT_RECHARGE, 0L);
         tag.putLong(FIREFLY_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, ToxikTool.NONE.ordinal());
@@ -121,6 +126,10 @@ public final class ToxikStateManager {
         }
         initializeIfNeeded(player);
         rechargeTearGas(player, SkillCooldownHelper.now(player));
+        if (CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.TOXIK_SYNC_RESCUE)
+                && !StingerStateManager.isStinger(player)) {
+            StingerStateManager.tickSynchronizedDowned(player);
+        }
     }
 
     public static void tickFireflyPullout(ServerPlayer player) {
@@ -218,11 +227,12 @@ public final class ToxikStateManager {
         }
         data(player).putLong(ADRENALINE_COOLDOWN_UNTIL,
                 SkillCooldownHelper.until(player, now, ADRENALINE_COOLDOWN_TICKS));
-        AABB box = player.getBoundingBox().inflate(ADRENALINE_RADIUS);
+        double radius = CommanderStateManager.skillRadius(player, ADRENALINE_RADIUS);
+        AABB box = player.getBoundingBox().inflate(radius);
         for (Player target : player.level().getEntitiesOfClass(Player.class, box,
                 target -> (target == player || TargetingUtil.isTargetablePlayer(target))
                         && DealtTeamManager.isSelfOrTeammate(player, target)
-                        && target.distanceTo(player) <= ADRENALINE_RADIUS)) {
+                        && target.distanceTo(player) <= radius)) {
             applyAdrenaline(player, target, ADRENALINE_BASE_DURATION_TICKS);
         }
         player.level().playSound(null, player.blockPosition(), ModSounds.TOXIK_ADRENALINE_RELEASE.get(),
@@ -234,13 +244,18 @@ public final class ToxikStateManager {
         if (target instanceof Player && !DealtTeamManager.isSelfOrTeammate(owner, target)) {
             return;
         }
-        MobEffectInstance baseEffect = new MobEffectInstance(ModEffects.TOXIK_ADRENALINE.get(),
-                baseTicks, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.toxik.toxik_state_manager.effect.toxik_adrenaline.0.amplifier", 0), false, true, true);
         for (MobEffectInstance active : new ArrayList<>(target.getActiveEffects())) {
             if (active.getEffect().getCategory() == MobEffectCategory.HARMFUL) {
                 target.removeEffect(active.getEffect());
             }
         }
+        if (CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.TOXIK_STRONG_INJECTION)) {
+            addEffectWithScalingGuard(owner, target, new MobEffectInstance(ModEffects.TOXIK_ADRENALINE.get(),
+                    Math.max(1, baseTicks * 26), 29, false, true, true));
+            return;
+        }
+        MobEffectInstance baseEffect = new MobEffectInstance(ModEffects.TOXIK_ADRENALINE.get(),
+                baseTicks, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.toxik.toxik_state_manager.effect.toxik_adrenaline.0.amplifier", 0), false, true, true);
         addToxikScaledEffect(owner, target, baseEffect);
     }
 
@@ -296,6 +311,8 @@ public final class ToxikStateManager {
                 duration = scaleDuration(duration, 20);
                 amplifier = scaleAmplifier(amplifier, 20);
             }
+            duration = CommanderStateManager.skillDuration(owner, duration);
+            amplifier = CommanderStateManager.skillEffectAmplifier(owner, amplifier);
         }
         return new MobEffectInstance(original.getEffect(), duration, amplifier,
                 original.isAmbient(), original.isVisible(), original.showIcon());
@@ -349,12 +366,13 @@ public final class ToxikStateManager {
 
     public static boolean consumeTearGas(ServerPlayer player) {
         CompoundTag tag = data(player);
-        int charges = tag.getInt(TEAR_GAS_CHARGES);
+        int capacity = tearGasCapacity(player);
+        int charges = Math.min(capacity, tag.getInt(TEAR_GAS_CHARGES));
         if (charges <= 0) {
             return false;
         }
         tag.putInt(TEAR_GAS_CHARGES, charges - 1);
-        if (charges - 1 < TEAR_GAS_MAX_CHARGES && tag.getLong(TEAR_GAS_NEXT_RECHARGE) <= 0L) {
+        if (charges - 1 < capacity && tag.getLong(TEAR_GAS_NEXT_RECHARGE) <= 0L) {
             tag.putLong(TEAR_GAS_NEXT_RECHARGE,
                     SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), TEAR_GAS_RECHARGE_TICKS));
         }
@@ -452,11 +470,11 @@ public final class ToxikStateManager {
     }
 
     public static int tearGasCharges(Player player) {
-        return data(player).getInt(TEAR_GAS_CHARGES);
+        return Math.min(tearGasCapacity(player), data(player).getInt(TEAR_GAS_CHARGES));
     }
 
     public static int tearGasRechargeRemainingTicks(Player player) {
-        if (tearGasCharges(player) >= TEAR_GAS_MAX_CHARGES) {
+        if (tearGasCharges(player) >= tearGasCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, TEAR_GAS_NEXT_RECHARGE);
@@ -480,7 +498,7 @@ public final class ToxikStateManager {
         NetworkHandler.sendToPlayer(new S2C_SyncToxikState(
                 adrenalineCooldownRemainingTicks(player),
                 tearGasCharges(player),
-                TEAR_GAS_MAX_CHARGES,
+                tearGasCapacity(player),
                 tearGasRechargeRemainingTicks(player),
                 fireflyCooldownRemainingTicks(player),
                 equippedTool(player).ordinal(),
@@ -618,8 +636,10 @@ public final class ToxikStateManager {
 
     private static void rechargeTearGas(ServerPlayer player, long now) {
         CompoundTag tag = data(player);
-        int charges = tag.getInt(TEAR_GAS_CHARGES);
-        if (charges >= TEAR_GAS_MAX_CHARGES) {
+        int capacity = tearGasCapacity(player);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(TEAR_GAS_CHARGES)));
+        tag.putInt(TEAR_GAS_CHARGES, charges);
+        if (charges >= capacity) {
             tag.putLong(TEAR_GAS_NEXT_RECHARGE, 0L);
             return;
         }
@@ -629,12 +649,16 @@ public final class ToxikStateManager {
                     SkillCooldownHelper.until(player, now, TEAR_GAS_RECHARGE_TICKS));
             return;
         }
-        while (charges < TEAR_GAS_MAX_CHARGES && now >= next) {
+        while (charges < capacity && now >= next) {
             charges++;
             next += SkillCooldownHelper.ticks(player, TEAR_GAS_RECHARGE_TICKS);
         }
         tag.putInt(TEAR_GAS_CHARGES, charges);
-        tag.putLong(TEAR_GAS_NEXT_RECHARGE, charges >= TEAR_GAS_MAX_CHARGES ? 0L : next);
+        tag.putLong(TEAR_GAS_NEXT_RECHARGE, charges >= capacity ? 0L : next);
+    }
+
+    private static int tearGasCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, TEAR_GAS_MAX_CHARGES);
     }
 
     private static int remainingTicks(Player player, String key) {

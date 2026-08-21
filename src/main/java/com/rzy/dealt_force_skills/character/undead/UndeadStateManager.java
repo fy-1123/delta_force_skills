@@ -386,6 +386,11 @@ public final class UndeadStateManager {
         tag.putLong(ROGUE_INVISIBLE_UNTIL, until);
         tag.putLong(ROGUE_INVULNERABLE_UNTIL, until);
         tag.putLong(ROGUE_SPEED_UNTIL, until);
+        player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED,
+                duration,
+                com.rzy.dealt_force_skills.config.DealtForceConfig.intValue(
+                        "characters.undead.undead_state_manager.effect.movement_speed.4.amplifier", 1),
+                false, false, true));
     }
 
     public static boolean isRogueInvisible(Player player) {
@@ -660,11 +665,6 @@ public final class UndeadStateManager {
             }
         } else if (profession == UndeadProfession.SCHOLAR) {
             amount *= isScholarExceptionalDamage(source) ? 2.0F : 0.5F;
-            if (source.getEntity() instanceof LivingEntity attacker) {
-                int records = scholarRecordCount(player, attacker);
-                float reduction = attacker instanceof Player ? 0.15F : 0.49F;
-                amount *= Math.max(0.0F, 1.0F - reduction * records);
-            }
         } else if (profession == UndeadProfession.HUNTER && source.is(DamageTypes.FALL)) {
             amount = 0.0F;
         } else if (profession == UndeadProfession.ROGUE
@@ -676,6 +676,11 @@ public final class UndeadStateManager {
             player.serverLevel().sendParticles(ParticleTypes.POOF,
                     player.getX(), player.getY() + 0.9D, player.getZ(),
                     18, 0.55D, 0.7D, 0.55D, 0.04D);
+        }
+        if (source.getEntity() instanceof LivingEntity attacker) {
+            int records = scholarRecordCount(player, attacker);
+            float reduction = attacker instanceof Player ? 0.15F : 0.49F;
+            amount *= Math.max(0.0F, 1.0F - reduction * records);
         }
         amount *= UndeadUpgradeManager.incomingDamageMultiplier(player, source);
         if (UndeadUpgradeManager.tryPinkBraceletFatalGuard(player, amount)) {
@@ -946,10 +951,6 @@ public final class UndeadStateManager {
             tag.putLong(ROGUE_INVULNERABLE_UNTIL, 0L);
             tag.putLong(ROGUE_SPEED_UNTIL, 0L);
             return;
-        }
-        if (now < tag.getLong(ROGUE_SPEED_UNTIL)) {
-            player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.undead.undead_state_manager.effect.movement_speed.4.duration_ticks", 6), com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.undead.undead_state_manager.effect.movement_speed.4.amplifier", 1),
-                    false, false, true));
         }
         if (now < tag.getLong(ROGUE_INVISIBLE_UNTIL) && player.tickCount % 10 == 0) {
             player.serverLevel().sendParticles(ParticleTypes.SMOKE,

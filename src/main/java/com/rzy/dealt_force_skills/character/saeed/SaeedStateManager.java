@@ -5,6 +5,7 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.entity.AsaraTrooperEntity;
 import com.rzy.dealt_force_skills.entity.SaeedFireArrowEntity;
 import com.rzy.dealt_force_skills.entity.SaeedFireFieldEntity;
 import com.rzy.dealt_force_skills.entity.SaeedGuardEntity;
@@ -576,6 +577,9 @@ public final class SaeedStateManager {
     public static float guardOutgoingDamageMultiplier(DamageSource source, LivingEntity target) {
         Optional<SaeedGuardEntity> guard = guardFromDamageSource(source);
         if (guard.isEmpty()) {
+            return 1.0F;
+        }
+        if (guard.get() instanceof AsaraTrooperEntity) {
             return 1.0F;
         }
         double multiplier = target instanceof Player ? 0.35D : 5.0D;

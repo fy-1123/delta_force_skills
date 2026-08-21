@@ -1,13 +1,18 @@
 package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
+import com.rzy.dealt_force_skills.config.DealtItemsHavocConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.ghroth.GhrothTaczEnhancement;
+import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientCatDadHudState;
 import com.rzy.dealt_force_skills.client.character.ClientChamberHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderVehicleState;
 import com.rzy.dealt_force_skills.client.character.ClientCorpsHudState;
 import com.rzy.dealt_force_skills.client.character.ClientDWolfHudState;
 import com.rzy.dealt_force_skills.client.character.ClientDepartmentHudState;
@@ -28,6 +33,7 @@ import com.rzy.dealt_force_skills.client.character.ClientRaptorHudState;
 import com.rzy.dealt_force_skills.client.character.ClientSaeedHudState;
 import com.rzy.dealt_force_skills.client.character.ClientShepherdHudState;
 import com.rzy.dealt_force_skills.client.character.ClientSinevaHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientSinevaRenderState;
 import com.rzy.dealt_force_skills.client.character.ClientSkillModelVisualState;
 import com.rzy.dealt_force_skills.client.character.ClientStingerHudState;
@@ -51,7 +57,9 @@ import com.rzy.dealt_force_skills.client.renderer.GrappleHookRenderer;
 import com.rzy.dealt_force_skills.client.renderer.BeaconBossRenderer;
 import com.rzy.dealt_force_skills.client.renderer.NoxDecoyRenderer;
 import com.rzy.dealt_force_skills.client.renderer.SaeedGuardRenderer;
+import com.rzy.dealt_force_skills.client.renderer.SmokeCloudRenderer;
 import com.rzy.dealt_force_skills.client.renderer.TempestRecallAnchorRenderer;
+import com.rzy.dealt_force_skills.client.renderer.DeathCrateRenderer;
 import com.rzy.dealt_force_skills.client.renderer.VyronMagneticBombRenderer;
 import com.rzy.dealt_force_skills.client.renderer.VyronTigerCannonProjectileRenderer;
 import com.rzy.dealt_force_skills.client.visual.ClientSinevaKnockdownState;
@@ -67,6 +75,7 @@ import com.rzy.dealt_force_skills.effect.ModItemEffectHelper;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem.Profile;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem.SpecialAbility;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import com.rzy.dealt_force_skills.network.C2S_OpenSelectionOrShop;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.registry.ModEntities;
@@ -130,12 +139,20 @@ public class ClientEvents {
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
+            ClientCommanderVehicleState.reset();
             return;
         }
         tickSuppressHurtAnimation(mc.player);
+        CommanderStateManager.ensureVanillaStepHeight(mc.player);
         SinevaStateManager.updateBombSuitStepHeight(mc.player,
-                ClientSinevaHudState.shouldRender() && ClientSinevaHudState.bombSuitActive());
+                (ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(
+                        com.rzy.dealt_force_skills.character.ModCharacters.SINEVA_ID))
+                        && ClientSinevaHudState.bombSuitActive());
         accelerateTaczAdrenalineClient(mc.player);
+        TaczSpeedMultipliers multipliers = taczSpeedMultipliers(mc.player);
+        SuperbWarfareCompat.applyClientWeaponModifiers(mc.player,
+                multipliers.fireRate(), multipliers.aim(), multipliers.aimPenalty(),
+                ClientCommanderVehicleState.isCommanderVehicle(mc.player.getVehicle()));
         delayTaczMorseShockClient(mc.player);
     }
 
@@ -172,6 +189,10 @@ public class ClientEvents {
         } else if (GhrothTaczEnhancement.isEnhancedAttachment(stack)) {
             event.getToolTip().add(Component.translatable("tooltip.dealt_force_skills.ghroth.hvk_attachment")
                     .withStyle(ChatFormatting.GOLD));
+        }
+        if (!stack.isEmpty() && ModGameRules.isHavocValueVisible(Minecraft.getInstance().level)) {
+            event.getToolTip().add(Component.translatable("tooltip.dealt_force_skills.havoc_value",
+                    DealtItemsHavocConfig.tooltipPrice(stack)).withStyle(ChatFormatting.GOLD));
         }
     }
 
@@ -435,6 +456,7 @@ public class ClientEvents {
             ClientToolReleaseAction.reset();
             ClientCharacterSelectionState.resetSession();
             SinevaPlaceholderVisuals.resetTransientState();
+            com.rzy.dealt_force_skills.client.visual.UndeadPlayerVisuals.resetTransientState();
             DWolfSlideVisuals.reset();
             return;
         }
@@ -447,6 +469,7 @@ public class ClientEvents {
             return;
         }
 
+        ClientCharacterSelectionState.openInitialSelectionIfNeeded();
         ClientToolReleaseAction.tick();
         reduceAdrenalinePlacementDelay(mc);
         tickMask1LockOn(mc);
@@ -512,6 +535,9 @@ public class ClientEvents {
         VlinderInputHandler.tick(mc);
         TempestInputHandler.tick(mc);
         SaeedInputHandler.tick(mc);
+        GhrothInputHandler.tick(mc);
+        CommanderInputHandler.tick(mc);
+        SpecialOperationsBaseInputHandler.tick(mc);
         SaeedGuardViewController.tick(mc);
         UluruMissileController.tick(mc);
         RaptorFalconController.tick(mc);
@@ -547,14 +573,6 @@ public class ClientEvents {
             drainKey(mc.options.keyPickItem);
             drainKey(mc.options.keyDrop);
             drainKey(mc.options.keySwapOffhand);
-        }
-
-        if (!UndeadInputHandler.ownsSelectionKey() && !LexNinjiaInputHandler.ownsSelectionKey()
-                && !GamblerInputHandler.ownsSelectionKey()
-                && !SaeedInputHandler.ownsSelectionKey()) {
-            while (KeybindRegister.CHARACTER_SELECT != null && KeybindRegister.CHARACTER_SELECT.consumeClick()) {
-                NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
-            }
         }
 
         while (!UndeadInputHandler.ownsSkillKeys()
@@ -599,7 +617,8 @@ public class ClientEvents {
                 || CorpsInputHandler.ownsCoreSkill()
                 || MorseInputHandler.ownsCoreSkill()
                 || ToxikInputHandler.ownsCoreSkill() || RaptorInputHandler.ownsCoreSkill()
-                || VlinderInputHandler.ownsCoreSkill() || TempestInputHandler.ownsCoreSkill()) {
+                || VlinderInputHandler.ownsCoreSkill() || TempestInputHandler.ownsCoreSkill()
+                || CommanderInputHandler.ownsCoreSkill()) {
             resetCoreSkillKey();
         } else {
             handleCoreSkillKey();
@@ -716,7 +735,8 @@ public class ClientEvents {
         double bestDistance = MASK1_LOCK_RANGE * MASK1_LOCK_RANGE;
         for (LivingEntity candidate : player.level().getEntitiesOfClass(LivingEntity.class,
                 player.getBoundingBox().inflate(MASK1_LOCK_RANGE),
-                entity -> entity != player && entity.isAlive() && !entity.isSpectator()
+                entity -> entity != player && !TargetingUtil.isPlayerOwnedSummonOf(player, entity)
+                        && entity.isAlive() && !entity.isSpectator()
                         && entity.isAttackable() && entity.attackable())) {
             double distance = candidate.distanceToSqr(player);
             if (distance < bestDistance) {
@@ -855,7 +875,8 @@ public class ClientEvents {
 
     private static boolean isAnyClientToolActive() {
         // Sineva: shield deployed or blade wire held
-        if (ClientSinevaHudState.shouldRender() && ClientSinevaHudState.shieldDeployed()) {
+        if ((ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(ModCharacters.SINEVA_ID))
+                && ClientSinevaHudState.shieldDeployed()) {
             return true;
         }
         if (SinevaInputHandler.isBladeWireHeld()) {
@@ -1032,11 +1053,13 @@ public class ClientEvents {
             e.registerEntityRenderer(ModEntities.D_WOLF_SMOKE_GRENADE.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("d_wolf_smoke_grenade"), null, "flight", 0.85F,
                     BlockbenchProjectileRenderer.Alignment.NONE));
-            e.registerEntityRenderer(ModEntities.D_WOLF_SMOKE_CLOUD.get(), ctx -> new ThrownItemRenderer<>(ctx));
+            e.registerEntityRenderer(ModEntities.D_WOLF_SMOKE_CLOUD.get(), ctx -> new SmokeCloudRenderer<>(
+                    ctx, model("generic_gray_smoke"), 1.0F));
             e.registerEntityRenderer(ModEntities.GIZMO_SMOKE_TRAP.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("gizmo_smoke_trap"), null, "idle", 0.38F,
                     BlockbenchProjectileRenderer.Alignment.NONE));
-            e.registerEntityRenderer(ModEntities.GIZMO_SMOKE_CLOUD.get(), ctx -> new ThrownItemRenderer<>(ctx));
+            e.registerEntityRenderer(ModEntities.GIZMO_SMOKE_CLOUD.get(), ctx -> new SmokeCloudRenderer<>(
+                    ctx, model("generic_gray_smoke"), 1.0F));
             e.registerEntityRenderer(ModEntities.GIZMO_SPIDER_NEST_TRAP.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("gizmo_spider_nest_trap"), null, "idle", 0.72F,
                     BlockbenchProjectileRenderer.Alignment.NONE));
@@ -1082,7 +1105,8 @@ public class ClientEvents {
             e.registerEntityRenderer(ModEntities.STINGER_SMOKE_GRENADE.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("stinger_smoke_grenade"), "prime", "idle", 0.85F,
                     BlockbenchProjectileRenderer.Alignment.NONE));
-            e.registerEntityRenderer(ModEntities.STINGER_SMOKE_CLOUD.get(), ctx -> new ThrownItemRenderer<>(ctx));
+            e.registerEntityRenderer(ModEntities.STINGER_SMOKE_CLOUD.get(), ctx -> new SmokeCloudRenderer<>(
+                    ctx, model("generic_gray_smoke"), 1.0F));
             e.registerEntityRenderer(ModEntities.STINGER_SMOKE_DRONE.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("stinger_smoke_drone"), null, "idle", 0.9F,
                     BlockbenchProjectileRenderer.Alignment.NONE));
@@ -1108,7 +1132,10 @@ public class ClientEvents {
             e.registerEntityRenderer(ModEntities.TOXIK_TEAR_GAS_GRENADE.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("toxik_tear_gas_grenade"), "prime_release", "idle", 0.85F,
                     BlockbenchProjectileRenderer.Alignment.NONE));
-            e.registerEntityRenderer(ModEntities.TOXIK_TEAR_GAS_CLOUD.get(), ctx -> new ThrownItemRenderer<>(ctx));
+            e.registerEntityRenderer(ModEntities.TOXIK_TEAR_GAS_CLOUD.get(), ctx -> new SmokeCloudRenderer<>(
+                    ctx, model("generic_blind_smoke"), 1.0F));
+            e.registerEntityRenderer(ModEntities.VISUAL_SMOKE_CLOUD.get(), ctx -> new SmokeCloudRenderer<>(
+                    ctx, model("generic_gray_smoke"), 1.0F));
             e.registerEntityRenderer(ModEntities.TOXIK_FIREFLY.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("toxik_firefly_swarm"), null, "idle_hover", 0.16F,
                     BlockbenchProjectileRenderer.Alignment.MOTION_Z));
@@ -1139,6 +1166,17 @@ public class ClientEvents {
                     ctx, model("department_explosive_trap"), "flip_open", "idle_hold", 1.2F,
                     BlockbenchProjectileRenderer.Alignment.NONE));
             e.registerEntityRenderer(ModEntities.SAEED_GUARD.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ASARA_FLAMETHROWER.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ASARA_MACHINE_GUNNER.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ASARA_SHIELD_TROOPER.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ASARA_ROCKET_TROOPER.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ASARA_SNIPER.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ASARA_SENTRY_SNIPER.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ASARA_GUARD_SOLDIER.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ACCELERATED_TROOPS.get(), SaeedGuardRenderer::new);
+            e.registerEntityRenderer(ModEntities.ACCELERATED_TROOPS_PAYLOAD.get(), ctx -> new ThrownItemRenderer<>(ctx));
+            e.registerEntityRenderer(ModEntities.RESPAWN_BEACON_MARKER.get(), ctx -> new ThrownItemRenderer<>(ctx));
+            e.registerEntityRenderer(ModEntities.DEATH_CRATE.get(), DeathCrateRenderer::new);
             e.registerEntityRenderer(ModEntities.BEACON_BOSS.get(), BeaconBossRenderer::new);
             e.registerEntityRenderer(ModEntities.SAEED_FIRE_ARROW.get(), ctx -> new ThrownItemRenderer<>(ctx));
             e.registerEntityRenderer(ModEntities.SAEED_HAKIM_MISSILE.get(), ctx -> new ThrownItemRenderer<>(ctx));

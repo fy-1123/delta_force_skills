@@ -51,15 +51,42 @@ public final class CharacterSkinOverrideVisuals {
             int packedLight,
             AbstractClientPlayer player
     ) {
+        renderHand(poseStack, buffer, packedLight, player, HumanoidArm.RIGHT);
+    }
+
+    public static void renderLeftHand(
+            PoseStack poseStack,
+            MultiBufferSource buffer,
+            int packedLight,
+            AbstractClientPlayer player
+    ) {
+        renderHand(poseStack, buffer, packedLight, player, HumanoidArm.LEFT);
+    }
+
+    private static void renderHand(
+            PoseStack poseStack,
+            MultiBufferSource buffer,
+            int packedLight,
+            AbstractClientPlayer player,
+            HumanoidArm arm
+    ) {
         CharacterSkinArmRenderer override = ClientCharacterSkinState.skinFor(player).isPresent()
                 ? ARM_RENDERERS.getOrDefault(player.getModelName(), ARM_RENDERERS.get("default"))
                 : null;
         if (override != null) {
-            override.renderRightHand(poseStack, buffer, packedLight, player);
+            if (arm == HumanoidArm.RIGHT) {
+                override.renderRightHand(poseStack, buffer, packedLight, player);
+            } else {
+                override.renderLeftHand(poseStack, buffer, packedLight, player);
+            }
             return;
         }
         if (Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(player) instanceof PlayerRenderer renderer) {
-            renderer.renderRightHand(poseStack, buffer, packedLight, player);
+            if (arm == HumanoidArm.RIGHT) {
+                renderer.renderRightHand(poseStack, buffer, packedLight, player);
+            } else {
+                renderer.renderLeftHand(poseStack, buffer, packedLight, player);
+            }
         }
     }
 

@@ -22,6 +22,7 @@ public class S2C_SyncStingerState {
     private final int stimModeOrdinal;
     private final int rescueTicks;
     private final int rescueRequiredTicks;
+    private final int rescueCooldownTicks;
     private final int selfDownedTicks;
     private final List<StingerDownedMarker> downedMarkers;
 
@@ -35,6 +36,7 @@ public class S2C_SyncStingerState {
             int stimModeOrdinal,
             int rescueTicks,
             int rescueRequiredTicks,
+            int rescueCooldownTicks,
             int selfDownedTicks,
             List<StingerDownedMarker> downedMarkers
     ) {
@@ -47,6 +49,7 @@ public class S2C_SyncStingerState {
         this.stimModeOrdinal = stimModeOrdinal;
         this.rescueTicks = rescueTicks;
         this.rescueRequiredTicks = rescueRequiredTicks;
+        this.rescueCooldownTicks = rescueCooldownTicks;
         this.selfDownedTicks = selfDownedTicks;
         this.downedMarkers = List.copyOf(downedMarkers);
     }
@@ -61,6 +64,7 @@ public class S2C_SyncStingerState {
         buf.writeVarInt(msg.stimModeOrdinal);
         buf.writeVarInt(msg.rescueTicks);
         buf.writeVarInt(msg.rescueRequiredTicks);
+        buf.writeVarInt(msg.rescueCooldownTicks);
         buf.writeVarInt(msg.selfDownedTicks);
         buf.writeVarInt(msg.downedMarkers.size());
         for (StingerDownedMarker marker : msg.downedMarkers) {
@@ -82,6 +86,7 @@ public class S2C_SyncStingerState {
         int stimModeOrdinal = buf.readVarInt();
         int rescueTicks = buf.readVarInt();
         int rescueRequiredTicks = buf.readVarInt();
+        int rescueCooldownTicks = buf.readVarInt();
         int selfDownedTicks = buf.readVarInt();
         int count = buf.readVarInt();
         List<StingerDownedMarker> markers = new ArrayList<>();
@@ -94,7 +99,7 @@ public class S2C_SyncStingerState {
         }
         return new S2C_SyncStingerState(smokeCooldownTicks, droneCooldownTicks, stimCharges, stimMaxCharges,
                 stimRechargeTicks, equippedToolOrdinal, stimModeOrdinal, rescueTicks, rescueRequiredTicks,
-                selfDownedTicks, markers);
+                rescueCooldownTicks, selfDownedTicks, markers);
     }
 
     public static void handle(S2C_SyncStingerState msg, Supplier<NetworkEvent.Context> ctx) {
@@ -110,6 +115,7 @@ public class S2C_SyncStingerState {
                         msg.stimModeOrdinal,
                         msg.rescueTicks,
                         msg.rescueRequiredTicks,
+                        msg.rescueCooldownTicks,
                         msg.selfDownedTicks,
                         msg.downedMarkers
                 )

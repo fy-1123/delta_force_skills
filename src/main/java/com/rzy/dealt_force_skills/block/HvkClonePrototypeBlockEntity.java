@@ -45,6 +45,7 @@ import java.util.UUID;
 
 public class HvkClonePrototypeBlockEntity extends BlockEntity {
     private static final int LOOT_PREVIEW_ROLLS = 32;
+    private static final long ENTITY_LISTING_BUDGET_NANOS = 75_000_000L;
     private static final int LOOT_CLONE_ROLLS = 96;
     private static final float CLONE_HEALTH_COST_RATIO = 0.5F;
     private static final int CLONE_FOOD_COST = 10;
@@ -108,13 +109,13 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
             return;
         }
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        ItemStack selected = bestLootPayment(loot, sources);
+        ItemStack selected = bestLootPayment(loot, sources, player);
         if (selected.isEmpty()) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.hvk_clone.loot_missing"), true);
             return;
         }
         int required = selected.getMaxStackSize();
-        int removed = WorkBlockStorageAccess.consumeItem(sources, selected.getItem(), required);
+        int removed = WorkBlockStorageAccess.consumeItemWithRedemption(player, sources, selected.getItem(), required);
         if (removed < required) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.hvk_clone.loot_missing"), true);
             return;
@@ -138,13 +139,15 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
             return;
         }
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        int removed = WorkBlockStorageAccess.consumeMatching(sources, stack -> HvkGeneSample.isFor(stack, entityId), 1);
+        ItemStack sample = HvkGeneSample.create(entityId, type.getDescription().getString());
+        int removed = WorkBlockStorageAccess.consumeMatchingWithRedemption(player, sources,
+                stack -> HvkGeneSample.isFor(stack, entityId), sample, 1);
         if (removed < 1) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.hvk_clone.sample_missing"), true);
             return;
         }
         if (!payCloneBodyCost(player)) {
-            WorkBlockStorageAccess.giveOrDrop(player, HvkGeneSample.create(entityId, type.getDescription().getString()));
+            WorkBlockStorageAccess.giveOrDrop(player, sample);
             return;
         }
         int produced = 0;
@@ -194,9 +197,12 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
 
     private List<EntryView> entityEntries(ServerPlayer player, int mode, String query) {
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        Map<Item, Integer> stock = WorkBlockStorageAccess.countItems(sources);
         List<EntryView> entries = new ArrayList<>();
+        long deadline = System.nanoTime() + ENTITY_LISTING_BUDGET_NANOS;
         for (EntityType<?> type : ForgeRegistries.ENTITY_TYPES.getValues()) {
+            if (System.nanoTime() >= deadline) {
+                break;
+            }
             ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(type);
             if (id == null || !matches(type, id, query)) {
                 continue;
@@ -206,8 +212,10 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
                 continue;
             }
             int available = mode == AdvancedWorkBlockData.MODE_CLONE
-                    ? WorkBlockStorageAccess.countMatching(sources, stack -> HvkGeneSample.isFor(stack, id))
-                    : maxAvailableLoot(outputs, stock);
+                    ? WorkBlockStorageAccess.availableMatchingWithRedemption(player, sources,
+                    stack -> HvkGeneSample.isFor(stack, id),
+                    HvkGeneSample.create(id, type.getDescription().getString()), Integer.MAX_VALUE)
+                    : maxAvailableLoot(outputs, sources, player);
             ItemStack icon = entityIcon(type);
             String detail = mode == AdvancedWorkBlockData.MODE_CLONE
                     ? Component.translatable("screen.dealt_force_skills.hvk_clone.sample_count", available).getString()
@@ -227,28 +235,36 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
         return text.contains(key) || JustEnoughCharactersCompat.matches(text, key);
     }
 
-    private static int maxAvailableLoot(List<ItemStack> loot, Map<Item, Integer> stock) {
+    private static int maxAvailableLoot(List<ItemStack> loot, List<WorkBlockStorageAccess.SourceSlot> sources,
+                                        ServerPlayer player) {
         int max = 0;
         for (ItemStack stack : loot) {
-            max = Math.max(max, stock.getOrDefault(stack.getItem(), 0));
+            int physical = WorkBlockStorageAccess.countItem(sources, stack.getItem());
+            max = Math.max(max, WorkBlockStorageAccess.availableItemWithRedemption(
+                    player, sources, stack.getItem(), Math.max(stack.getMaxStackSize(), physical)));
         }
         return max;
     }
 
-    private static ItemStack bestLootPayment(List<ItemStack> loot, List<WorkBlockStorageAccess.SourceSlot> sources) {
-        Map<Item, Integer> stock = WorkBlockStorageAccess.countItems(sources);
+    private static ItemStack bestLootPayment(List<ItemStack> loot, List<WorkBlockStorageAccess.SourceSlot> sources,
+                                             ServerPlayer player) {
         ItemStack best = ItemStack.EMPTY;
-        int bestCount = -1;
+        long bestCost = Long.MAX_VALUE;
+        int bestPhysical = -1;
         for (ItemStack stack : loot) {
-            int available = stock.getOrDefault(stack.getItem(), 0);
-            if (available > bestCount) {
+            int required = Math.max(1, stack.getMaxStackSize());
+            int physical = WorkBlockStorageAccess.countItem(sources, stack.getItem());
+            long cost = WorkBlockStorageAccess.redemptionCostForItem(
+                    player, sources, stack.getItem(), required);
+            if (cost >= 0L && (cost < bestCost || cost == bestCost && physical > bestPhysical)) {
                 ItemStack candidate = stack.copy();
-                candidate.setCount(Math.max(1, candidate.getMaxStackSize()));
+                candidate.setCount(required);
                 best = candidate;
-                bestCount = available;
+                bestCost = cost;
+                bestPhysical = physical;
             }
         }
-        return !best.isEmpty() && bestCount >= best.getMaxStackSize() ? best : ItemStack.EMPTY;
+        return best;
     }
 
     private List<ItemStack> entityLoot(ServerPlayer player, EntityType<?> type, int rolls) {

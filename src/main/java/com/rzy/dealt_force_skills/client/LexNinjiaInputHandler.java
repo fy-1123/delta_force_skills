@@ -10,7 +10,9 @@ import com.rzy.dealt_force_skills.character.lexninjia.LexNinjiaInputAction;
 import com.rzy.dealt_force_skills.network.C2S_LexNinjiaInput;
 import com.rzy.dealt_force_skills.network.C2S_LexNinjiaPresetAction;
 import com.rzy.dealt_force_skills.network.C2S_OpenSelectionOrShop;
+import com.rzy.dealt_force_skills.network.C2S_OpenOwnShop;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
+import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
@@ -98,16 +100,27 @@ public final class LexNinjiaInputHandler {
                 shopLongTriggered = false;
             }
             shopHeldTicks++;
-            if (!shopLongTriggered
-                    && shopHeldTicks >= LONG_HOLD_TICKS
-                    && !minecraft.player.isCreative()
-                    && ClientLexNinjiaHudState.hasScientificTool()) {
+            if (!shopLongTriggered && shopHeldTicks >= LONG_HOLD_TICKS && minecraft.screen == null) {
                 shopLongTriggered = true;
-                NetworkHandler.sendToServer(C2S_LexNinjiaPresetAction.openMenu());
+                boolean creative = minecraft.player.getAbilities().instabuild;
+                boolean sneak = minecraft.player.isShiftKeyDown();
+                if ((!creative && !sneak) || (creative && sneak)) {
+                    NetworkHandler.sendToServer(C2S_LexNinjiaPresetAction.openMenu());
+                } else {
+                    DFGUI_MAIN.openToLogistics();
+                }
             }
         } else if (shopWasDown) {
-            if (!shopLongTriggered) {
-                NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+            if (!shopLongTriggered && minecraft.screen == null) {
+                boolean creative = minecraft.player.getAbilities().instabuild;
+                boolean sneak = minecraft.player.isShiftKeyDown();
+                if (creative && !sneak) {
+                    DFGUI_MAIN.openToOperator();
+                } else if (sneak && !creative) {
+                    NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+                } else {
+                    NetworkHandler.sendToServer(C2S_OpenOwnShop.open());
+                }
             }
             resetShopKey();
         }

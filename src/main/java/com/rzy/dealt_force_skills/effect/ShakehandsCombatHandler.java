@@ -210,25 +210,28 @@ public final class ShakehandsCombatHandler {
             return false;
         }
         Entity source = event.getEffectSource();
-        if (!(source instanceof LivingEntity attacker) || attacker == holder) {
-            return false;
-        }
-        // Do not bounce shakehands itself or other beneficial effects.
         MobEffectInstance instance = event.getEffectInstance();
         MobEffect effect = instance.getEffect();
-        if (effect == ModEffects.SHAKEHANDS.get() || !EffectRedirectCategories.isRedirectable(effect)) {
+        if (effect == ModEffects.SHAKEHANDS.get() || source == holder) {
             return false;
         }
-        // If the attacker also holds shakehands, still apply the redirected effect once without
-        // re-entering this handler (redirecting flag).
+        // Shakehands rejects every externally sourced effect. Existing negative/control effects
+        // are still redirected when a living source exists; beneficial or source-less effects
+        // are simply removed from the holder.
         holder.removeEffect(effect);
-        redirecting = true;
-        try {
-            attacker.addEffect(new MobEffectInstance(effect, instance.getDuration(), instance.getAmplifier(),
-                    instance.isAmbient(), instance.isVisible(), instance.showIcon()), holder);
-        } finally {
-            redirecting = false;
+        if (source instanceof LivingEntity attacker && EffectRedirectCategories.isRedirectable(effect)) {
+            redirecting = true;
+            try {
+                attacker.addEffect(new MobEffectInstance(effect, instance.getDuration(), instance.getAmplifier(),
+                        instance.isAmbient(), instance.isVisible(), instance.showIcon()), holder);
+            } finally {
+                redirecting = false;
+            }
         }
         return true;
+    }
+
+    public static boolean blocksExternalSpecial(LivingEntity holder, Entity source) {
+        return holder != null && holder.hasEffect(ModEffects.SHAKEHANDS.get()) && source != holder;
     }
 }

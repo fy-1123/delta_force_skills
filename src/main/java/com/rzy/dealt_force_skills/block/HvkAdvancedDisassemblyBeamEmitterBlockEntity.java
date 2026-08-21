@@ -39,6 +39,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
+import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -139,7 +140,7 @@ public class HvkAdvancedDisassemblyBeamEmitterBlockEntity extends BlockEntity {
         int batches = Math.max(1, Math.min(1, requestedBatches));
         int sourceCost = sourceCost(recipe, batches);
         List<SourceSlot> sources = collectSources();
-        if (countSource(recipe.result(), sources) < sourceCost) {
+        if (countSourceWithRedemption(player, recipe.result(), sources, sourceCost) < sourceCost) {
             player.displayClientMessage(Component.translatable(
                     "message.dealt_force_skills.hvk_disassembler.source_missing", recipe.result().getHoverName()), true);
             sendRecipeDetail(player, recipeId, 0);
@@ -152,7 +153,7 @@ public class HvkAdvancedDisassemblyBeamEmitterBlockEntity extends BlockEntity {
             sendRecipeDetail(player, recipeId, 0);
             return 0;
         }
-        int removed = consumeSource(recipe.result(), sourceCost, sources);
+        int removed = consumeSourceWithRedemption(player, recipe.result(), sourceCost, sources);
         if (removed < sourceCost) {
             player.displayClientMessage(Component.translatable(
                     "message.dealt_force_skills.hvk_disassembler.source_missing", recipe.result().getHoverName()), true);
@@ -214,7 +215,7 @@ public class HvkAdvancedDisassemblyBeamEmitterBlockEntity extends BlockEntity {
         }
         List<SourceSlot> sources = collectSources();
         int sourceCost = sourceCost(recipe, 1);
-        int available = countSource(recipe.result(), sources);
+        int available = countSourceWithRedemption(player, recipe.result(), sources, sourceCost);
         boolean sourceReady = available >= sourceCost;
         boolean healthReady = player.getHealth() > healthCost(player) + 1.0F;
         List<RecipeTreeLine> lines = new ArrayList<>();
@@ -257,6 +258,9 @@ public class HvkAdvancedDisassemblyBeamEmitterBlockEntity extends BlockEntity {
         if (owner != null && owner.level() == level
                 && owner.distanceToSqr(worldPosition.getX() + 0.5D, worldPosition.getY() + 0.5D,
                 worldPosition.getZ() + 0.5D) <= OWNER_INVENTORY_RANGE * OWNER_INVENTORY_RANGE) {
+            for (SpecialOperationsBaseManager.WarehouseEntry entry : SpecialOperationsBaseManager.warehouseEntries(owner)) {
+                sources.add(new WarehouseSourceSlot(owner, entry.slot(), entry.stack()));
+            }
             Inventory inventory = owner.getInventory();
             for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
                 sources.add(new PlayerSourceSlot(inventory, slot));
@@ -309,6 +313,34 @@ public class HvkAdvancedDisassemblyBeamEmitterBlockEntity extends BlockEntity {
             remaining -= source.extract(template, remaining);
         }
         return count - remaining;
+    }
+
+    private static int countSourceWithRedemption(ServerPlayer player, ItemStack template,
+                                                 List<SourceSlot> sources, int requested) {
+        int safeRequested = Math.max(0, requested);
+        int physical = Math.min(safeRequested, countSource(template, sources));
+        int remaining = safeRequested - physical;
+        if (remaining <= 0) {
+            return physical;
+        }
+        return physical + SpecialOperationsBaseManager.maxRedeemableCountMatching(
+                player, sold -> matchesSource(sold, template), remaining);
+    }
+
+    private static int consumeSourceWithRedemption(ServerPlayer player, ItemStack template, int count,
+                                                   List<SourceSlot> sources) {
+        int requested = Math.max(0, count);
+        if (countSourceWithRedemption(player, template, sources, requested) < requested) {
+            return 0;
+        }
+        int consumed = consumeSource(template, requested, sources);
+        int remaining = requested - consumed;
+        if (remaining <= 0) {
+            return consumed;
+        }
+        ItemStack purchased = SpecialOperationsBaseManager.redeemCheapestMatching(
+                player, sold -> matchesSource(sold, template), remaining);
+        return consumed + (purchased.isEmpty() ? 0 : purchased.getCount());
     }
 
     private static boolean matchesSource(ItemStack stack, ItemStack template) {
@@ -423,6 +455,33 @@ public class HvkAdvancedDisassemblyBeamEmitterBlockEntity extends BlockEntity {
                 return 0;
             }
             return handler.extractItem(slot, max, false).getCount();
+        }
+    }
+
+    private static final class WarehouseSourceSlot implements SourceSlot {
+        private final ServerPlayer owner;
+        private final int slot;
+        private final ItemStack cached;
+
+        private WarehouseSourceSlot(ServerPlayer owner, int slot, ItemStack cached) {
+            this.owner = owner;
+            this.slot = slot;
+            this.cached = cached.copy();
+        }
+
+        @Override
+        public ItemStack stack() {
+            return cached;
+        }
+
+        @Override
+        public int extract(ItemStack template, int max) {
+            if (!matchesSource(cached, template)) {
+                return 0;
+            }
+            ItemStack removed = SpecialOperationsBaseManager.extractWarehouse(owner, slot, max);
+            cached.shrink(removed.getCount());
+            return removed.getCount();
         }
     }
 

@@ -29,7 +29,9 @@ public class StingerStimHealEffect extends MobEffect {
         if (!entity.level().isClientSide
                 && entity.getHealth() > 0.0F
                 && entity.tickCount % 20 == 0) {
-            entity.heal(entity.getMaxHealth() * Math.max(0.0F, StingerStateManager.STIM_HEAL_PER_SECOND_FRACTION));
+            entity.heal(entity.getMaxHealth()
+                    * Math.max(0.0F, StingerStateManager.STIM_HEAL_PER_SECOND_FRACTION)
+                    * (amplifier + 1));
         }
     }
 }

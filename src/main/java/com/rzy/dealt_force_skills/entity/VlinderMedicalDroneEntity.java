@@ -16,6 +16,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.projectile.ItemSupplier;
 import net.minecraft.world.item.ItemStack;
@@ -48,7 +49,7 @@ public class VlinderMedicalDroneEntity extends Entity implements ItemSupplier {
     public VlinderMedicalDroneEntity(
             EntityType<? extends VlinderMedicalDroneEntity> type,
             Level level,
-            ServerPlayer owner,
+            LivingEntity owner,
             ServerPlayer target,
             VlinderDroneMode mode
     ) {
@@ -78,18 +79,21 @@ public class VlinderMedicalDroneEntity extends Entity implements ItemSupplier {
             discard();
             return;
         }
-        ServerPlayer owner = owner(level);
+        LivingEntity owner = owner(level);
         ServerPlayer target = target(level);
         if (owner == null || target == null || tickCount > LIFE_TICKS
                 || owner.distanceToSqr(this) > MAX_OWNER_DISTANCE * MAX_OWNER_DISTANCE) {
             discard();
             return;
         }
-        if (mode == VlinderDroneMode.HEAL && !DealtTeamManager.areTeammates(owner, target)) {
+        if (mode == VlinderDroneMode.HEAL
+                && (!(owner instanceof ServerPlayer player) || !DealtTeamManager.areTeammates(player, target))) {
             discard();
             return;
         }
-        if (mode != VlinderDroneMode.HEAL && DealtTeamManager.areTeammates(owner, target)) {
+        if (mode != VlinderDroneMode.HEAL
+                && (owner instanceof ServerPlayer player && DealtTeamManager.areTeammates(player, target)
+                || owner instanceof AcceleratedTroopsEntity troops && !troops.isValidEnemy(target))) {
             discard();
             return;
         }
@@ -158,9 +162,9 @@ public class VlinderMedicalDroneEntity extends Entity implements ItemSupplier {
         discard();
     }
 
-    private void applyToTarget(ServerPlayer owner, ServerPlayer target, ServerLevel level) {
-        if (mode == VlinderDroneMode.HEAL) {
-            VlinderStateManager.applyHealingDust(owner, target);
+    private void applyToTarget(LivingEntity owner, ServerPlayer target, ServerLevel level) {
+        if (mode == VlinderDroneMode.HEAL && owner instanceof ServerPlayer player) {
+            VlinderStateManager.applyHealingDust(player, target);
             level.playSound(null, target.blockPosition(), ModSounds.VLINDER_HEALING_DUST_APPLY.get(),
                     SoundSource.PLAYERS, 0.85F, 1.08F);
         } else {
@@ -172,9 +176,9 @@ public class VlinderMedicalDroneEntity extends Entity implements ItemSupplier {
                 SoundSource.PLAYERS, 0.75F, 1.0F);
     }
 
-    private ServerPlayer owner(ServerLevel level) {
+    private LivingEntity owner(ServerLevel level) {
         Entity entity = ownerId == null ? null : level.getEntity(ownerId);
-        return entity instanceof ServerPlayer player && player.isAlive() ? player : null;
+        return entity instanceof LivingEntity living && living.isAlive() ? living : null;
     }
 
     private ServerPlayer target(ServerLevel level) {

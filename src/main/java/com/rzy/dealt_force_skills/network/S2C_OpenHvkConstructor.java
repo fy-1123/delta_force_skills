@@ -78,11 +78,11 @@ public class S2C_OpenHvkConstructor {
         for (int i = 0; i < Math.min(MAX_RECIPES, recipes.size()); i++) {
             RecipeView recipe = recipes.get(i);
             buf.writeUtf(recipe.id().toString());
-            buf.writeItem(recipe.result());
+            writeCountedItem(buf, recipe.result());
             List<ItemStack> ingredients = recipe.ingredients();
             buf.writeVarInt(Math.min(MAX_INGREDIENTS, ingredients.size()));
             for (int j = 0; j < Math.min(MAX_INGREDIENTS, ingredients.size()); j++) {
-                buf.writeItem(ingredients.get(j));
+                writeCountedItem(buf, ingredients.get(j));
             }
         }
     }
@@ -92,11 +92,11 @@ public class S2C_OpenHvkConstructor {
         List<RecipeView> recipes = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             ResourceLocation id = readResourceLocation(buf);
-            ItemStack result = buf.readItem();
+            ItemStack result = readCountedItem(buf);
             int ingredientCount = Math.max(0, Math.min(MAX_INGREDIENTS, buf.readVarInt()));
             List<ItemStack> ingredients = new ArrayList<>(ingredientCount);
             for (int j = 0; j < ingredientCount; j++) {
-                ingredients.add(buf.readItem());
+                ingredients.add(readCountedItem(buf));
             }
             recipes.add(new RecipeView(id, result, ingredients));
         }
@@ -110,5 +110,27 @@ public class S2C_OpenHvkConstructor {
         } catch (RuntimeException ex) {
             return ResourceLocation.fromNamespaceAndPath("minecraft", "air");
         }
+    }
+
+    private static void writeCountedItem(FriendlyByteBuf buf, ItemStack stack) {
+        if (stack == null || stack.isEmpty() || stack.getCount() <= 0) {
+            buf.writeItem(ItemStack.EMPTY);
+            buf.writeVarInt(0);
+            return;
+        }
+        ItemStack wireStack = stack.copy();
+        wireStack.setCount(1);
+        buf.writeItem(wireStack);
+        buf.writeVarInt(stack.getCount());
+    }
+
+    private static ItemStack readCountedItem(FriendlyByteBuf buf) {
+        ItemStack stack = buf.readItem();
+        int count = Math.max(0, buf.readVarInt());
+        if (stack.isEmpty() || count <= 0) {
+            return ItemStack.EMPTY;
+        }
+        stack.setCount(count);
+        return stack;
     }
 }

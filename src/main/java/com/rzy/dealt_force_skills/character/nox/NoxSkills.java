@@ -25,6 +25,11 @@ public final class NoxSkills {
 
     public static boolean useSkill(ServerPlayer player, SkillSlot slot, boolean alternate) {
         NoxStateManager.initializeIfNeeded(player);
+        if (NoxStateManager.isStealthed(player) && slot != SkillSlot.CORE
+                && !NoxStateManager.preservesStealth(player)) {
+            NoxStateManager.endStealthEarly(player);
+            return true;
+        }
         return switch (slot) {
             case ACTIVE_1 -> toggleRotor(player);
             case ACTIVE_2 -> alternate ? equipFlashGrenade(player) : throwFlashGrenade(player, false, false);
@@ -38,6 +43,10 @@ public final class NoxSkills {
             return false;
         }
         NoxStateManager.initializeIfNeeded(player);
+        if (NoxStateManager.isStealthed(player) && !NoxStateManager.preservesStealth(player)) {
+            NoxStateManager.endStealthEarly(player);
+            return true;
+        }
 
         return switch (action) {
             case STOW_TOOL -> {

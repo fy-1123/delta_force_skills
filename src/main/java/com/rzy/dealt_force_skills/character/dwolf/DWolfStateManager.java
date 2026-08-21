@@ -4,6 +4,8 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_DWolfStaminaRestore;
 import com.rzy.dealt_force_skills.network.S2C_SyncDWolfState;
@@ -74,7 +76,33 @@ public final class DWolfStateManager {
 
     public static boolean isDWolf(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.D_WOLF_ID.equals(selected.get());
+        if (selected.isPresent() && ModCharacters.D_WOLF_ID.equals(selected.get())) {
+            return true;
+        }
+        if (com.rzy.dealt_force_skills.character.commander.CommanderStateManager.isCommander(player)) {
+            return CommanderStateManager.inheritsRuntimeSource(player, ModCharacters.D_WOLF_ID)
+                    || hasOngoingRuntimeState(player);
+        }
+        return false;
+    }
+
+    public static boolean hasOngoingRuntimeState(Player player) {
+        if (player == null || !player.getPersistentData().contains(ROOT_TAG, Tag.TAG_COMPOUND)) {
+            return false;
+        }
+        CompoundTag tag = data(player);
+        long now = SkillCooldownHelper.now(player);
+        return tag.getLong(OVERLOAD_STARTUP_UNTIL) > now
+                || tag.getLong(OVERLOAD_ACTIVE_UNTIL) > now
+                || tag.getInt(CANNON_BURST_SHOTS) > 0
+                || tag.getInt(SLIDE_TICKS_REMAINING) > 0
+                || tag.getInt(OVERLOAD_KILL_HEAL_TICKS) > 0;
+    }
+
+    public static boolean canUseSlide(Player player) {
+        Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
+        return selected.isPresent() && ModCharacters.D_WOLF_ID.equals(selected.get())
+                || CommanderStateManager.hasInheritedPassive(player, ModCharacters.D_WOLF_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -88,9 +116,9 @@ public final class DWolfStateManager {
         }
 
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(HAND_CANNON_CHARGES, HAND_CANNON_MAX_CHARGES);
+        tag.putInt(HAND_CANNON_CHARGES, handCannonCapacity(player));
         tag.putLong(HAND_CANNON_NEXT_RECHARGE, 0L);
-        tag.putInt(SMOKE_CHARGES, SMOKE_MAX_CHARGES);
+        tag.putInt(SMOKE_CHARGES, smokeCapacity(player));
         tag.putLong(SMOKE_NEXT_RECHARGE, 0L);
         tag.putLong(OVERLOAD_COOLDOWN_UNTIL, 0L);
         tag.putLong(OVERLOAD_STARTUP_UNTIL, 0L);
@@ -137,8 +165,8 @@ public final class DWolfStateManager {
         initializeIfNeeded(player);
 
         long now = SkillCooldownHelper.now(player);
-        recharge(player, now, HAND_CANNON_CHARGES, HAND_CANNON_MAX_CHARGES, HAND_CANNON_NEXT_RECHARGE, HAND_CANNON_RECHARGE_TICKS);
-        recharge(player, now, SMOKE_CHARGES, SMOKE_MAX_CHARGES, SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
+        recharge(player, now, HAND_CANNON_CHARGES, handCannonCapacity(player), HAND_CANNON_NEXT_RECHARGE, HAND_CANNON_RECHARGE_TICKS);
+        recharge(player, now, SMOKE_CHARGES, smokeCapacity(player), SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
         tickCannonBurst(player, now);
         finishOverloadStartup(player, now);
         tickOverload(player, now);
@@ -151,14 +179,14 @@ public final class DWolfStateManager {
     }
 
     public static int handCannonRechargeRemainingTicks(Player player) {
-        if (handCannonCharges(player) >= HAND_CANNON_MAX_CHARGES) {
+        if (handCannonCharges(player) >= handCannonCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, HAND_CANNON_NEXT_RECHARGE);
     }
 
     public static boolean consumeHandCannonCharge(ServerPlayer player) {
-        return consumeCharge(player, HAND_CANNON_CHARGES, HAND_CANNON_MAX_CHARGES,
+        return consumeCharge(player, HAND_CANNON_CHARGES, handCannonCapacity(player),
                 HAND_CANNON_NEXT_RECHARGE, HAND_CANNON_RECHARGE_TICKS);
     }
 
@@ -167,14 +195,14 @@ public final class DWolfStateManager {
     }
 
     public static int smokeRechargeRemainingTicks(Player player) {
-        if (smokeCharges(player) >= SMOKE_MAX_CHARGES) {
+        if (smokeCharges(player) >= smokeCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, SMOKE_NEXT_RECHARGE);
     }
 
     public static boolean consumeSmokeCharge(ServerPlayer player) {
-        return consumeCharge(player, SMOKE_CHARGES, SMOKE_MAX_CHARGES, SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
+        return consumeCharge(player, SMOKE_CHARGES, smokeCapacity(player), SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
     }
 
     public static DWolfTool equippedTool(Player player) {
@@ -201,7 +229,7 @@ public final class DWolfStateManager {
         }
 
         long now = SkillCooldownHelper.now(player);
-        tag.putInt(CANNON_BURST_SHOTS, 3);
+        tag.putInt(CANNON_BURST_SHOTS, CommanderStateManager.skillCount(player, 3));
         tag.putLong(CANNON_BURST_NEXT_SHOT, now);
         return true;
     }
@@ -240,14 +268,19 @@ public final class DWolfStateManager {
         }
 
         CompoundTag tag = data(player);
-        tag.putLong(OVERLOAD_ACTIVE_UNTIL, tag.getLong(OVERLOAD_ACTIVE_UNTIL) + OVERLOAD_EXTENSION_TICKS);
-        DfsAchievements.recordDWolfOverloadExtension(player, OVERLOAD_EXTENSION_TICKS);
+        boolean modifiedSkeleton = CommanderStateManager.hasBranchUpgrade(
+                player, CommanderBranchUpgrade.DWOLF_MODIFIED_SKELETON);
+        int extensionTicks = CommanderStateManager.skillDuration(player,
+                modifiedSkeleton ? OVERLOAD_EXTENSION_TICKS * 2 : OVERLOAD_EXTENSION_TICKS);
+        tag.putLong(OVERLOAD_ACTIVE_UNTIL, tag.getLong(OVERLOAD_ACTIVE_UNTIL) + extensionTicks);
+        DfsAchievements.recordDWolfOverloadExtension(player, extensionTicks);
         // Overload kill reward: restore 50% max health over 2 seconds (not vanilla REGEN amp).
-        float healTotal = player.getMaxHealth() * Math.max(0.0F, OVERLOAD_KILL_HEAL_FRACTION);
+        float healTotal = player.getMaxHealth() * Math.max(0.0F, OVERLOAD_KILL_HEAL_FRACTION)
+                * (modifiedSkeleton ? 2.0F : 1.0F);
         tag.putFloat(OVERLOAD_KILL_HEAL_REMAINING, healTotal);
         tag.putInt(OVERLOAD_KILL_HEAL_TICKS, Math.max(1, OVERLOAD_REGEN_TICKS));
         player.addEffect(new MobEffectInstance(MobEffects.SATURATION, OVERLOAD_REGEN_TICKS, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.dwolf.d_wolf_state_manager.effect.saturation.1.amplifier", 1), false, true, true));
-        NetworkHandler.sendToPlayer(new S2C_DWolfStaminaRestore(50), player);
+        NetworkHandler.sendToPlayer(new S2C_DWolfStaminaRestore(modifiedSkeleton ? 100 : 50), player);
         player.level().playSound(null, player.blockPosition(), ModSounds.D_WOLF_OVERLOAD_KILL_EXTENSION.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f);
         player.displayClientMessage(Component.translatable("message.dealt_force_skills.d_wolf.overload_extended"), true);
@@ -284,7 +317,7 @@ public final class DWolfStateManager {
     }
 
     public static boolean startSlide(ServerPlayer player) {
-        if (!isDWolf(player) || !player.onGround() || !player.isSprinting()) {
+        if (!canUseSlide(player) || !player.onGround() || !player.isSprinting()) {
             return false;
         }
 
@@ -320,10 +353,10 @@ public final class DWolfStateManager {
 
         NetworkHandler.sendToPlayer(new S2C_SyncDWolfState(
                 handCannonCharges(player),
-                HAND_CANNON_MAX_CHARGES,
+                handCannonCapacity(player),
                 handCannonRechargeRemainingTicks(player),
                 smokeCharges(player),
-                SMOKE_MAX_CHARGES,
+                smokeCapacity(player),
                 smokeRechargeRemainingTicks(player),
                 overloadCooldownRemainingTicks(player),
                 overloadStartupRemainingTicks(player),
@@ -358,7 +391,7 @@ public final class DWolfStateManager {
         }
 
         tag.putLong(OVERLOAD_STARTUP_UNTIL, 0L);
-        tag.putLong(OVERLOAD_ACTIVE_UNTIL, now + OVERLOAD_DURATION_TICKS);
+        tag.putLong(OVERLOAD_ACTIVE_UNTIL, now + CommanderStateManager.skillDuration(player, OVERLOAD_DURATION_TICKS));
         tag.putDouble(OVERLOAD_STEP_LAST_X, player.getX());
         tag.putDouble(OVERLOAD_STEP_LAST_Z, player.getZ());
         NetworkHandler.sendToPlayer(new S2C_DWolfStaminaRestore(50), player);
@@ -438,13 +471,15 @@ public final class DWolfStateManager {
 
     private static boolean consumeCharge(ServerPlayer player, String chargesKey, int maxCharges, String rechargeKey, int rechargeTicks) {
         CompoundTag tag = data(player);
-        int charges = Math.min(maxCharges, tag.getInt(chargesKey));
+        int capacity = Math.max(0, maxCharges);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(chargesKey)));
+        tag.putInt(chargesKey, charges);
         if (charges <= 0) {
             return false;
         }
 
         tag.putInt(chargesKey, charges - 1);
-        if (charges == maxCharges) {
+        if (charges == capacity) {
             tag.putLong(rechargeKey, SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), rechargeTicks));
         }
         return true;
@@ -452,19 +487,37 @@ public final class DWolfStateManager {
 
     private static void recharge(ServerPlayer player, long now, String chargesKey, int maxCharges, String rechargeKey, int rechargeTicks) {
         CompoundTag tag = data(player);
-        int charges = Math.min(maxCharges, tag.getInt(chargesKey));
+        int capacity = Math.max(0, maxCharges);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(chargesKey)));
+        tag.putInt(chargesKey, charges);
         long nextRecharge = tag.getLong(rechargeKey);
-        if (charges >= maxCharges || nextRecharge <= 0L || now < nextRecharge) {
+        if (charges >= capacity) {
+            tag.putLong(rechargeKey, 0L);
+            return;
+        }
+        if (nextRecharge <= 0L) {
+            tag.putLong(rechargeKey, SkillCooldownHelper.until(player, now, rechargeTicks));
+            return;
+        }
+        if (now < nextRecharge) {
             return;
         }
 
         charges++;
         tag.putInt(chargesKey, charges);
-        tag.putLong(rechargeKey, charges < maxCharges ? SkillCooldownHelper.until(player, now, rechargeTicks) : 0L);
+        tag.putLong(rechargeKey, charges < capacity ? SkillCooldownHelper.until(player, now, rechargeTicks) : 0L);
     }
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int handCannonCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, HAND_CANNON_MAX_CHARGES);
+    }
+
+    private static int smokeCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, SMOKE_MAX_CHARGES);
     }
 
     private static CompoundTag data(Player player) {

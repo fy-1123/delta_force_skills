@@ -1,5 +1,7 @@
 package com.rzy.dealt_force_skills.entity;
 
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModEntities;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.util.ProjectileBouncePhysics;
@@ -90,10 +92,14 @@ public class NTwoDewarCanisterEntity extends Projectile implements ItemSupplier 
             discard();
             return;
         }
-        ServerPlayer owner = ownerId == null ? null : level.getServer().getPlayerList().getPlayer(ownerId);
+        LivingEntity owner = ownerId != null && level.getEntity(ownerId) instanceof LivingEntity living
+                ? living : null;
         if (owner != null) {
+            boolean overpressure = owner instanceof ServerPlayer player
+                    && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NTWO_OVERPRESSURE_CANISTER);
             NTwoIceFieldEntity field = new NTwoIceFieldEntity(ModEntities.N_TWO_ICE_FIELD.get(), level, owner,
-                    6.0D, 16 * 20, 10, 10, 2.0F);
+                    overpressure ? 18.0D : 6.0D, 16 * 20, 10, overpressure ? 30 : 10, 2.0F);
+            field.setIgnoreLineOfSight(overpressure);
             field.configureAchievementSource(NTwoIceFieldEntity.ACHIEVEMENT_SOURCE_DEWAR, getStringUUID());
             field.setPos(center.x, center.y, center.z);
             level.addFreshEntity(field);
@@ -101,7 +107,12 @@ public class NTwoDewarCanisterEntity extends Projectile implements ItemSupplier 
         level.playSound(null, center.x, center.y, center.z, ModSounds.N_TWO_DEWAR_FIELD.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f);
         level.sendParticles(ParticleTypes.SNOWFLAKE, center.x, center.y + 0.2D, center.z,
-                90, 2.0D, 0.5D, 2.0D, 0.05D);
+                90, owner instanceof ServerPlayer player
+                        && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NTWO_OVERPRESSURE_CANISTER)
+                        ? 6.0D : 2.0D, 0.5D,
+                owner instanceof ServerPlayer player
+                        && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NTWO_OVERPRESSURE_CANISTER)
+                        ? 6.0D : 2.0D, 0.05D);
         discard();
     }
 

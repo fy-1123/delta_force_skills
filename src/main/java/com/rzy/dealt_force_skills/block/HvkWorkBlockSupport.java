@@ -47,7 +47,7 @@ final class HvkWorkBlockSupport {
             return;
         }
         for (BlockPos constructorPos : constructors) {
-            level.destroyBlock(constructorPos, false);
+            level.destroyBlock(constructorPos, true);
         }
         if (placer instanceof ServerPlayer player) {
             player.displayClientMessage(Component.translatable(

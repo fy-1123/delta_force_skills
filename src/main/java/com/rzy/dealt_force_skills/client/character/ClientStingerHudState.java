@@ -18,6 +18,7 @@ public final class ClientStingerHudState {
     private static StingerStimMode stimMode = StingerStimMode.HEAL;
     private static int rescueTicks;
     private static int rescueRequiredTicks;
+    private static int rescueCooldownTicks;
     private static int selfDownedTicks;
     private static int stimLockTargetCount;
     private static int stimLockTicks;
@@ -37,6 +38,7 @@ public final class ClientStingerHudState {
         stimMode = StingerStimMode.HEAL;
         rescueTicks = 0;
         rescueRequiredTicks = 0;
+        rescueCooldownTicks = 0;
         selfDownedTicks = 0;
         stimLockTargetCount = 0;
         stimLockTicks = 0;
@@ -53,6 +55,7 @@ public final class ClientStingerHudState {
             int stimModeOrdinal,
             int rescueTicks,
             int rescueRequiredTicks,
+            int rescueCooldownTicks,
             int selfDownedTicks,
             List<StingerDownedMarker> downedMarkers
     ) {
@@ -72,6 +75,7 @@ public final class ClientStingerHudState {
                 : StingerStimMode.HEAL;
         ClientStingerHudState.rescueTicks = rescueTicks;
         ClientStingerHudState.rescueRequiredTicks = rescueRequiredTicks;
+        ClientStingerHudState.rescueCooldownTicks = rescueCooldownTicks;
         ClientStingerHudState.selfDownedTicks = selfDownedTicks;
         ClientStingerHudState.downedMarkers = List.copyOf(downedMarkers);
     }
@@ -85,6 +89,9 @@ public final class ClientStingerHudState {
         }
         if (stimRechargeTicks > 0) {
             stimRechargeTicks--;
+        }
+        if (rescueCooldownTicks > 0) {
+            rescueCooldownTicks--;
         }
         if (rescueTicks > 0 && rescueRequiredTicks <= 0) {
             rescueTicks--;
@@ -113,7 +120,8 @@ public final class ClientStingerHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != StingerTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.STINGER_ID))
+                && equippedTool != StingerTool.NONE;
     }
 
     public static int smokeCooldownTicks() {
@@ -150,6 +158,10 @@ public final class ClientStingerHudState {
 
     public static int rescueRequiredTicks() {
         return rescueRequiredTicks;
+    }
+
+    public static int rescueCooldownTicks() {
+        return rescueCooldownTicks;
     }
 
     public static int selfDownedTicks() {

@@ -286,6 +286,11 @@ public final class DealtForceConfig {
         return value instanceof Number number ? number.longValue() : defaultValue;
     }
 
+    public static long longValue(String path, long defaultValue, String legacyPath) {
+        Object value = value(path, defaultValue, legacyPath);
+        return value instanceof Number number ? number.longValue() : defaultValue;
+    }
+
     public static float floatValue(String path, float defaultValue) {
         Object value = value(path, defaultValue);
         return value instanceof Number number && Float.isFinite(number.floatValue())
@@ -310,6 +315,11 @@ public final class DealtForceConfig {
     public static boolean booleanValue(String path, boolean defaultValue) {
         Object value = value(path, defaultValue);
         return value instanceof Boolean bool ? bool : defaultValue;
+    }
+
+    public static String stringValue(String path, String defaultValue) {
+        Object value = value(path, defaultValue);
+        return value instanceof String string ? string : defaultValue;
     }
 
     /**

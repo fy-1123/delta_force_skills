@@ -18,7 +18,8 @@ public final class ModCharacters {
     public static final String SHEPHERD_ID = DealtForceSkillsMod.MODID + ":engineer/shepherd";
     public static final String N_TWO_ID = DealtForceSkillsMod.MODID + ":engineer/n_two";
     public static final String D_WOLF_ID = DealtForceSkillsMod.MODID + ":assault/d_wolf";
-    public static final String CORPS_ID = DealtForceSkillsMod.MODID + ":assault/corps";
+    public static final String CORPS_ID = DealtForceSkillsMod.MODID + ":special/corps";
+    public static final String LEGACY_CORPS_ID = DealtForceSkillsMod.MODID + ":assault/corps";
     public static final String VYRON_ID = DealtForceSkillsMod.MODID + ":assault/vyron";
     public static final String NOX_ID = DealtForceSkillsMod.MODID + ":assault/nox";
     public static final String TEMPEST_ID = DealtForceSkillsMod.MODID + ":assault/tempest";
@@ -28,6 +29,7 @@ public final class ModCharacters {
     public static final String RAPTOR_ID = DealtForceSkillsMod.MODID + ":recon/raptor";
     public static final String SAEED_ID = DealtForceSkillsMod.MODID + ":boss/saeed";
     public static final String GHROTH_ID = DealtForceSkillsMod.MODID + ":boss/ghroth";
+    public static final String COMMANDER_ID = DealtForceSkillsMod.MODID + ":boss/commander";
     public static final String STINGER_ID = DealtForceSkillsMod.MODID + ":support/stinger";
     public static final String TOXIK_ID = DealtForceSkillsMod.MODID + ":support/toxik";
     public static final String VLINDER_ID = DealtForceSkillsMod.MODID + ":support/vlinder";
@@ -61,6 +63,8 @@ public final class ModCharacters {
             Map.entry(normalizeCommandName("银翼"), RAPTOR_ID),
             Map.entry(normalizeCommandName("赛伊德"), SAEED_ID),
             Map.entry(normalizeCommandName("典狱长"), GHROTH_ID),
+            Map.entry(normalizeCommandName("指挥官"), COMMANDER_ID),
+            Map.entry(normalizeCommandName("Commander"), COMMANDER_ID),
             Map.entry(normalizeCommandName("毒刺"), STINGER_ID),
             Map.entry(normalizeCommandName("毒克"), TOXIK_ID),
             Map.entry(normalizeCommandName("蝶"), VLINDER_ID),
@@ -81,7 +85,7 @@ public final class ModCharacters {
             "深蓝", "乌鲁鲁", "比特", "牧羊人", "液氮", "N-two",
             "红狼", "军团", "Corps", "拳抖幻", "QuanDouhuan", "威龙", "疾风",
             "露娜", "骇爪", "回响", "银翼",
-            "赛伊德", "典狱长",
+            "赛伊德", "典狱长", "指挥官", "Commander",
             "毒刺", "毒克", "蝶",
             "曼巴", "二阶堂浩", "猫爸", "运输部", "亡灵", "蕾克拉忍者",
             "赌徒", "Gambler",
@@ -641,6 +645,35 @@ public final class ModCharacters {
             )
     ));
 
+    public static final CharacterDefinition COMMANDER = register(new CharacterDefinition(
+            COMMANDER_ID,
+            "character.dealt_force_skills.commander.name",
+            CharacterRole.BOSS,
+            "characters_records/新文件/指挥官相关文件/Commander.txt",
+            List.of(
+                    new SkillDefinition(SkillSlot.PASSIVE,
+                            "character.dealt_force_skills.commander.skill.tactical_command",
+                            "character.dealt_force_skills.commander.skill.tactical_command.desc",
+                            0,
+                            true),
+                    new SkillDefinition(SkillSlot.ACTIVE_1,
+                            "character.dealt_force_skills.commander.skill.inherited_active_1",
+                            "character.dealt_force_skills.commander.skill.inherited_active_1.desc",
+                            0,
+                            true),
+                    new SkillDefinition(SkillSlot.ACTIVE_2,
+                            "character.dealt_force_skills.commander.skill.inherited_active_2",
+                            "character.dealt_force_skills.commander.skill.inherited_active_2.desc",
+                            0,
+                            true),
+                    new SkillDefinition(SkillSlot.CORE,
+                            "character.dealt_force_skills.commander.skill.inherited_core",
+                            "character.dealt_force_skills.commander.skill.inherited_core.desc",
+                            0,
+                            true)
+            )
+    ));
+
     public static final CharacterDefinition MANBA = register(new CharacterDefinition(
             MANBA_ID,
             "character.dealt_force_skills.manba.name",
@@ -912,6 +945,9 @@ public final class ModCharacters {
     }
 
     public static Optional<CharacterDefinition> get(String id) {
+        if (LEGACY_CORPS_ID.equals(id)) {
+            id = CORPS_ID;
+        }
         return Optional.ofNullable(CHARACTERS.get(id));
     }
 

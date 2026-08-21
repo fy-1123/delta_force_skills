@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.character.hackclaw;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.entity.UluruLoiteringMissileEntity;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_HackclawPathLines;
@@ -72,7 +73,9 @@ public final class HackclawStateManager {
 
     public static boolean isHackclaw(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.HACKCLAW_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.HACKCLAW_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.HACKCLAW_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -86,9 +89,9 @@ public final class HackclawStateManager {
         }
 
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(KNIFE_CHARGES, KNIFE_MAX_CHARGES);
+        tag.putInt(KNIFE_CHARGES, knifeCapacity(player));
         tag.putLong(KNIFE_NEXT_RECHARGE, 0L);
-        tag.putInt(FLASH_DRONE_CHARGES, FLASH_DRONE_MAX_CHARGES);
+        tag.putInt(FLASH_DRONE_CHARGES, flashDroneCapacity(player));
         tag.putLong(FLASH_DRONE_NEXT_RECHARGE, 0L);
         tag.putInt(EQUIPPED_TOOL, HackclawTool.NONE.ordinal());
         tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
@@ -119,9 +122,9 @@ public final class HackclawStateManager {
         initializeIfNeeded(player);
         long now = SkillCooldownHelper.now(player);
         boolean changed = recharge(player, now,
-                KNIFE_CHARGES, KNIFE_NEXT_RECHARGE, KNIFE_MAX_CHARGES, KNIFE_RECHARGE_TICKS);
+                KNIFE_CHARGES, KNIFE_NEXT_RECHARGE, knifeCapacity(player), KNIFE_RECHARGE_TICKS);
         changed |= recharge(player, now,
-                FLASH_DRONE_CHARGES, FLASH_DRONE_NEXT_RECHARGE, FLASH_DRONE_MAX_CHARGES,
+                FLASH_DRONE_CHARGES, FLASH_DRONE_NEXT_RECHARGE, flashDroneCapacity(player),
                 FLASH_DRONE_RECHARGE_TICKS);
         changed |= tickCore(player, now);
         if (changed) {
@@ -130,11 +133,11 @@ public final class HackclawStateManager {
     }
 
     public static int knifeCharges(Player player) {
-        return data(player).getInt(KNIFE_CHARGES);
+        return Math.min(knifeCapacity(player), data(player).getInt(KNIFE_CHARGES));
     }
 
     public static int knifeRechargeRemainingTicks(Player player) {
-        if (knifeCharges(player) >= KNIFE_MAX_CHARGES) {
+        if (knifeCharges(player) >= knifeCapacity(player)) {
             return 0;
         }
         long remaining = data(player).getLong(KNIFE_NEXT_RECHARGE) - SkillCooldownHelper.now(player);
@@ -142,11 +145,11 @@ public final class HackclawStateManager {
     }
 
     public static int flashDroneCharges(Player player) {
-        return data(player).getInt(FLASH_DRONE_CHARGES);
+        return Math.min(flashDroneCapacity(player), data(player).getInt(FLASH_DRONE_CHARGES));
     }
 
     public static int flashDroneRechargeRemainingTicks(Player player) {
-        if (flashDroneCharges(player) >= FLASH_DRONE_MAX_CHARGES) {
+        if (flashDroneCharges(player) >= flashDroneCapacity(player)) {
             return 0;
         }
         long remaining = data(player).getLong(FLASH_DRONE_NEXT_RECHARGE) - SkillCooldownHelper.now(player);
@@ -154,13 +157,13 @@ public final class HackclawStateManager {
     }
 
     public static boolean consumeKnifeCharge(ServerPlayer player) {
-        return consumeCharge(player, KNIFE_CHARGES, KNIFE_NEXT_RECHARGE, KNIFE_MAX_CHARGES,
+        return consumeCharge(player, KNIFE_CHARGES, KNIFE_NEXT_RECHARGE, knifeCapacity(player),
                 KNIFE_RECHARGE_TICKS);
     }
 
     public static boolean consumeFlashDroneCharge(ServerPlayer player) {
         return consumeCharge(player, FLASH_DRONE_CHARGES, FLASH_DRONE_NEXT_RECHARGE,
-                FLASH_DRONE_MAX_CHARGES, FLASH_DRONE_RECHARGE_TICKS);
+                flashDroneCapacity(player), FLASH_DRONE_RECHARGE_TICKS);
     }
 
     public static HackclawTool equippedTool(Player player) {
@@ -246,10 +249,10 @@ public final class HackclawStateManager {
     public static void syncToClient(ServerPlayer player) {
         NetworkHandler.sendToPlayer(new S2C_SyncHackclawState(
                 knifeCharges(player),
-                KNIFE_MAX_CHARGES,
+                knifeCapacity(player),
                 knifeRechargeRemainingTicks(player),
                 flashDroneCharges(player),
-                FLASH_DRONE_MAX_CHARGES,
+                flashDroneCapacity(player),
                 flashDroneRechargeRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
                 coreChannelRemainingTicks(player),
@@ -471,6 +474,14 @@ public final class HackclawStateManager {
         return Math.max(1, (ticks + 19) / 20) + "s";
     }
 
+    private static int knifeCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, KNIFE_MAX_CHARGES);
+    }
+
+    private static int flashDroneCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, FLASH_DRONE_MAX_CHARGES);
+    }
+
     private static boolean recharge(
             ServerPlayer player,
             long now,
@@ -480,15 +491,32 @@ public final class HackclawStateManager {
             int rechargeTicks
     ) {
         CompoundTag tag = data(player);
-        int charges = Math.min(maxCharges, tag.getInt(chargeKey));
+        int capacity = Math.max(0, maxCharges);
+        int rawCharges = tag.getInt(chargeKey);
+        int charges = Math.min(capacity, Math.max(0, rawCharges));
+        boolean changed = rawCharges != charges;
+        if (changed) {
+            tag.putInt(chargeKey, charges);
+        }
         long nextRecharge = tag.getLong(rechargeKey);
-        if (charges >= maxCharges || nextRecharge <= 0L || now < nextRecharge) {
-            return false;
+        if (charges >= capacity) {
+            if (nextRecharge != 0L) {
+                tag.putLong(rechargeKey, 0L);
+                changed = true;
+            }
+            return changed;
+        }
+        if (nextRecharge <= 0L) {
+            tag.putLong(rechargeKey, SkillCooldownHelper.until(player, now, rechargeTicks));
+            return true;
+        }
+        if (now < nextRecharge) {
+            return changed;
         }
 
         charges++;
         tag.putInt(chargeKey, charges);
-        if (charges < maxCharges) {
+        if (charges < capacity) {
             tag.putLong(rechargeKey, SkillCooldownHelper.until(player, now, rechargeTicks));
         } else {
             tag.putLong(rechargeKey, 0L);

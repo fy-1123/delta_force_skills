@@ -8,6 +8,8 @@ import com.rzy.dealt_force_skills.character.luna.LunaTool;
 import com.rzy.dealt_force_skills.character.luna.LunaToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientLunaHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.client.character.ClientLunaBowVisualState;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_LunaShockArrowPull;
@@ -38,7 +40,9 @@ public final class LunaInputHandler {
     public static void tick(Minecraft minecraft) {
         handleShockArrowPull(minecraft);
 
-        if (minecraft.player == null || !ClientLunaHudState.shouldRender()) {
+        if (minecraft.player == null || (!ClientLunaHudState.shouldRender()
+                && !(ClientCommanderState.inherits(ModCharacters.LUNA_ID)
+                && ClientLunaHudState.hasEquippedTool()))) {
             resetLocalBowCharge();
             return;
         }

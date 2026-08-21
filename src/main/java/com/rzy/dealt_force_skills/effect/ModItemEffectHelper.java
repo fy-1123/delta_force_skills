@@ -247,6 +247,9 @@ public final class ModItemEffectHelper {
         multiplier *= effectMultiplier(entity, ModEffects.LARGE_INTERACTION_SPEED.get(), 2.00D);
         multiplier *= effectMultiplier(entity, ModEffects.SMALL_ITEM_USE_SPEED.get(), 0.50D);
         multiplier *= effectMultiplier(entity, ModEffects.LARGE_ITEM_USE_SPEED.get(), 1.00D);
+        if (entity.hasEffect(ModEffects.ROUND_START_FREEZE.get())) {
+            multiplier *= 2.00D;
+        }
         return multiplier;
     }
 

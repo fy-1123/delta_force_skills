@@ -8,6 +8,7 @@ import com.rzy.dealt_force_skills.network.S2C_OpenAdvancedWorkBlock;
 import com.rzy.dealt_force_skills.network.S2C_UpdateAdvancedWorkBlock;
 import com.rzy.dealt_force_skills.registry.ModBlockEntities;
 import com.rzy.dealt_force_skills.registry.ModSounds;
+import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -105,13 +106,13 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
             return;
         }
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        ItemStack payment = bestLootPayment(loot, sources);
+        ItemStack payment = bestLootPayment(loot, sources, player);
         if (payment.isEmpty()) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.hvk_treasure.payment_missing"), true);
             return;
         }
         int required = payment.getMaxStackSize();
-        int removed = WorkBlockStorageAccess.consumeItem(sources, payment.getItem(), required);
+        int removed = WorkBlockStorageAccess.consumeItemWithRedemption(player, sources, payment.getItem(), required);
         if (removed < required) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.hvk_treasure.payment_missing"), true);
             return;
@@ -129,12 +130,12 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
             return;
         }
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        StonePayment payment = bestStonePayment(sources);
+        StonePayment payment = bestStonePayment(player, sources);
         if (payment == null) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.hvk_treasure.stone_missing"), true);
             return;
         }
-        int removed = WorkBlockStorageAccess.consumeItem(sources, payment.item(), payment.count());
+        int removed = WorkBlockStorageAccess.consumeItemWithRedemption(player, sources, payment.item(), payment.count());
         if (removed < payment.count()) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.hvk_treasure.stone_missing"), true);
             return;
@@ -166,7 +167,6 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
             return List.of();
         }
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        Map<Item, Integer> stock = WorkBlockStorageAccess.countItems(sources);
         List<EntryView> entries = new ArrayList<>();
         for (ResourceLocation id : chestLootIds(serverLevel)) {
             if (!matches(id, lootName(id), query)) {
@@ -176,7 +176,7 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
             if (outputs.isEmpty()) {
                 continue;
             }
-            int available = maxAvailablePaymentStacks(outputs, stock);
+            int available = maxAvailablePaymentStacks(outputs, sources, player);
             ItemStack icon = HvkTreasureChestBoxItem.create(id, lootName(id));
             String detail = Component.translatable("screen.dealt_force_skills.hvk_treasure.payment_stacks", available)
                     .getString();
@@ -188,7 +188,7 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
 
     private List<EntryView> oreEntries(ServerPlayer player, String query) {
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        int stoneStacks = availableStoneStacks(sources);
+        int stoneStacks = availableStoneStacks(player, sources);
         List<EntryView> entries = new ArrayList<>();
         for (Block block : ForgeRegistries.BLOCKS.getValues()) {
             if (!isOreBlock(block)) {
@@ -265,56 +265,95 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
         return id != null && id.getPath().startsWith("chests/");
     }
 
-    private static ItemStack bestLootPayment(List<ItemStack> loot, List<WorkBlockStorageAccess.SourceSlot> sources) {
-        Map<Item, Integer> stock = WorkBlockStorageAccess.countItems(sources);
+    private static ItemStack bestLootPayment(List<ItemStack> loot, List<WorkBlockStorageAccess.SourceSlot> sources,
+                                             ServerPlayer player) {
         ItemStack best = ItemStack.EMPTY;
-        int bestStacks = 0;
-        int bestCount = 0;
+        long bestCost = Long.MAX_VALUE;
+        int bestPhysical = -1;
         for (ItemStack stack : loot) {
             int required = stack.getMaxStackSize();
-            int available = stock.getOrDefault(stack.getItem(), 0);
-            int stacks = required <= 0 ? 0 : available / required;
-            if (stacks > bestStacks || stacks == bestStacks && available > bestCount) {
+            int physical = WorkBlockStorageAccess.countItem(sources, stack.getItem());
+            long cost = WorkBlockStorageAccess.redemptionCostForItem(
+                    player, sources, stack.getItem(), required);
+            if (required > 0 && cost >= 0L
+                    && (cost < bestCost || cost == bestCost && physical > bestPhysical)) {
                 ItemStack candidate = stack.copy();
                 candidate.setCount(Math.max(1, required));
                 best = candidate;
-                bestStacks = stacks;
-                bestCount = available;
+                bestCost = cost;
+                bestPhysical = physical;
             }
         }
-        return !best.isEmpty() && bestStacks > 0 ? best : ItemStack.EMPTY;
+        return best;
     }
 
-    private static int maxAvailablePaymentStacks(List<ItemStack> loot, Map<Item, Integer> stock) {
+    private static int maxAvailablePaymentStacks(List<ItemStack> loot,
+                                                  List<WorkBlockStorageAccess.SourceSlot> sources,
+                                                  ServerPlayer player) {
         int max = 0;
         for (ItemStack stack : loot) {
             int required = stack.getMaxStackSize();
             if (required > 0) {
-                max = Math.max(max, stock.getOrDefault(stack.getItem(), 0) / required);
+                int total = WorkBlockStorageAccess.availableItemWithRedemption(
+                        player, sources, stack.getItem(), Integer.MAX_VALUE);
+                max = Math.max(max, total / required);
             }
         }
         return max;
     }
 
-    private static int availableStoneStacks(List<WorkBlockStorageAccess.SourceSlot> sources) {
+    private static int availableStoneStacks(ServerPlayer player, List<WorkBlockStorageAccess.SourceSlot> sources) {
         int stacks = 0;
         for (WorkBlockStorageAccess.SourceSlot source : sources) {
             ItemStack stack = source.stack();
             if (!stack.isEmpty() && isStonePayment(stack)) {
-                stacks += stack.getCount() / stack.getMaxStackSize();
+                int available = WorkBlockStorageAccess.availableItemWithRedemption(
+                        player, sources, stack.getItem(), Integer.MAX_VALUE);
+                stacks = Math.max(stacks, available / stack.getMaxStackSize());
+            }
+        }
+        for (ItemStack stack : SpecialOperationsBaseManager.soldStacks(player)) {
+            if (!stack.isEmpty() && isStonePayment(stack)) {
+                int available = WorkBlockStorageAccess.availableItemWithRedemption(
+                        player, sources, stack.getItem(), Integer.MAX_VALUE);
+                stacks = Math.max(stacks, available / stack.getMaxStackSize());
             }
         }
         return stacks;
     }
 
-    private static StonePayment bestStonePayment(List<WorkBlockStorageAccess.SourceSlot> sources) {
+    private static StonePayment bestStonePayment(ServerPlayer player, List<WorkBlockStorageAccess.SourceSlot> sources) {
+        StonePayment best = null;
+        long bestCost = Long.MAX_VALUE;
+        int bestPhysical = -1;
         for (WorkBlockStorageAccess.SourceSlot source : sources) {
             ItemStack stack = source.stack();
-            if (!stack.isEmpty() && isStonePayment(stack) && stack.getCount() >= stack.getMaxStackSize()) {
-                return new StonePayment(stack.getItem(), stack.getMaxStackSize());
+            if (!stack.isEmpty() && isStonePayment(stack)) {
+                int required = stack.getMaxStackSize();
+                int physical = WorkBlockStorageAccess.countItem(sources, stack.getItem());
+                long cost = WorkBlockStorageAccess.redemptionCostForItem(
+                        player, sources, stack.getItem(), required);
+                if (cost >= 0L && (cost < bestCost || cost == bestCost && physical > bestPhysical)) {
+                    best = new StonePayment(stack.getItem(), required);
+                    bestCost = cost;
+                    bestPhysical = physical;
+                }
             }
         }
-        return null;
+        for (ItemStack stack : SpecialOperationsBaseManager.soldStacks(player)) {
+            if (!stack.isEmpty() && isStonePayment(stack)) {
+                int required = stack.getMaxStackSize();
+                int physical = WorkBlockStorageAccess.countItem(sources, stack.getItem());
+                long cost = WorkBlockStorageAccess.redemptionCostForItem(
+                        player, sources, stack.getItem(), required);
+                if (cost >= 0L && (cost < bestCost || cost == bestCost && physical > bestPhysical)) {
+                    best = new StonePayment(stack.getItem(), required);
+                    bestCost = cost;
+                    bestPhysical = physical;
+                }
+            }
+        }
+        return best;
     }
 
     private static boolean isOreBlock(Block block) {

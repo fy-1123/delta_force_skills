@@ -6,6 +6,8 @@ import com.rzy.dealt_force_skills.character.gizmo.GizmoTool;
 import com.rzy.dealt_force_skills.character.gizmo.GizmoToolAction;
 import com.rzy.dealt_force_skills.character.gizmo.GizmoTrapMarker;
 import com.rzy.dealt_force_skills.client.character.ClientGizmoHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.network.C2S_GizmoToolAction;
 import com.rzy.dealt_force_skills.network.C2S_GizmoWebEscape;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -46,7 +48,9 @@ public final class GizmoInputHandler {
 
     public static void tick(Minecraft minecraft) {
         handleWebbedInput(minecraft);
-        if (minecraft.player == null || !ClientGizmoHudState.shouldRender()) {
+        if (minecraft.player == null || (!ClientGizmoHudState.shouldRender()
+                && !(ClientCommanderState.inherits(ModCharacters.GIZMO_ID)
+                && ClientGizmoHudState.hasEquippedTool()))) {
             return;
         }
 
@@ -70,7 +74,10 @@ public final class GizmoInputHandler {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMouseButtonPre(InputEvent.MouseButton.Pre event) {
-        if (!ClientGizmoHudState.shouldRender() || !isPrimaryOrSecondary(event.getButton())) {
+        if ((!ClientGizmoHudState.shouldRender()
+                && !(ClientCommanderState.inherits(ModCharacters.GIZMO_ID)
+                && ClientGizmoHudState.hasEquippedTool()))
+                || !isPrimaryOrSecondary(event.getButton())) {
             return;
         }
 

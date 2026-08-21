@@ -3,6 +3,8 @@ package com.rzy.dealt_force_skills.character.luna;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.entity.LunaCompositeGrenadeEntity;
 import com.rzy.dealt_force_skills.entity.LunaShockArrowEntity;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -49,13 +51,17 @@ public final class LunaStateManager {
     private static final String EQUIPPED_TOOL = "EquippedTool";
     private static final String GRENADE_COOK_START = "GrenadeCookStart";
     private static final String SHOCK_BOUNCE_ENABLED = "ShockBounceEnabled";
+    private static final String WEAK_POINT_UNTIL = DealtForceSkillsMod.MODID + ".luna_weak_point_until";
+    private static final String WEAK_POINT_STACKS = DealtForceSkillsMod.MODID + ".luna_weak_point_stacks";
 
     private LunaStateManager() {
     }
 
     public static boolean isLuna(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.LUNA_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.LUNA_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.LUNA_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -69,9 +75,9 @@ public final class LunaStateManager {
         }
 
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(SHOCK_CHARGES, SHOCK_ARROW_MAX_CHARGES);
+        tag.putInt(SHOCK_CHARGES, shockCapacity(player));
         tag.putLong(SHOCK_NEXT_RECHARGE, 0L);
-        tag.putInt(GRENADE_CHARGES, COMPOSITE_GRENADE_MAX_CHARGES);
+        tag.putInt(GRENADE_CHARGES, grenadeCapacity(player));
         tag.putLong(GRENADE_NEXT_RECHARGE, 0L);
         tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, LunaTool.NONE.ordinal());
@@ -97,38 +103,38 @@ public final class LunaStateManager {
 
         initializeIfNeeded(player);
         long now = SkillCooldownHelper.now(player);
-        recharge(player, now, SHOCK_CHARGES, SHOCK_ARROW_MAX_CHARGES, SHOCK_NEXT_RECHARGE, SHOCK_ARROW_RECHARGE_TICKS);
-        recharge(player, now, GRENADE_CHARGES, COMPOSITE_GRENADE_MAX_CHARGES, GRENADE_NEXT_RECHARGE, COMPOSITE_GRENADE_RECHARGE_TICKS);
+        recharge(player, now, SHOCK_CHARGES, shockCapacity(player), SHOCK_NEXT_RECHARGE, SHOCK_ARROW_RECHARGE_TICKS);
+        recharge(player, now, GRENADE_CHARGES, grenadeCapacity(player), GRENADE_NEXT_RECHARGE, COMPOSITE_GRENADE_RECHARGE_TICKS);
     }
 
     public static int shockCharges(Player player) {
-        return data(player).getInt(SHOCK_CHARGES);
+        return Math.min(shockCapacity(player), data(player).getInt(SHOCK_CHARGES));
     }
 
     public static int shockRechargeRemainingTicks(Player player) {
-        if (shockCharges(player) >= SHOCK_ARROW_MAX_CHARGES) {
+        if (shockCharges(player) >= shockCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, SHOCK_NEXT_RECHARGE);
     }
 
     public static boolean consumeShockCharge(ServerPlayer player) {
-        return consumeCharge(player, SHOCK_CHARGES, SHOCK_ARROW_MAX_CHARGES, SHOCK_NEXT_RECHARGE, SHOCK_ARROW_RECHARGE_TICKS);
+        return consumeCharge(player, SHOCK_CHARGES, shockCapacity(player), SHOCK_NEXT_RECHARGE, SHOCK_ARROW_RECHARGE_TICKS);
     }
 
     public static int grenadeCharges(Player player) {
-        return data(player).getInt(GRENADE_CHARGES);
+        return Math.min(grenadeCapacity(player), data(player).getInt(GRENADE_CHARGES));
     }
 
     public static int grenadeRechargeRemainingTicks(Player player) {
-        if (grenadeCharges(player) >= COMPOSITE_GRENADE_MAX_CHARGES) {
+        if (grenadeCharges(player) >= grenadeCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, GRENADE_NEXT_RECHARGE);
     }
 
     public static boolean consumeGrenadeCharge(ServerPlayer player) {
-        return consumeCharge(player, GRENADE_CHARGES, COMPOSITE_GRENADE_MAX_CHARGES,
+        return consumeCharge(player, GRENADE_CHARGES, grenadeCapacity(player),
                 GRENADE_NEXT_RECHARGE, COMPOSITE_GRENADE_RECHARGE_TICKS);
     }
 
@@ -201,20 +207,45 @@ public final class LunaStateManager {
     }
 
     public static void revealToOwner(ServerPlayer owner, LivingEntity target, int ticks, boolean voiceIfPlayer) {
-        if (!isLuna(owner) || target == owner || ticks <= 0) {
+        revealToOwner(owner, target, ticks, voiceIfPlayer,
+                CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.LUNA_ULTIMATE_RECON),
+                CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.LUNA_WEAK_POINT),
+                true);
+    }
+
+    public static void revealToOwnerSnapshot(ServerPlayer owner, LivingEntity target, int ticks,
+                                             boolean voiceIfPlayer, boolean ultimateRecon, boolean weakPoint) {
+        revealToOwner(owner, target, ticks, voiceIfPlayer, ultimateRecon, weakPoint, false);
+    }
+
+    private static void revealToOwner(ServerPlayer owner, LivingEntity target, int ticks, boolean voiceIfPlayer,
+                                      boolean ultimateRecon, boolean weakPoint, boolean requireActiveLuna) {
+        if (owner == null || !owner.isAlive() || (requireActiveLuna && !isLuna(owner))
+                || target == owner || ticks <= 0) {
             return;
         }
         // Recon must not expose teammates (and never self).
         if (!com.rzy.dealt_force_skills.util.PositionRevealHelper.isValidReconTarget(owner, target)) {
             return;
         }
-        if (!ReconRevealThrottle.tryStart(target, ticks)) {
+        boolean alreadyRevealed = ReconRevealThrottle.isActive(target);
+        int effectiveTicks = ultimateRecon ? Integer.MAX_VALUE : ticks;
+        boolean revealStarted = ultimateRecon
+                ? ReconRevealThrottle.tryStartOrExtend(target, effectiveTicks)
+                : ReconRevealThrottle.tryStart(target, effectiveTicks);
+        if (weakPoint && alreadyRevealed) {
+            CompoundTag targetData = target.getPersistentData();
+            int stacks = targetData.getInt(WEAK_POINT_STACKS);
+            targetData.putInt(WEAK_POINT_STACKS, stacks == Integer.MAX_VALUE ? stacks : stacks + 1);
+            targetData.putLong(WEAK_POINT_UNTIL, ReconRevealThrottle.activeUntil(target));
+        }
+        if (!revealStarted) {
             return;
         }
 
         // Share position exposure with the caster's teammates.
         com.rzy.dealt_force_skills.util.PositionRevealHelper.sendToCasterAndTeammates(
-                owner, new S2C_LunaRevealEntities(List.of(target.getId()), ticks));
+                owner, new S2C_LunaRevealEntities(List.of(target.getId()), effectiveTicks));
         if (target instanceof ServerPlayer) {
             target.level().playSound(null, target.blockPosition(), ModSounds.LUNA_POSITION_REVEAL.get(),
                     SoundSource.PLAYERS, 0.85f, 1.0f);
@@ -225,6 +256,25 @@ public final class LunaStateManager {
         }
     }
 
+    public static float applyWeakPointDamage(LivingEntity target, float amount) {
+        if (target == null || target.level().isClientSide || amount <= 0.0F) {
+            return amount;
+        }
+        CompoundTag tag = target.getPersistentData();
+        long now = target.level().getGameTime();
+        if (tag.getLong(WEAK_POINT_UNTIL) <= now) {
+            tag.remove(WEAK_POINT_UNTIL);
+            tag.remove(WEAK_POINT_STACKS);
+            return amount;
+        }
+        int stacks = tag.getInt(WEAK_POINT_STACKS);
+        if (stacks <= 0) {
+            return amount;
+        }
+        double adjusted = amount * (1.0D + stacks * 0.1D);
+        return adjusted >= Float.MAX_VALUE ? Float.MAX_VALUE : (float) adjusted;
+    }
+
     public static void syncToClient(ServerPlayer player) {
         if (!isLuna(player)) {
             return;
@@ -232,10 +282,10 @@ public final class LunaStateManager {
         initializeIfNeeded(player);
         NetworkHandler.sendToPlayer(new S2C_SyncLunaState(
                 shockCharges(player),
-                SHOCK_ARROW_MAX_CHARGES,
+                shockCapacity(player),
                 shockRechargeRemainingTicks(player),
                 grenadeCharges(player),
-                COMPOSITE_GRENADE_MAX_CHARGES,
+                grenadeCapacity(player),
                 grenadeRechargeRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
                 equippedTool(player).ordinal(),
@@ -254,13 +304,15 @@ public final class LunaStateManager {
 
     private static boolean consumeCharge(ServerPlayer player, String chargesKey, int maxCharges, String rechargeKey, int rechargeTicks) {
         CompoundTag tag = data(player);
-        int charges = Math.min(maxCharges, tag.getInt(chargesKey));
+        int capacity = Math.max(0, maxCharges);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(chargesKey)));
+        tag.putInt(chargesKey, charges);
         if (charges <= 0) {
             return false;
         }
 
         tag.putInt(chargesKey, charges - 1);
-        if (charges == maxCharges) {
+        if (charges == capacity) {
             tag.putLong(rechargeKey, SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), rechargeTicks));
         }
         return true;
@@ -268,16 +320,26 @@ public final class LunaStateManager {
 
     private static void recharge(ServerPlayer player, long now, String chargesKey, int maxCharges, String rechargeKey, int rechargeTicks) {
         CompoundTag tag = data(player);
-        int charges = Math.min(maxCharges, tag.getInt(chargesKey));
+        int capacity = Math.max(0, maxCharges);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(chargesKey)));
+        tag.putInt(chargesKey, charges);
         long nextRecharge = tag.getLong(rechargeKey);
-        if (charges >= maxCharges || nextRecharge <= 0L || now < nextRecharge) {
+        if (charges >= capacity) {
+            tag.putLong(rechargeKey, 0L);
+            return;
+        }
+        if (nextRecharge <= 0L) {
+            tag.putLong(rechargeKey, SkillCooldownHelper.until(player, now, rechargeTicks));
+            return;
+        }
+        if (now < nextRecharge) {
             return;
         }
 
         do {
             charges++;
-            if (charges >= maxCharges) {
-                tag.putInt(chargesKey, maxCharges);
+            if (charges >= capacity) {
+                tag.putInt(chargesKey, capacity);
                 tag.putLong(rechargeKey, 0L);
                 return;
             }
@@ -290,6 +352,14 @@ public final class LunaStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int shockCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, SHOCK_ARROW_MAX_CHARGES);
+    }
+
+    private static int grenadeCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, COMPOSITE_GRENADE_MAX_CHARGES);
     }
 
     private static CompoundTag data(Player player) {

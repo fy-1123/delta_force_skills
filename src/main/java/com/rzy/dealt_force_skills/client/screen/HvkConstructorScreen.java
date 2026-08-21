@@ -478,11 +478,12 @@ public class HvkConstructorScreen extends Screen {
         if (detail.status() == CraftabilityStatus.ERROR) {
             return Component.translatable(screenKey("status_error"));
         }
-        if (detail.missing().isEmpty()) {
+        List<ItemStack> missing = validStacks(detail.missing());
+        if (missing.isEmpty()) {
             return Component.translatable(screenKey("missing_unknown"));
         }
         return Component.translatable(screenKey("missing_detail"),
-                stackSummary(detail.missing(), 3));
+                stackSummary(missing, 3));
     }
 
     private int missingColor(RecipeView selected) {
@@ -527,18 +528,36 @@ public class HvkConstructorScreen extends Screen {
             return "";
         }
         StringBuilder builder = new StringBuilder();
-        int shown = Math.min(Math.max(1, maxEntries), stacks.size());
-        for (int i = 0; i < shown; i++) {
-            ItemStack stack = stacks.get(i);
-            if (i > 0) {
+        int shown = 0;
+        int limit = Math.max(1, maxEntries);
+        for (ItemStack stack : stacks) {
+            if (stack == null || stack.isEmpty() || stack.getCount() <= 0 || shown >= limit) {
+                continue;
+            }
+            if (shown > 0) {
                 builder.append(", ");
             }
             builder.append(stack.getCount()).append("x ").append(stack.getHoverName().getString());
+            shown++;
         }
-        if (stacks.size() > shown) {
-            builder.append(", +").append(stacks.size() - shown);
+        int validCount = validStacks(stacks).size();
+        if (validCount > shown) {
+            builder.append(", +").append(validCount - shown);
         }
         return builder.toString();
+    }
+
+    private static List<ItemStack> validStacks(List<ItemStack> stacks) {
+        if (stacks == null || stacks.isEmpty()) {
+            return List.of();
+        }
+        List<ItemStack> valid = new ArrayList<>();
+        for (ItemStack stack : stacks) {
+            if (stack != null && !stack.isEmpty() && stack.getCount() > 0) {
+                valid.add(stack);
+            }
+        }
+        return List.copyOf(valid);
     }
 
     private void drawRecipeTree(GuiGraphics graphics, RecipeView selected, List<TreeRow> rows) {
@@ -621,6 +640,13 @@ public class HvkConstructorScreen extends Screen {
     }
 
     private void renderHoveredTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        RecipeView selected = selectedRecipe();
+        if (selected != null && isMissingSummaryHovered(mouseX, mouseY)
+                && detail != null && detail.id().equals(selected.id())
+                && detail.status() == CraftabilityStatus.MISSING && !detail.missing().isEmpty()) {
+            graphics.renderComponentTooltip(font, missingMaterialTooltip(detail.missing()), mouseX, mouseY);
+            return;
+        }
         TreeRow treeRow = treeRowAt(mouseX, mouseY);
         if (treeRow != null && renderTreeAlternativesTooltip(graphics,
                 displayLine(treeRow.sourceIndex(), treeRow.line()), mouseX, mouseY)) {
@@ -754,11 +780,25 @@ public class HvkConstructorScreen extends Screen {
 
     private List<RecipeTreeLine> detailLines(RecipeView selected) {
         if (detail != null && detail.id().equals(selected.id()) && !detail.tree().isEmpty()) {
-            return detail.tree();
+            List<RecipeTreeLine> ordered = new ArrayList<>();
+            for (RecipeTreeLine line : detail.tree()) {
+                if (line != null && line.stack() != null && !line.stack().isEmpty()
+                        && line.stack().getCount() > 0) {
+                    ordered.add(line);
+                }
+            }
+            if (ordered.size() > 2) {
+                // Keep the recipe result first, then surface missing requirements before complete ones.
+                List<RecipeTreeLine> requirements = new ArrayList<>(ordered.subList(1, ordered.size()));
+                requirements.sort(java.util.Comparator.comparing(RecipeTreeLine::missing).reversed());
+                ordered.subList(1, ordered.size()).clear();
+                ordered.addAll(requirements);
+            }
+            return ordered;
         }
         List<RecipeTreeLine> fallback = new ArrayList<>();
         fallback.add(new RecipeTreeLine(selected.result(), 0, false, false));
-        for (ItemStack ingredient : selected.ingredients()) {
+        for (ItemStack ingredient : validStacks(selected.ingredients())) {
             fallback.add(new RecipeTreeLine(ingredient, 1, true, false));
         }
         return fallback;
@@ -878,6 +918,22 @@ public class HvkConstructorScreen extends Screen {
             }
         }
         return lines.size() <= 2 ? List.of() : lines;
+    }
+
+    private boolean isMissingSummaryHovered(double mouseX, double mouseY) {
+        return inside(mouseX, mouseY, detailLeft() + PADDING, treeTop() - 40,
+                Math.max(1, detailWidth() - PADDING * 2), 12);
+    }
+
+    private List<Component> missingMaterialTooltip(List<ItemStack> missing) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable(screenKey("missing")));
+        for (ItemStack stack : missing) {
+            if (!stack.isEmpty()) {
+                lines.add(stackNameWithCount(stack).copy().withStyle(net.minecraft.ChatFormatting.RED));
+            }
+        }
+        return lines;
     }
 
     private Component stackNameWithCount(ItemStack stack) {

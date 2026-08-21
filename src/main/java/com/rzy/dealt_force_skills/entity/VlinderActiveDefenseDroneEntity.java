@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.character.vlinder.VlinderStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.compat.PlayerReviveCompat;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
@@ -179,6 +181,17 @@ public class VlinderActiveDefenseDroneEntity extends Entity implements ItemSuppl
         return injectionTicks;
     }
 
+    public int injectionRequiredTicks() {
+        if (level() instanceof ServerLevel serverLevel) {
+            ServerPlayer owner = owner(serverLevel);
+            if (owner != null && CommanderStateManager.hasBranchUpgrade(
+                    owner, CommanderBranchUpgrade.VLINDER_EXTREME_DEFENSE)) {
+                return Math.max(1, INJECTION_TICKS / 2);
+            }
+        }
+        return INJECTION_TICKS;
+    }
+
     public Vec3 injectionPosition() {
         return new Vec3(injectionX, injectionY, injectionZ);
     }
@@ -220,7 +233,7 @@ public class VlinderActiveDefenseDroneEntity extends Entity implements ItemSuppl
         injectionY = target.getY();
         injectionZ = target.getZ();
         injectionTicks++;
-        if (injectionTicks >= INJECTION_TICKS) {
+        if (injectionTicks >= injectionRequiredTicks()) {
             VlinderStateManager.markPlasmaInjected(owner, target);
             level.playSound(null, target.blockPosition(), ModSounds.VLINDER_PLASMA_INJECTION_COMPLETE.get(),
                     SoundSource.PLAYERS, 0.85F, 1.0F);

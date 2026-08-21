@@ -3,6 +3,8 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.client.character.ClientSinevaHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.client.visual.ClientSinevaVisualState;
 import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.network.C2S_SinevaShieldBash;
@@ -35,6 +37,10 @@ public final class SinevaShieldInputHandler {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMouseButtonPre(InputEvent.MouseButton.Pre event) {
+        if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_MIDDLE
+                && CommanderInputHandler.hasPendingSupport()) {
+            return;
+        }
         if (!shouldBlockMouseButtons() || !isBlockedMouseButton(event.getButton())) {
             return;
         }
@@ -107,7 +113,8 @@ public final class SinevaShieldInputHandler {
     }
 
     private static boolean shouldBlockVanillaInventory() {
-        return ClientSinevaHudState.shouldRender() && ClientSinevaHudState.shieldDeployed();
+        return (ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(ModCharacters.SINEVA_ID))
+                && ClientSinevaHudState.shieldDeployed();
     }
 
     private static boolean shouldBlockMouseButtons() {

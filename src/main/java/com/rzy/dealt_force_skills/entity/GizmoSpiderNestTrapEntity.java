@@ -1,8 +1,11 @@
 package com.rzy.dealt_force_skills.entity;
 
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModEntities;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
@@ -45,6 +48,8 @@ public class GizmoSpiderNestTrapEntity extends Entity implements ItemSupplier {
     private double attachedOffsetY;
     private double attachedOffsetZ;
     private boolean carrierModule;
+    private boolean positionDefense;
+    private boolean smartSpider;
 
     public GizmoSpiderNestTrapEntity(EntityType<? extends GizmoSpiderNestTrapEntity> type, Level level) {
         super(type, level);
@@ -54,6 +59,9 @@ public class GizmoSpiderNestTrapEntity extends Entity implements ItemSupplier {
     public GizmoSpiderNestTrapEntity(EntityType<? extends GizmoSpiderNestTrapEntity> type, Level level, ServerPlayer owner) {
         this(type, level);
         ownerId = owner.getUUID();
+        positionDefense = CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.GIZMO_POSITION_DEFENSE);
+        smartSpider = CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.GIZMO_SMART_SPIDER);
+        spawnsRemaining = positionDefense ? MAX_SPAWNS * 11 : MAX_SPAWNS;
     }
 
     @Override
@@ -104,7 +112,7 @@ public class GizmoSpiderNestTrapEntity extends Entity implements ItemSupplier {
         if (triggered && spawnsRemaining > 0 && now >= nextSpawnTick) {
             spawnSpiderling(serverLevel);
             spawnsRemaining--;
-            nextSpawnTick = now + SPAWN_INTERVAL_TICKS;
+            nextSpawnTick = now + (positionDefense ? 2 : SPAWN_INTERVAL_TICKS);
         }
         if (triggered && spawnsRemaining <= 0 && tickCount % 10 == 0) {
             discard();
@@ -137,6 +145,8 @@ public class GizmoSpiderNestTrapEntity extends Entity implements ItemSupplier {
         attachedOffsetY = tag.getDouble("AttachedOffsetY");
         attachedOffsetZ = tag.getDouble("AttachedOffsetZ");
         carrierModule = tag.getBoolean("CarrierModule");
+        positionDefense = tag.getBoolean("PositionDefense");
+        smartSpider = tag.getBoolean("SmartSpider");
     }
 
     @Override
@@ -154,6 +164,8 @@ public class GizmoSpiderNestTrapEntity extends Entity implements ItemSupplier {
         tag.putDouble("AttachedOffsetY", attachedOffsetY);
         tag.putDouble("AttachedOffsetZ", attachedOffsetZ);
         tag.putBoolean("CarrierModule", carrierModule);
+        tag.putBoolean("PositionDefense", positionDefense);
+        tag.putBoolean("SmartSpider", smartSpider);
     }
 
     @Override
@@ -228,7 +240,9 @@ public class GizmoSpiderNestTrapEntity extends Entity implements ItemSupplier {
     }
 
     private boolean canTrigger(LivingEntity entity) {
-        if (!entity.isAlive() || isOwnedBy(entity.getUUID())) {
+        if (!entity.isAlive() || isOwnedBy(entity.getUUID())
+                || !(level() instanceof ServerLevel level)
+                || !TargetingUtil.isHostileLivingFor(owner(level), entity)) {
             return false;
         }
         return entity instanceof ServerPlayer || entity instanceof Enemy;
@@ -247,7 +261,8 @@ public class GizmoSpiderNestTrapEntity extends Entity implements ItemSupplier {
             dir = new Vec3(0.0D, 0.0D, 1.0D);
         }
         dir = dir.normalize();
-        GizmoSpiderlingEntity spiderling = new GizmoSpiderlingEntity(ModEntities.GIZMO_SPIDERLING.get(), level, ownerId);
+        GizmoSpiderlingEntity spiderling = new GizmoSpiderlingEntity(
+                ModEntities.GIZMO_SPIDERLING.get(), level, ownerId, smartSpider);
         Vec3 start = position().add(dir.scale(0.42D)).add(0.0D, 0.08D, 0.0D);
         spiderling.setPos(start.x, start.y, start.z);
         spiderling.setTravelDirection(dir);

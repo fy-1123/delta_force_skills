@@ -8,8 +8,10 @@ import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState
 import com.rzy.dealt_force_skills.client.character.ClientSaeedHudState;
 import com.rzy.dealt_force_skills.network.C2S_OpenSaeedMonitor;
 import com.rzy.dealt_force_skills.network.C2S_OpenSelectionOrShop;
+import com.rzy.dealt_force_skills.network.C2S_OpenOwnShop;
 import com.rzy.dealt_force_skills.network.C2S_SaeedFireArrowAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
+import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.InteractionHand;
@@ -61,16 +63,27 @@ public final class SaeedInputHandler {
                 selectionLongTriggered = false;
             }
             selectionHeldTicks++;
-            if (!selectionLongTriggered
-                    && selectionHeldTicks >= MONITOR_LONG_HOLD_TICKS
-                    && minecraft.screen == null
-                    && !minecraft.player.isCreative()) {
+            if (!selectionLongTriggered && selectionHeldTicks >= MONITOR_LONG_HOLD_TICKS && minecraft.screen == null) {
                 selectionLongTriggered = true;
-                NetworkHandler.sendToServer(new C2S_OpenSaeedMonitor());
+                boolean creative = minecraft.player.getAbilities().instabuild;
+                boolean sneak = minecraft.player.isShiftKeyDown();
+                if ((!creative && !sneak) || (creative && sneak)) {
+                    NetworkHandler.sendToServer(new C2S_OpenSaeedMonitor());
+                } else {
+                    DFGUI_MAIN.openToLogistics();
+                }
             }
         } else if (selectionWasDown) {
             if (!selectionLongTriggered && minecraft.screen == null) {
-                NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+                boolean creative = minecraft.player.getAbilities().instabuild;
+                boolean sneak = minecraft.player.isShiftKeyDown();
+                if (creative && !sneak) {
+                    DFGUI_MAIN.openToOperator();
+                } else if (sneak && !creative) {
+                    NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+                } else {
+                    NetworkHandler.sendToServer(C2S_OpenOwnShop.open());
+                }
             }
             resetSelectionKey();
         }
@@ -96,6 +109,9 @@ public final class SaeedInputHandler {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onInteractionKey(InputEvent.InteractionKeyMappingTriggered event) {
+        if (Minecraft.getInstance().screen != null) {
+            return;
+        }
         if (!ClientSaeedHudState.hasCrossbowEquipped()) {
             return;
         }

@@ -172,9 +172,14 @@ public class GrappleHookEntity extends Projectile implements ItemSupplier {
                 beginReturn();
                 return;
             }
+            float damage = com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue(
+                    "summons.grapple_hook_entity.skill_hurt.0.damage", 10.0F);
+            if (damage > 0.0F) {
+                SkillDamageHelper.hurt(le,
+                        SkillDamageHelper.sinevaGrapple(sp.serverLevel(), this, sp), sp, damage);
+            }
             RangedSoundHelper.playFollowingPlayer(sp, ModSounds.SINEVA_GRAPPLE_HIT_VOICE.get(),
                     SoundSource.VOICE, 1.0f, 1.0f, 32.0D);
-            SkillDamageHelper.hurt(le, SkillDamageHelper.sinevaGrapple(sp.serverLevel(), this, sp), sp, com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("summons.grapple_hook_entity.skill_hurt.0.damage", 10.0f));
             targetId = target.getId();
             hookedAtTick = tickCount;
             initialPullDistance = sp.distanceTo(target);

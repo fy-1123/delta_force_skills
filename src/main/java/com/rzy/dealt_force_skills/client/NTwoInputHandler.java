@@ -3,6 +3,8 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.ntwo.NTwoToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientNTwoHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.network.C2S_NTwoFreezeStruggle;
 import com.rzy.dealt_force_skills.network.C2S_NTwoToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -28,7 +30,9 @@ public final class NTwoInputHandler {
 
     public static void tick(Minecraft minecraft) {
         handleFrozenInput(minecraft);
-        if (minecraft.player == null || !ClientNTwoHudState.shouldRender()) {
+        if (minecraft.player == null || (!ClientNTwoHudState.shouldRender()
+                && !(ClientCommanderState.inherits(ModCharacters.N_TWO_ID)
+                && ClientNTwoHudState.hasEquippedTool()))) {
             return;
         }
         if (ClientNTwoHudState.hasEquippedTool()) {

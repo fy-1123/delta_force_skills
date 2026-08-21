@@ -1,5 +1,7 @@
 package com.rzy.dealt_force_skills.entity;
 
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.ntwo.NTwoStateManager;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.uluru.UluruExplosionHelper;
@@ -30,6 +32,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkHooks;
 
+import java.util.Comparator;
 import java.util.UUID;
 
 public class NTwoCondensedGrenadeEntity extends Projectile implements ItemSupplier {
@@ -37,9 +40,12 @@ public class NTwoCondensedGrenadeEntity extends Projectile implements ItemSuppli
     private static final double MAX_RANGE_SQR = 90.0D * 90.0D;
     private static final double GRAVITY = 0.012D;
     private static final double DRAG = 0.996D;
+    private static final double SMART_HOME_RADIUS = 13.0D;
+    private static final double SMART_HOMING_WEIGHT = 0.20D;
     private UUID ownerId;
     private Vec3 startPos = Vec3.ZERO;
     private int fuseRemaining = -1;
+    private boolean smartGrenade;
 
     public NTwoCondensedGrenadeEntity(EntityType<? extends NTwoCondensedGrenadeEntity> type, Level level) {
         super(type, level);
@@ -49,6 +55,8 @@ public class NTwoCondensedGrenadeEntity extends Projectile implements ItemSuppli
         this(type, level);
         setOwner(owner);
         ownerId = owner.getUUID();
+        smartGrenade = owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NTWO_SMART_GRENADE);
     }
 
     @Override
@@ -78,6 +86,14 @@ public class NTwoCondensedGrenadeEntity extends Projectile implements ItemSuppli
             spawnTrail();
             return;
         }
+        if (!level().isClientSide && smartGrenade) {
+            LivingEntity contact = findSmartContact();
+            if (contact != null) {
+                explode(contact.position().add(0.0D, contact.getBbHeight() * 0.5D, 0.0D));
+                return;
+            }
+            homeTowardSmartTarget();
+        }
         Vec3 motion = getDeltaMovement();
         Vec3 next = position().add(motion);
         HitResult hit = level().clip(new ClipContext(position(), next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
@@ -96,6 +112,7 @@ public class NTwoCondensedGrenadeEntity extends Projectile implements ItemSuppli
         ownerId = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
         fuseRemaining = tag.contains("FuseRemaining") ? tag.getInt("FuseRemaining") : -1;
         startPos = new Vec3(tag.getDouble("StartX"), tag.getDouble("StartY"), tag.getDouble("StartZ"));
+        smartGrenade = tag.getBoolean("SmartGrenade");
     }
 
     @Override
@@ -107,6 +124,7 @@ public class NTwoCondensedGrenadeEntity extends Projectile implements ItemSuppli
         tag.putDouble("StartX", startPos.x);
         tag.putDouble("StartY", startPos.y);
         tag.putDouble("StartZ", startPos.z);
+        tag.putBoolean("SmartGrenade", smartGrenade);
     }
 
     @Override
@@ -188,5 +206,51 @@ public class NTwoCondensedGrenadeEntity extends Projectile implements ItemSuppli
         if (level().isClientSide && tickCount % 2 == 0) {
             level().addParticle(ParticleTypes.SNOWFLAKE, getX(), getY(), getZ(), 0.0D, 0.01D, 0.0D);
         }
+    }
+
+    private void homeTowardSmartTarget() {
+        ServerPlayer owner = owner();
+        if (owner == null) {
+            return;
+        }
+        LivingEntity target = level().getEntitiesOfClass(LivingEntity.class,
+                        getBoundingBox().inflate(SMART_HOME_RADIUS),
+                        candidate -> TargetingUtil.isHostileLivingFor(owner, candidate))
+                .stream()
+                .min(Comparator.comparingDouble(candidate -> candidate.distanceToSqr(this)))
+                .orElse(null);
+        if (target == null) {
+            return;
+        }
+        Vec3 toward = target.getEyePosition().subtract(position());
+        if (toward.lengthSqr() < 0.0001D) {
+            return;
+        }
+        double speed = Math.max(0.5D, getDeltaMovement().length());
+        Vec3 desired = toward.normalize().scale(speed);
+        Vec3 steered = getDeltaMovement().scale(1.0D - SMART_HOMING_WEIGHT)
+                .add(desired.scale(SMART_HOMING_WEIGHT));
+        if (steered.lengthSqr() > 0.0001D) {
+            setDeltaMovement(steered.normalize().scale(speed));
+        }
+    }
+
+    private LivingEntity findSmartContact() {
+        ServerPlayer owner = owner();
+        if (owner == null) {
+            return null;
+        }
+        return level().getEntitiesOfClass(LivingEntity.class, getBoundingBox().inflate(0.35D),
+                        target -> TargetingUtil.isHostileLivingFor(owner, target))
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private ServerPlayer owner() {
+        if (!(level() instanceof ServerLevel level) || ownerId == null) {
+            return null;
+        }
+        return level.getServer().getPlayerList().getPlayer(ownerId);
     }
 }

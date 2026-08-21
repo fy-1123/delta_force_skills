@@ -12,6 +12,8 @@ public final class GeneratedGameplayDefaults {
         DealtForceConfig.booleanValue("work_blocks.hvk_clone_prototype.enabled", true);
         DealtForceConfig.booleanValue("work_blocks.hvk_advanced_treasure_compass.enabled", true);
         DealtForceConfig.booleanValue("work_blocks.interdimensional_block.enabled", true);
+        DealtForceConfig.booleanValue("work_blocks.hvk_asara_arena.enabled", true);
+        DealtForceConfig.booleanValue("work_blocks.hvk_enchant_infusion.enabled", true);
         DealtForceConfig.intValue("characters.catdad.cat_dad_state_manager.block_max_charges", 3);
         DealtForceConfig.intValue("characters.catdad.cat_dad_state_manager.block_recharge_ticks", 30 * 20);
         DealtForceConfig.intValue("characters.catdad.cat_dad_state_manager.block_window_ticks", 3 * 20);
@@ -390,7 +392,7 @@ DealtForceConfig.intValue("characters.department.department_of_transportation_st
         DealtForceConfig.intValue("characters.nox.nox_state_manager.core_duration_ticks", 35 * 20);
         DealtForceConfig.intValue("characters.nox.nox_state_manager.core_prep_ticks", 12);
         DealtForceConfig.intValue("characters.nox.nox_state_manager.crippled_ticks", 8 * 20);
-        DealtForceConfig.floatValue("characters.nox.nox_state_manager.decoy_damage_multiplier", 0.5f);
+        DealtForceConfig.floatValue("characters.nox.nox_state_manager.decoy_damage_multiplier", 1.0f);
         DealtForceConfig.intValue("characters.nox.nox_state_manager.decoy_interval_ticks", 5 * 20);
         DealtForceConfig.intValue("characters.nox.nox_state_manager.delayed_wound_ticks", 10 * 20);
         DealtForceConfig.intValue("characters.nox.nox_state_manager.effect.nox_crippled.1.amplifier", 0);
@@ -477,7 +479,7 @@ DealtForceConfig.intValue("characters.department.department_of_transportation_st
         DealtForceConfig.intValue("characters.sineva.sineva_state_manager.bomb_suit_equip_ticks", 30);
         DealtForceConfig.intValue("characters.sineva.sineva_state_manager.grapple_cooldown_ticks", 8 * 20);
         DealtForceConfig.doubleValue("characters.sineva.sineva_state_manager.bomb_suit_jump_height_reduction_fraction", 0.5D);
-        DealtForceConfig.doubleValue("characters.sineva.sineva_state_manager.bomb_suit_step_height_bonus", 0.5D);
+        DealtForceConfig.doubleValue("characters.sineva.sineva_state_manager.bomb_suit_step_height_bonus", 1.0D);
         DealtForceConfig.intValue("characters.sineva.sineva_state_manager.shield_block_stamina_cost_percent", 2);
         DealtForceConfig.intValue("characters.sineva.sineva_state_manager.shield_block_stamina_floor_percent", 40);
         DealtForceConfig.doubleValue("characters.sineva.sineva_state_manager.shield_damage_slow_max", 0.95D);
@@ -1075,15 +1077,15 @@ DealtForceConfig.intValue("characters.department.department_of_transportation_st
         DealtForceConfig.doubleValue("summons.gizmosmoketrapentity.trigger_radius", 3.0D);
         DealtForceConfig.doubleValue("summons.gizmospiderlingentity.explosion_radius", 1.5D);
         DealtForceConfig.intValue("summons.gizmospiderlingentity.life_ticks", 15 * 20);
-        DealtForceConfig.doubleValue("summons.gizmospiderlingentity.player_target_radius", 2.0D);
+        DealtForceConfig.doubleValue("summons.gizmospiderlingentity.player_target_radius", 6.0D);
         DealtForceConfig.doubleValue("summons.gizmospiderlingentity.speed", 0.20D);
         DealtForceConfig.doubleValue("summons.gizmospidernesttrapentity.max_owner_distance", 50.0D);
         DealtForceConfig.intValue("summons.gizmospidernesttrapentity.max_spawns", 3);
         DealtForceConfig.intValue("summons.gizmospidernesttrapentity.spawn_interval_ticks", 20);
         DealtForceConfig.doubleValue("summons.gizmospidernesttrapentity.trigger_radius", 6.0D);
         DealtForceConfig.intValue("summons.gizmotboyentity.aim_ticks", 6);
-        DealtForceConfig.doubleValue("summons.gizmotboyentity.chase_radius", 2.0D);
-        DealtForceConfig.doubleValue("summons.gizmotboyentity.player_target_radius", 2.0D);
+        DealtForceConfig.doubleValue("summons.gizmotboyentity.chase_radius", 6.0D);
+        DealtForceConfig.doubleValue("summons.gizmotboyentity.player_target_radius", 6.0D);
         DealtForceConfig.intValue("summons.gizmotboyentity.life_ticks", 30 * 20);
         DealtForceConfig.doubleValue("summons.gizmotboyentity.speed", 0.40D);
         DealtForceConfig.doubleValue("summons.gizmotboyentity.stop_radius", 1.5D);

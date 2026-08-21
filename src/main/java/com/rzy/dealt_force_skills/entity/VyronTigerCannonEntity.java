@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.sineva.SinevaKnockdownState;
 import com.rzy.dealt_force_skills.character.sineva.SinevaStateManager;
 import com.rzy.dealt_force_skills.registry.ModEffects;
@@ -23,12 +25,14 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkHooks;
@@ -81,8 +85,19 @@ public class VyronTigerCannonEntity extends Projectile implements ItemSupplier {
         }
 
         Vec3 motion = getDeltaMovement();
-        Vec3 next = position().add(motion);
-        HitResult hit = level().clip(new ClipContext(position(), next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+        Vec3 start = position();
+        Vec3 next = start.add(motion);
+        HitResult hit = level().clip(new ClipContext(start, next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+        EntityHitResult entityHit = ProjectileUtil.getEntityHitResult(level(), this, start, next,
+                getBoundingBox().expandTowards(motion).inflate(0.35D), this::canHitEntity);
+        if (entityHit != null && (hit.getType() != HitResult.Type.BLOCK
+                || start.distanceToSqr(entityHit.getLocation()) <= start.distanceToSqr(hit.getLocation()))) {
+            if (!level().isClientSide) {
+                setPos(entityHit.getLocation().x, entityHit.getLocation().y, entityHit.getLocation().z);
+                explode();
+            }
+            return;
+        }
         if (hit.getType() == HitResult.Type.BLOCK) {
             hitBlock((BlockHitResult) hit);
             spawnClientTrail();
@@ -96,7 +111,11 @@ public class VyronTigerCannonEntity extends Projectile implements ItemSupplier {
 
     @Override
     protected boolean canHitEntity(Entity target) {
-        return false;
+        return super.canHitEntity(target)
+                && target instanceof LivingEntity living
+                && getOwner() instanceof ServerPlayer owner
+                && CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.VYRON_FAST_FUSE)
+                && TargetingUtil.isHostileLivingFor(owner, living);
     }
 
     @Override

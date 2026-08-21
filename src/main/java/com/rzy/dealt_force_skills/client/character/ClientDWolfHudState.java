@@ -105,7 +105,8 @@ public final class ClientDWolfHudState {
     }
 
     public static boolean hasHandCannonEquipped() {
-        return shouldRender() && equippedTool == DWolfTool.HAND_CANNON;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.D_WOLF_ID))
+                && equippedTool == DWolfTool.HAND_CANNON;
     }
 
     public static int handCannonCharges() {

@@ -3,6 +3,8 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.uluru.UluruTool;
 import com.rzy.dealt_force_skills.client.character.ClientUluruHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.client.visual.UluruPlaceholderVisuals;
 import com.rzy.dealt_force_skills.network.C2S_UluruToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -96,7 +98,9 @@ public final class UluruInputHandler {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientUluruHudState.shouldRender()) {
+        if (minecraft.player == null || (!ClientUluruHudState.shouldRender()
+                && !(ClientCommanderState.inherits(ModCharacters.ULURU_ID)
+                && ClientUluruHudState.hasEquippedTool()))) {
             resetPendingUse();
             ClientUluruHudState.setMissileAiming(false);
             return;

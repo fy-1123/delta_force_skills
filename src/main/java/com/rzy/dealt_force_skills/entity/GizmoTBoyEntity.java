@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.character.gizmo.GizmoStateManager;
 import com.rzy.dealt_force_skills.registry.ModEffects;
@@ -46,8 +48,8 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
     private static volatile int AIM_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("AIM_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.gizmotboyentity.aim_ticks", 6));
     private static final int CRAWL_SOUND_INTERVAL_TICKS = 7;
     private static volatile double SPEED = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SPEED", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmotboyentity.speed", 0.4));
-    private static volatile double CHASE_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CHASE_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmotboyentity.chase_radius", 2.0));
-    private static volatile double PLAYER_TARGET_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("PLAYER_TARGET_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmotboyentity.player_target_radius", 2.0));
+    private static volatile double CHASE_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CHASE_RADIUS", () -> Math.max(6.0, com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmotboyentity.chase_radius", 6.0)));
+    private static volatile double PLAYER_TARGET_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("PLAYER_TARGET_RADIUS", () -> Math.max(6.0, com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmotboyentity.player_target_radius", 6.0)));
     private static volatile double STOP_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("STOP_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmotboyentity.stop_radius", 1.5));
     private static volatile double WEB_LENGTH = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("WEB_LENGTH", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.gizmo_t_boy_entity.web_length", 3.5));
     private static volatile double WEB_HALF_WIDTH = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("WEB_HALF_WIDTH", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("entities.gizmo_t_boy_entity.web_half_width", 1.75));
@@ -59,6 +61,8 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
     private double dirZ = 1.0D;
     private int aimTicks;
     private int aimTargetId = -1;
+    private boolean smartSpider;
+    private boolean durableTBoy;
 
     public GizmoTBoyEntity(EntityType<? extends GizmoTBoyEntity> type, Level level) {
         super(type, level);
@@ -67,6 +71,8 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
     public GizmoTBoyEntity(EntityType<? extends GizmoTBoyEntity> type, Level level, ServerPlayer owner) {
         this(type, level);
         ownerId = owner.getUUID();
+        smartSpider = CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.GIZMO_SMART_SPIDER);
+        durableTBoy = CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.GIZMO_DURABLE_TBOY);
         setTravelDirection(owner.getLookAngle());
     }
 
@@ -113,7 +119,9 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
         }
 
         Optional<LivingEntity> chaseTarget = findCorrodedTarget(serverLevel);
-        if (chaseTarget.isEmpty()) {
+        if (smartSpider) {
+            chaseTarget = findNearestTarget(serverLevel, 50.0D);
+        } else if (chaseTarget.isEmpty()) {
             chaseTarget = findNearestPlayerTarget(serverLevel);
         }
         chaseTarget.ifPresent(target -> setTravelDirection(target.position().subtract(position())));
@@ -149,6 +157,8 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
         syncDirection();
         aimTicks = tag.getInt("AimTicks");
         aimTargetId = tag.contains("AimTarget") ? tag.getInt("AimTarget") : -1;
+        smartSpider = tag.getBoolean("SmartSpider");
+        durableTBoy = tag.getBoolean("DurableTBoy");
     }
 
     @Override
@@ -161,6 +171,8 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
         tag.putDouble("DirZ", dirZ);
         tag.putInt("AimTicks", aimTicks);
         tag.putInt("AimTarget", aimTargetId);
+        tag.putBoolean("SmartSpider", smartSpider);
+        tag.putBoolean("DurableTBoy", durableTBoy);
     }
 
     @Override
@@ -231,7 +243,8 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
         if (ownerId != null && level() instanceof ServerLevel serverLevel) {
             owner = serverLevel.getEntity(ownerId);
         }
-        return TargetingUtil.isHostileLivingFor(owner, target);
+        return TargetingUtil.isHostileLivingFor(owner, target)
+                && (!durableTBoy || !target.hasEffect(ModEffects.WEBBED.get()));
     }
 
     private void beginAimingAt(LivingEntity target) {
@@ -314,7 +327,13 @@ public class GizmoTBoyEntity extends Entity implements ItemSupplier, BlockbenchM
             level.playSound(null, getX(), getY(), getZ(), ModSounds.GIZMO_T_BOY_HIT_VOICE_1.get(),
                     SoundSource.PLAYERS, 0.75f, 1.0f);
         }
-        discard();
+        if (durableTBoy) {
+            aimTargetId = -1;
+            aimTicks = 0;
+            setDeltaMovement(Vec3.ZERO);
+        } else {
+            discard();
+        }
     }
 
     private boolean webHitsTarget(LivingEntity target, Vec3 origin, Vec3 direction) {

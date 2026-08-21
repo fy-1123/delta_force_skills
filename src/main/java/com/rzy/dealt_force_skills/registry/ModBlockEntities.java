@@ -3,10 +3,14 @@ package com.rzy.dealt_force_skills.registry;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.block.BladeWireBlockEntity;
 import com.rzy.dealt_force_skills.block.HvkAdvancedDisassemblyBeamEmitterBlockEntity;
+import com.rzy.dealt_force_skills.block.HvkAdvancedSpawnerBlockEntity;
 import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBlockEntity;
 import com.rzy.dealt_force_skills.block.HvkAdvancedTreasureCompassBlockEntity;
 import com.rzy.dealt_force_skills.block.HvkClonePrototypeBlockEntity;
 import com.rzy.dealt_force_skills.block.InterdimensionalBlockEntity;
+import com.rzy.dealt_force_skills.block.HvkAsaraArenaBlockEntity;
+import com.rzy.dealt_force_skills.block.HvkEnchantInfusionBlockEntity;
+import com.rzy.dealt_force_skills.block.GtiSpecialOperationsBlockEntity;
 import com.rzy.dealt_force_skills.block.QuickCoverBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraftforge.registries.DeferredRegister;
@@ -48,6 +52,11 @@ public class ModBlockEntities {
                             ModBlocks.HVK_ADVANCED_DISASSEMBLY_BEAM_EMITTER.get()
                     ).build(null));
 
+    public static final RegistryObject<BlockEntityType<HvkAdvancedSpawnerBlockEntity>> HVK_ADVANCED_SPAWNER =
+            BLOCK_ENTITIES.register("hvk_advanced_spawner",
+                    () -> BlockEntityType.Builder.of(HvkAdvancedSpawnerBlockEntity::new,
+                            ModBlocks.HVK_ADVANCED_SPAWNER.get()).build(null));
+
     public static final RegistryObject<BlockEntityType<HvkClonePrototypeBlockEntity>>
             HVK_CLONE_PROTOTYPE =
             BLOCK_ENTITIES.register("hvk_clone_prototype",
@@ -71,4 +80,16 @@ public class ModBlockEntities {
                             InterdimensionalBlockEntity::new,
                             ModBlocks.INTERDIMENSIONAL_BLOCK.get()
                     ).build(null));
+
+    public static final RegistryObject<BlockEntityType<HvkAsaraArenaBlockEntity>> HVK_ASARA_ARENA =
+            BLOCK_ENTITIES.register("hvk_asara_arena", () -> BlockEntityType.Builder.of(
+                    HvkAsaraArenaBlockEntity::new, ModBlocks.HVK_ASARA_ARENA.get()).build(null));
+
+    public static final RegistryObject<BlockEntityType<HvkEnchantInfusionBlockEntity>> HVK_ENCHANT_INFUSION =
+            BLOCK_ENTITIES.register("hvk_enchant_infusion", () -> BlockEntityType.Builder.of(
+                    HvkEnchantInfusionBlockEntity::new, ModBlocks.HVK_ENCHANT_INFUSION.get()).build(null));
+
+    public static final RegistryObject<BlockEntityType<GtiSpecialOperationsBlockEntity>> GTI_SPECIAL_OPERATIONS =
+            BLOCK_ENTITIES.register("gti_special_operations", () -> BlockEntityType.Builder.of(
+                    GtiSpecialOperationsBlockEntity::new, ModBlocks.GTI_SPECIAL_OPERATIONS.get()).build(null));
 }

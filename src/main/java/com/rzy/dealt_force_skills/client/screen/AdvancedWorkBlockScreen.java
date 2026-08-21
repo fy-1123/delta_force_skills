@@ -270,7 +270,7 @@ public class AdvancedWorkBlockScreen extends Screen {
         graphics.fill(x, y, x + listWidth(), y + 1, selected || hovered ? 0xFFFFD34D : 0x66304050);
         graphics.renderItem(entry.icon(), x + 5, y + 7);
         graphics.renderItemDecorations(font, entry.icon(), x + 5, y + 7);
-        graphics.drawString(font, fit(Component.literal(entry.name()), listWidth() - 34), x + 28, y + 5, 0xFFFFFF);
+        graphics.drawString(font, fit(entryName(entry.id(), entry.name()), listWidth() - 34), x + 28, y + 5, 0xFFFFFF);
         graphics.drawString(font, fit(Component.literal(entry.detail()), listWidth() - 34), x + 28, y + 18, 0xFF8D98A5);
     }
 
@@ -290,7 +290,7 @@ public class AdvancedWorkBlockScreen extends Screen {
                 x + PADDING, y + 10, 0xFFFFD34D);
         graphics.renderItem(selected.icon(), x + PADDING, y + 25);
         graphics.renderItemDecorations(font, selected.icon(), x + PADDING, y + 25);
-        graphics.drawString(font, fit(Component.literal(selected.name()), w - 48), x + PADDING + 24, y + 25, 0xFFFFFF);
+        graphics.drawString(font, fit(entryName(selected.id(), selected.name()), w - 48), x + PADDING + 24, y + 25, 0xFFFFFF);
         graphics.drawString(font, fit(Component.literal(selected.id().toString()), w - 48),
                 x + PADDING + 24, y + 38, 0xFF8D98A5);
         graphics.drawString(font, fit(Component.literal(selected.detail()), w - PADDING * 2),
@@ -323,6 +323,14 @@ public class AdvancedWorkBlockScreen extends Screen {
         }
         graphics.disableScissor();
         drawScrollbar(graphics, x + w - 3, y, h, outputFullHeight(), outputScroll, maxOutputScroll());
+    }
+
+    private Component entryName(ResourceLocation id, String fallback) {
+        if (data.blockType() == AdvancedWorkBlockData.BLOCK_HVK_TREASURE_COMPASS
+                && data.mode() == AdvancedWorkBlockData.MODE_TREASURE_CHEST) {
+            return HvkResourceDisplayNames.lootTable(id, fallback);
+        }
+        return Component.literal(fallback);
     }
 
     private void drawActionButtons(GuiGraphics graphics, int mouseX, int mouseY) {

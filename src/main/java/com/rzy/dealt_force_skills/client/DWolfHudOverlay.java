@@ -1,7 +1,9 @@
 package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfTool;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientDWolfHudState;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -10,7 +12,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -24,12 +25,14 @@ public final class DWolfHudOverlay {
 
     @SubscribeEvent
     public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        if (!VanillaGuiOverlay.HOTBAR.id().equals(event.getOverlay().id())) {
+        if (!SkillHudRenderCompat.shouldRender(event)) {
             return;
         }
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.options.hideGui || !ClientDWolfHudState.shouldDisplay()) {
+        boolean nativeDisplay = ClientDWolfHudState.shouldDisplay();
+        boolean inherited = ClientCommanderState.inherits(ModCharacters.D_WOLF_ID);
+        if (minecraft.player == null || minecraft.options.hideGui || !nativeDisplay && !inherited) {
             return;
         }
 
@@ -37,8 +40,12 @@ public final class DWolfHudOverlay {
         Font font = minecraft.font;
         int x = ClientHudLayout.x(8);
         int y = ClientHudLayout.y(Math.max(8, graphics.guiHeight() - 68));
-        if (ClientDWolfHudState.overloadActiveTicks() > 0) {
+        if (ClientDWolfHudState.overloadActiveTicks() > 0 || ClientDWolfHudState.overloadStartupTicks() > 0) {
             drawOverloadBar(graphics, font, graphics.guiWidth() / 2 - 72, 34, 144);
+        }
+
+        if (!nativeDisplay) {
+            return;
         }
 
         int coreCooldown = ClientDWolfHudState.overloadStartupTicks() > 0
@@ -118,7 +125,9 @@ public final class DWolfHudOverlay {
     }
 
     private static void drawOverloadBar(GuiGraphics graphics, Font font, int x, int y, int width) {
-        int ticks = ClientDWolfHudState.overloadActiveTicks();
+        int ticks = ClientDWolfHudState.overloadActiveTicks() > 0
+                ? ClientDWolfHudState.overloadActiveTicks()
+                : ClientDWolfHudState.overloadStartupTicks();
         float fraction = Math.min(1.0f, ticks / (float) (25 * 20));
         int fill = Math.max(0, Math.min(width, Math.round(width * fraction)));
         graphics.fill(x, y, x + width, y + 7, 0xAA090909);

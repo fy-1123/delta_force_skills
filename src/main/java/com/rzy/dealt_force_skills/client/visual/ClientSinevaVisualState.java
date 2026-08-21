@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.client.visual;
 
 import com.rzy.dealt_force_skills.client.character.ClientSinevaHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
 
@@ -21,7 +23,8 @@ public final class ClientSinevaVisualState {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientSinevaHudState.shouldRender()) {
+        if (minecraft.player == null || (!ClientSinevaHudState.shouldRender()
+                && !ClientCommanderState.inherits(ModCharacters.SINEVA_ID))) {
             reset();
             return;
         }

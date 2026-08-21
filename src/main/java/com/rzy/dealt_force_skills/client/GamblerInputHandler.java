@@ -10,6 +10,7 @@ import com.rzy.dealt_force_skills.client.screen.GamblerPowerScreen;
 import com.rzy.dealt_force_skills.network.C2S_GamblerUseTargetPower;
 import com.rzy.dealt_force_skills.network.C2S_OpenSelectionOrShop;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
+import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.LivingEntity;
@@ -82,10 +83,15 @@ public final class GamblerInputHandler {
             selectionHeldTicks++;
             while (KeybindRegister.CHARACTER_SELECT.consumeClick()) {
             }
-            boolean survival = minecraft.player != null && !minecraft.player.getAbilities().instabuild;
-            if (selectionHeldTicks >= POWER_SCREEN_HOLD_TICKS && survival && !selectionLongOpened) {
+            boolean creative = minecraft.player != null && minecraft.player.getAbilities().instabuild;
+            boolean sneak = minecraft.player != null && minecraft.player.isShiftKeyDown();
+            if (selectionHeldTicks >= POWER_SCREEN_HOLD_TICKS && !selectionLongOpened) {
                 selectionLongOpened = true;
-                GamblerPowerScreen.open();
+                if ((!creative && !sneak) || (creative && sneak)) {
+                    GamblerPowerScreen.open();
+                } else {
+                    DFGUI_MAIN.openToLogistics();
+                }
             }
             return;
         }
@@ -93,7 +99,12 @@ public final class GamblerInputHandler {
             return;
         }
         if (!selectionLongOpened) {
-            NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+            boolean creative = minecraft.player != null && minecraft.player.getAbilities().instabuild;
+            if (creative) {
+                DFGUI_MAIN.openToOperator();
+            } else {
+                NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
+            }
         }
         resetSelection();
     }

@@ -32,6 +32,7 @@ public class StingerSmokeDroneEntity extends Entity implements ItemSupplier {
    ));
     private UUID ownerId;
     private boolean guided;
+    private boolean enhanced;
     private double directionX;
     private double directionY;
     private double directionZ = 1.0D;
@@ -97,6 +98,7 @@ public class StingerSmokeDroneEntity extends Entity implements ItemSupplier {
     protected void readAdditionalSaveData(CompoundTag tag) {
         ownerId = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
         guided = tag.getBoolean("Guided");
+        enhanced = tag.getBoolean("Enhanced");
         directionX = tag.getDouble("DirectionX");
         directionY = tag.getDouble("DirectionY");
         directionZ = tag.getDouble("DirectionZ");
@@ -108,6 +110,7 @@ public class StingerSmokeDroneEntity extends Entity implements ItemSupplier {
             tag.putUUID("Owner", ownerId);
         }
         tag.putBoolean("Guided", guided);
+        tag.putBoolean("Enhanced", enhanced);
         tag.putDouble("DirectionX", directionX);
         tag.putDouble("DirectionY", directionY);
         tag.putDouble("DirectionZ", directionZ);
@@ -173,12 +176,18 @@ public class StingerSmokeDroneEntity extends Entity implements ItemSupplier {
                 StingerSmokeCloudEntity.DRONE_LIFE_TICKS,
                 true
         );
+        cloud.setDroneSource(getUUID());
+        cloud.setEnhanced(enhanced);
         cloud.setPos(getX(), getY(), getZ());
         level.addFreshEntity(cloud);
     }
 
     private Entity owner(ServerLevel level) {
         return ownerId == null ? null : level.getEntity(ownerId);
+    }
+
+    void setEnhanced(boolean enhanced) {
+        this.enhanced = enhanced;
     }
 
     private void spawnClientParticles() {

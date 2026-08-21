@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.luna.LunaStateManager;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
@@ -41,6 +43,8 @@ public class LunaReconArrowEntity extends Projectile implements ItemSupplier, Bl
     private static volatile double SCAN_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SCAN_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.lunareconarrowentity.scan_radius", 40.0));
     private static volatile double MOVE_THRESHOLD_SQR = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("MOVE_THRESHOLD_SQR", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.lunareconarrowentity.move_threshold_sqr", 0.025));
     private int bounces;
+    private boolean ultimateRecon;
+    private boolean weakPoint;
     private Vec3 lastForward = new Vec3(0.0D, 0.0D, 1.0D);
     private final Set<UUID> scanned = new HashSet<>();
     private final Map<UUID, PendingScan> pendingMoveScans = new HashMap<>();
@@ -52,6 +56,12 @@ public class LunaReconArrowEntity extends Projectile implements ItemSupplier, Bl
     public LunaReconArrowEntity(EntityType<? extends LunaReconArrowEntity> type, Level level, LivingEntity owner) {
         super(type, level);
         setOwner(owner);
+        if (owner instanceof ServerPlayer player) {
+            ultimateRecon = CommanderStateManager.hasBranchUpgrade(
+                    player, CommanderBranchUpgrade.LUNA_ULTIMATE_RECON);
+            weakPoint = CommanderStateManager.hasBranchUpgrade(
+                    player, CommanderBranchUpgrade.LUNA_WEAK_POINT);
+        }
     }
 
     @Override
@@ -102,6 +112,8 @@ public class LunaReconArrowEntity extends Projectile implements ItemSupplier, Bl
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         bounces = tag.getInt("Bounces");
+        ultimateRecon = tag.getBoolean("UltimateRecon");
+        weakPoint = tag.getBoolean("WeakPoint");
         lastForward = new Vec3(tag.getDouble("ForwardX"), tag.getDouble("ForwardY"), tag.getDouble("ForwardZ"));
         if (lastForward.lengthSqr() < 0.0001D) {
             lastForward = new Vec3(0.0D, 0.0D, 1.0D);
@@ -111,6 +123,8 @@ public class LunaReconArrowEntity extends Projectile implements ItemSupplier, Bl
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
         tag.putInt("Bounces", bounces);
+        tag.putBoolean("UltimateRecon", ultimateRecon);
+        tag.putBoolean("WeakPoint", weakPoint);
         tag.putDouble("ForwardX", lastForward.x);
         tag.putDouble("ForwardY", lastForward.y);
         tag.putDouble("ForwardZ", lastForward.z);
@@ -172,14 +186,16 @@ public class LunaReconArrowEntity extends Projectile implements ItemSupplier, Bl
         boolean detectedTarget = false;
         boolean foundPlayer = false;
         for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box,
-                entity -> entity.isAlive() && entity != owner && entity.distanceToSqr(center) <= SCAN_RADIUS * SCAN_RADIUS)) {
+                entity -> entity.isAlive() && entity != owner
+                        && entity.distanceToSqr(center) <= SCAN_RADIUS * SCAN_RADIUS)) {
             if (scanned.contains(target.getUUID()) || !hasLineOfSight(center, target)) {
                 continue;
             }
             scanned.add(target.getUUID());
             detectedTarget = true;
             pendingMoveScans.put(target.getUUID(), new PendingScan(target.position(), MOVE_SCAN_DELAY_TICKS));
-            LunaStateManager.revealToOwner(owner, target, LunaStateManager.RECON_REVEAL_TICKS, target instanceof ServerPlayer);
+            LunaStateManager.revealToOwnerSnapshot(owner, target, LunaStateManager.RECON_REVEAL_TICKS,
+                    target instanceof ServerPlayer, ultimateRecon, weakPoint);
             DfsAchievements.recordLunaReconReveal(owner, scanned.size());
             if (target instanceof ServerPlayer) {
                 foundPlayer = true;
@@ -215,7 +231,8 @@ public class LunaReconArrowEntity extends Projectile implements ItemSupplier, Bl
             if (entity instanceof LivingEntity target && target.isAlive()
                     && target.position().distanceToSqr(pending.position) >= MOVE_THRESHOLD_SQR
                     && hasLineOfSight(position(), target)) {
-                LunaStateManager.revealToOwner(owner, target, LunaStateManager.RECON_REVEAL_TICKS, target instanceof ServerPlayer);
+                LunaStateManager.revealToOwnerSnapshot(owner, target, LunaStateManager.RECON_REVEAL_TICKS,
+                        target instanceof ServerPlayer, ultimateRecon, weakPoint);
             }
             iterator.remove();
         }

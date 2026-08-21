@@ -34,6 +34,7 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
     private double radius = 6.0D;
     private int coldAmount = 10;
     private float damage = 2.0F;
+    private boolean ignoreLineOfSight;
     private String achievementSource = "";
     private String achievementSourceId = "";
 
@@ -46,7 +47,7 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
     public NTwoIceFieldEntity(
             EntityType<? extends NTwoIceFieldEntity> type,
             Level level,
-            ServerPlayer owner,
+            LivingEntity owner,
             double radius,
             int lifeTicks,
             int intervalTicks,
@@ -87,7 +88,7 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
         if (!(level() instanceof ServerLevel level)) {
             return;
         }
-        ServerPlayer owner = owner(level);
+        LivingEntity owner = owner(level);
         if (owner == null || tickCount >= lifeTicks) {
             discard();
             return;
@@ -105,6 +106,7 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
         radius = tag.contains("Radius") ? tag.getDouble("Radius") : radius;
         coldAmount = tag.contains("ColdAmount") ? tag.getInt("ColdAmount") : coldAmount;
         damage = tag.contains("Damage") ? tag.getFloat("Damage") : damage;
+        ignoreLineOfSight = tag.getBoolean("IgnoreLineOfSight");
         achievementSource = tag.getString("AchievementSource");
         achievementSourceId = tag.getString("AchievementSourceId");
     }
@@ -119,6 +121,7 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
         tag.putDouble("Radius", radius);
         tag.putInt("ColdAmount", coldAmount);
         tag.putFloat("Damage", damage);
+        tag.putBoolean("IgnoreLineOfSight", ignoreLineOfSight);
         tag.putString("AchievementSource", achievementSource);
         tag.putString("AchievementSourceId", achievementSourceId);
     }
@@ -133,19 +136,23 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
         achievementSourceId = sourceId == null ? "" : sourceId;
     }
 
-    private void applyField(ServerLevel level, ServerPlayer owner) {
+    public void setIgnoreLineOfSight(boolean ignoreLineOfSight) {
+        this.ignoreLineOfSight = ignoreLineOfSight;
+    }
+
+    private void applyField(ServerLevel level, LivingEntity owner) {
         AABB box = new AABB(position(), position()).inflate(radius);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
             if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)
                     || target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(position()) > radius
-                    || !UluruExplosionHelper.hasExplosionLineOfSight(level, position(), target)) {
+                    || !ignoreLineOfSight && !UluruExplosionHelper.hasExplosionLineOfSight(level, position(), target)) {
                 continue;
             }
             // Self-harm: field damage can hit caster; cold value never stacks on self.
             if (!TargetingUtil.isSelf(owner, target)) {
                 boolean froze = NTwoStateManager.addCold(owner, target, coldAmount);
-                if (froze) {
-                    recordSourceFreeze(owner, target);
+                if (froze && owner instanceof ServerPlayer player) {
+                    recordSourceFreeze(player, target);
                 }
             }
             if (damage > 0.0F) {
@@ -155,8 +162,8 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
                 boolean damaged = SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, owner), owner, damage);
                 target.setDeltaMovement(beforeDamageMovement);
                 target.hurtMarked = true;
-                if (damaged && wasAlive && !target.isAlive()) {
-                    DfsAchievements.recordNTwoColdDamageKill(owner, target);
+                if (damaged && wasAlive && !target.isAlive() && owner instanceof ServerPlayer player) {
+                    DfsAchievements.recordNTwoColdDamageKill(player, target);
                 }
             }
         }
@@ -164,8 +171,9 @@ public class NTwoIceFieldEntity extends Entity implements ItemSupplier {
                 48, radius * 0.85D, 0.25D, radius * 0.85D, 0.02D);
     }
 
-    private ServerPlayer owner(ServerLevel level) {
-        return ownerId == null ? null : level.getServer().getPlayerList().getPlayer(ownerId);
+    private LivingEntity owner(ServerLevel level) {
+        Entity entity = ownerId == null ? null : level.getEntity(ownerId);
+        return entity instanceof LivingEntity living && living.isAlive() ? living : null;
     }
 
     private void recordSourceFreeze(ServerPlayer owner, LivingEntity target) {

@@ -108,14 +108,14 @@ public class InterdimensionalBlockEntity extends BlockEntity {
             return;
         }
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        if (WorkBlockStorageAccess.countItem(sources, item) < count) {
+        if (WorkBlockStorageAccess.availableItemWithRedemption(player, sources, item, count) < count) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.interdimensional.seed_missing"), true);
             return;
         }
         if (!payCropBodyCost(player)) {
             return;
         }
-        int removed = WorkBlockStorageAccess.consumeItem(sources, item, count);
+        int removed = WorkBlockStorageAccess.consumeItemWithRedemption(player, sources, item, count);
         if (removed < count) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.interdimensional.seed_missing"), true);
             return;
@@ -152,11 +152,11 @@ public class InterdimensionalBlockEntity extends BlockEntity {
             return;
         }
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        if (WorkBlockStorageAccess.countItem(sources, item) < count) {
+        if (WorkBlockStorageAccess.availableItemWithRedemption(player, sources, item, count) < count) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.interdimensional.food_source_missing"), true);
             return;
         }
-        int removed = WorkBlockStorageAccess.consumeItem(sources, item, count);
+        int removed = WorkBlockStorageAccess.consumeItemWithRedemption(player, sources, item, count);
         if (removed < count) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.interdimensional.food_source_missing"), true);
             return;

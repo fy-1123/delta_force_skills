@@ -3,6 +3,8 @@ package com.rzy.dealt_force_skills.character.gizmo;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.entity.GizmoSmokeTrapEntity;
 import com.rzy.dealt_force_skills.entity.GizmoSpiderlingEntity;
 import com.rzy.dealt_force_skills.entity.GizmoSpiderNestTrapEntity;
@@ -58,7 +60,9 @@ public final class GizmoStateManager {
 
     public static boolean isGizmo(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.GIZMO_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.GIZMO_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.GIZMO_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -72,9 +76,9 @@ public final class GizmoStateManager {
         }
 
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(SMOKE_CHARGES, SMOKE_MAX_CHARGES);
+        tag.putInt(SMOKE_CHARGES, smokeCapacity(player));
         tag.putLong(SMOKE_NEXT_RECHARGE, 0L);
-        tag.putInt(SPIDER_CHARGES, SPIDER_MAX_CHARGES);
+        tag.putInt(SPIDER_CHARGES, spiderCapacity(player));
         tag.putLong(SPIDER_NEXT_RECHARGE, 0L);
         tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, GizmoTool.NONE.ordinal());
@@ -97,40 +101,42 @@ public final class GizmoStateManager {
         long now = SkillCooldownHelper.now(player);
         int smokeActive = countSmokeTraps(player);
         int spiderActive = countSpiderNests(player);
-        recharge(player, now, SMOKE_CHARGES, SMOKE_MAX_CHARGES, smokeActive, SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
-        recharge(player, now, SPIDER_CHARGES, SPIDER_MAX_CHARGES, spiderActive, SPIDER_NEXT_RECHARGE, SPIDER_RECHARGE_TICKS);
-        applyPassiveModifiers(player, isNearOwnTrap(player));
+        recharge(player, now, SMOKE_CHARGES, smokeCapacity(player), smokeActive, SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
+        recharge(player, now, SPIDER_CHARGES, spiderCapacity(player), spiderActive, SPIDER_NEXT_RECHARGE, SPIDER_RECHARGE_TICKS);
+        boolean positionDefense = CommanderStateManager.hasBranchUpgrade(
+                player, CommanderBranchUpgrade.GIZMO_POSITION_DEFENSE);
+        applyPassiveModifiers(player, isNearOwnTrap(player, positionDefense), positionDefense);
     }
 
     public static int smokeCharges(Player player) {
-        return Math.min(data(player).getInt(SMOKE_CHARGES), Math.max(0, SMOKE_MAX_CHARGES - countSmokeTraps(player)));
+        return Math.min(data(player).getInt(SMOKE_CHARGES), Math.max(0, smokeCapacity(player) - countSmokeTraps(player)));
     }
 
     public static int smokeRechargeRemainingTicks(Player player) {
-        if (smokeCharges(player) >= Math.max(0, SMOKE_MAX_CHARGES - countSmokeTraps(player))) {
+        if (smokeCharges(player) >= Math.max(0, smokeCapacity(player) - countSmokeTraps(player))) {
             return 0;
         }
         return remainingTicks(player, SMOKE_NEXT_RECHARGE);
     }
 
     public static boolean consumeSmokeCharge(ServerPlayer player) {
-        return consumeCharge(player, SMOKE_CHARGES, SMOKE_MAX_CHARGES, countSmokeTraps(player),
+        return consumeCharge(player, SMOKE_CHARGES, smokeCapacity(player), countSmokeTraps(player),
                 SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
     }
 
     public static int spiderCharges(Player player) {
-        return Math.min(data(player).getInt(SPIDER_CHARGES), Math.max(0, SPIDER_MAX_CHARGES - countSpiderNests(player)));
+        return Math.min(data(player).getInt(SPIDER_CHARGES), Math.max(0, spiderCapacity(player) - countSpiderNests(player)));
     }
 
     public static int spiderRechargeRemainingTicks(Player player) {
-        if (spiderCharges(player) >= Math.max(0, SPIDER_MAX_CHARGES - countSpiderNests(player))) {
+        if (spiderCharges(player) >= Math.max(0, spiderCapacity(player) - countSpiderNests(player))) {
             return 0;
         }
         return remainingTicks(player, SPIDER_NEXT_RECHARGE);
     }
 
     public static boolean consumeSpiderCharge(ServerPlayer player) {
-        return consumeCharge(player, SPIDER_CHARGES, SPIDER_MAX_CHARGES, countSpiderNests(player),
+        return consumeCharge(player, SPIDER_CHARGES, spiderCapacity(player), countSpiderNests(player),
                 SPIDER_NEXT_RECHARGE, SPIDER_RECHARGE_TICKS);
     }
 
@@ -158,12 +164,12 @@ public final class GizmoStateManager {
     }
 
     public static void restoreSmokeCooldown(ServerPlayer player, int percent) {
-        restoreRechargeProgress(player, SMOKE_CHARGES, SMOKE_MAX_CHARGES, Math.max(0, countSmokeTraps(player) - 1),
+        restoreRechargeProgress(player, SMOKE_CHARGES, smokeCapacity(player), Math.max(0, countSmokeTraps(player) - 1),
                 SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS, percent);
     }
 
     public static void restoreSpiderCooldown(ServerPlayer player, int percent) {
-        restoreRechargeProgress(player, SPIDER_CHARGES, SPIDER_MAX_CHARGES, Math.max(0, countSpiderNests(player) - 1),
+        restoreRechargeProgress(player, SPIDER_CHARGES, spiderCapacity(player), Math.max(0, countSpiderNests(player) - 1),
                 SPIDER_NEXT_RECHARGE, SPIDER_RECHARGE_TICKS, percent);
     }
 
@@ -209,10 +215,10 @@ public final class GizmoStateManager {
         initializeIfNeeded(player);
         NetworkHandler.sendToPlayer(new S2C_SyncGizmoState(
                 smokeCharges(player),
-                Math.max(0, SMOKE_MAX_CHARGES - countSmokeTraps(player)),
+                Math.max(0, smokeCapacity(player) - countSmokeTraps(player)),
                 smokeRechargeRemainingTicks(player),
                 spiderCharges(player),
-                Math.max(0, SPIDER_MAX_CHARGES - countSpiderNests(player)),
+                Math.max(0, spiderCapacity(player) - countSpiderNests(player)),
                 spiderRechargeRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
                 equippedTool(player).ordinal(),
@@ -234,6 +240,14 @@ public final class GizmoStateManager {
             return 0;
         }
         return countSpiderNests(serverPlayer);
+    }
+
+    public static int smokeActiveLimit(Player player) {
+        return CommanderStateManager.skillCount(player, SMOKE_ACTIVE_LIMIT);
+    }
+
+    public static int spiderActiveLimit(Player player) {
+        return CommanderStateManager.skillCount(player, SPIDER_ACTIVE_LIMIT);
     }
 
     private static int countSmokeTraps(ServerPlayer player) {
@@ -261,14 +275,15 @@ public final class GizmoStateManager {
         return markers;
     }
 
-    private static boolean isNearOwnTrap(ServerPlayer player) {
-        double radiusSqr = PASSIVE_RADIUS * PASSIVE_RADIUS;
+    private static boolean isNearOwnTrap(ServerPlayer player, boolean positionDefense) {
+        double radius = positionDefense ? PASSIVE_RADIUS * 4.0D : PASSIVE_RADIUS;
+        double radiusSqr = radius * radius;
         return activeTrapMarkers(player).stream()
                 .filter(marker -> marker.type() == GizmoTrapType.SMOKE || marker.type() == GizmoTrapType.SPIDER_NEST)
                 .anyMatch(marker -> marker.position().distanceToSqr(player.position()) <= radiusSqr);
     }
 
-    private static void applyPassiveModifiers(Player player, boolean active) {
+    private static void applyPassiveModifiers(Player player, boolean active, boolean positionDefense) {
         var move = player.getAttribute(Attributes.MOVEMENT_SPEED);
         var attack = player.getAttribute(Attributes.ATTACK_SPEED);
         if (move == null || attack == null) {
@@ -278,12 +293,21 @@ public final class GizmoStateManager {
         boolean hasMove = move.getModifier(PASSIVE_MOVE_UUID) != null;
         boolean hasAttack = attack.getModifier(PASSIVE_ATTACK_UUID) != null;
         if (active) {
+            double bonus = positionDefense ? 0.3D : 0.1D;
+            if (hasMove && Math.abs(move.getModifier(PASSIVE_MOVE_UUID).getAmount() - bonus) > 0.0001D) {
+                move.removeModifier(PASSIVE_MOVE_UUID);
+                hasMove = false;
+            }
+            if (hasAttack && Math.abs(attack.getModifier(PASSIVE_ATTACK_UUID).getAmount() - bonus) > 0.0001D) {
+                attack.removeModifier(PASSIVE_ATTACK_UUID);
+                hasAttack = false;
+            }
             if (!hasMove) {
-                move.addTransientModifier(new AttributeModifier(PASSIVE_MOVE_UUID, "gizmo_passive_timeflow_move", 0.1D,
+                move.addTransientModifier(new AttributeModifier(PASSIVE_MOVE_UUID, "gizmo_passive_timeflow_move", bonus,
                         AttributeModifier.Operation.MULTIPLY_TOTAL));
             }
             if (!hasAttack) {
-                attack.addTransientModifier(new AttributeModifier(PASSIVE_ATTACK_UUID, "gizmo_passive_timeflow_attack", 0.1D,
+                attack.addTransientModifier(new AttributeModifier(PASSIVE_ATTACK_UUID, "gizmo_passive_timeflow_attack", bonus,
                         AttributeModifier.Operation.MULTIPLY_TOTAL));
             }
         } else {
@@ -317,7 +341,7 @@ public final class GizmoStateManager {
     ) {
         CompoundTag tag = data(player);
         int allowed = Math.max(0, maxCharges - activeCount);
-        int charges = Math.min(allowed, tag.getInt(chargesKey));
+        int charges = Math.min(allowed, Math.max(0, tag.getInt(chargesKey)));
         if (charges <= 0) {
             return false;
         }
@@ -340,11 +364,19 @@ public final class GizmoStateManager {
     ) {
         CompoundTag tag = data(player);
         int allowed = Math.max(0, maxCharges - activeCount);
-        int charges = Math.min(allowed, tag.getInt(chargesKey));
+        int charges = Math.min(allowed, Math.max(0, tag.getInt(chargesKey)));
         tag.putInt(chargesKey, charges);
 
         long nextRecharge = tag.getLong(rechargeKey);
-        if (charges >= allowed || allowed <= 0 || nextRecharge <= 0L || now < nextRecharge) {
+        if (charges >= allowed || allowed <= 0) {
+            tag.putLong(rechargeKey, 0L);
+            return;
+        }
+        if (nextRecharge <= 0L) {
+            tag.putLong(rechargeKey, SkillCooldownHelper.until(player, now, rechargeTicks));
+            return;
+        }
+        if (now < nextRecharge) {
             return;
         }
 
@@ -383,6 +415,14 @@ public final class GizmoStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int smokeCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, SMOKE_MAX_CHARGES);
+    }
+
+    private static int spiderCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, SPIDER_MAX_CHARGES);
     }
 
     private static AABB trapSearchBox(ServerPlayer player) {

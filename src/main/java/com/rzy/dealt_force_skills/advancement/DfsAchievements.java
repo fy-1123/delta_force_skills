@@ -16,6 +16,7 @@ import com.rzy.dealt_force_skills.entity.ToxikTearGasCloudEntity;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
 import net.minecraft.advancements.Advancement;
+import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
@@ -1690,6 +1691,16 @@ public final class DfsAchievements {
         boolean changed = player.getAdvancements().award(advancement, "unlock");
         if (changed && !FINAL.equals(path)) {
             tryAwardFinal(player);
+        }
+    }
+
+    public static void awardAll(ServerPlayer player) {
+        if (player == null) return;
+        for (Advancement advancement : player.server.getAdvancements().getAllAdvancements()) {
+            AdvancementProgress progress = player.getAdvancements().getOrStartProgress(advancement);
+            List<String> remaining = new ArrayList<>();
+            progress.getRemainingCriteria().forEach(remaining::add);
+            for (String criterion : remaining) player.getAdvancements().award(advancement, criterion);
         }
     }
 

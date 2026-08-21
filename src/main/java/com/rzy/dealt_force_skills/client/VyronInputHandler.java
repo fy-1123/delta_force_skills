@@ -2,10 +2,13 @@ package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.SkillSlot;
 import com.rzy.dealt_force_skills.character.vyron.VyronTool;
 import com.rzy.dealt_force_skills.character.vyron.VyronToolAction;
 import com.rzy.dealt_force_skills.character.vyron.VyronStateManager;
 import com.rzy.dealt_force_skills.client.character.ClientVyronHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.ClientVyronToolAnimationState;
 import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.network.C2S_VyronDash;
@@ -41,22 +44,30 @@ public final class VyronInputHandler {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientVyronHudState.shouldRender()) {
+        boolean nativeCharacter = ClientVyronHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.VYRON_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.VYRON_ID, SkillSlot.ACTIVE_2);
+        if (minecraft.player == null || (!active1Owned && !active2Owned
+                && !ClientVyronHudState.hasEquippedTool())) {
             resetActive2();
             resetPendingBombThrow();
             ClientVyronToolAnimationState.reset();
             return;
         }
 
-        while (KeybindRegister.ACTIVE_SKILL_1 != null && KeybindRegister.ACTIVE_SKILL_1.consumeClick()) {
-            if (canDashWithStamina(minecraft.player)) {
-                Vec3 direction = movementDirection(minecraft);
-                NetworkHandler.sendToServer(new C2S_VyronDash(direction.x, direction.z));
+        if (active1Owned) {
+            while (KeybindRegister.ACTIVE_SKILL_1 != null && KeybindRegister.ACTIVE_SKILL_1.consumeClick()) {
+                if (canDashWithStamina(minecraft.player)) {
+                    Vec3 direction = movementDirection(minecraft);
+                    NetworkHandler.sendToServer(new C2S_VyronDash(direction.x, direction.z));
+                }
             }
         }
 
         handlePendingBombThrow();
-        handleActive2Key();
+        handleActive2Key(active2Owned);
         if (ClientVyronHudState.hasEquippedTool() || isMagneticBombHeldForVisual() || pendingBombThrowTicks > 0) {
             releaseBlockedKey(minecraft.options.keyAttack);
             releaseBlockedKey(minecraft.options.keyUse);
@@ -132,8 +143,9 @@ public final class VyronInputHandler {
         }
     }
 
-    private static void handleActive2Key() {
-        if (KeybindRegister.ACTIVE_SKILL_2 == null) {
+    private static void handleActive2Key(boolean active2Owned) {
+        if (!active2Owned || KeybindRegister.ACTIVE_SKILL_2 == null) {
+            resetActive2();
             return;
         }
         if (pendingBombThrowTicks > 0) {
@@ -179,7 +191,7 @@ public final class VyronInputHandler {
     }
 
     private static boolean canDashWithStamina(Player player) {
-        int cost = VyronStateManager.DASH_STAMINA_PERCENT_COST;
+        int cost = ClientCommanderState.skillCost(VyronStateManager.DASH_STAMINA_PERCENT_COST);
         if (cost <= 0) {
             return true;
         }

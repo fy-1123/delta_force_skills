@@ -1,6 +1,7 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.boss.BeaconLootHelper;
+import com.rzy.dealt_force_skills.boss.AcceleratedTroopsSquadManager;
 import com.rzy.dealt_force_skills.boss.BeaconTaczEquipment;
 import com.rzy.dealt_force_skills.boss.BeaconTaczGunBridge;
 import com.rzy.dealt_force_skills.boss.FearManager;
@@ -27,16 +28,19 @@ import com.tacz.guns.resource.modifier.AttachmentCacheProperty;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -76,6 +80,8 @@ public class BeaconBossEntity extends Monster implements SkillPlayerLikeTarget, 
             SynchedEntityData.defineId(BeaconBossEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> DATA_RELOADING =
             SynchedEntityData.defineId(BeaconBossEntity.class, EntityDataSerializers.BOOLEAN);
+    private final ServerBossEvent bossEvent = new ServerBossEvent(
+            getDisplayName(), BossEvent.BossBarColor.RED, BossEvent.BossBarOverlay.PROGRESS);
 
     // All values read live from dealtforceskills.toml so /reload hot-applies combat numbers.
     private static double maxHealthCfg() {
@@ -246,6 +252,24 @@ public class BeaconBossEntity extends Monster implements SkillPlayerLikeTarget, 
         equipM1911();
     }
 
+    @Override
+    public void setCustomName(@Nullable Component name) {
+        super.setCustomName(name);
+        bossEvent.setName(getDisplayName());
+    }
+
+    @Override
+    public void startSeenByPlayer(ServerPlayer player) {
+        super.startSeenByPlayer(player);
+        bossEvent.addPlayer(player);
+    }
+
+    @Override
+    public void stopSeenByPlayer(ServerPlayer player) {
+        super.stopSeenByPlayer(player);
+        bossEvent.removePlayer(player);
+    }
+
     private void equipM1911() {
         ItemStack gun = BeaconTaczEquipment.createM1911();
         if (!gun.isEmpty()) {
@@ -286,6 +310,11 @@ public class BeaconBossEntity extends Monster implements SkillPlayerLikeTarget, 
     @Override
     public MobType getMobType() {
         return MobType.UNDEAD;
+    }
+
+    @Override
+    public boolean isAlliedTo(Entity entity) {
+        return entity instanceof AsaraTrooperEntity || super.isAlliedTo(entity);
     }
 
     /**
@@ -345,6 +374,7 @@ public class BeaconBossEntity extends Monster implements SkillPlayerLikeTarget, 
     public void tick() {
         super.tick();
         if (!level().isClientSide) {
+            bossEvent.setProgress(Mth.clamp(getHealth() / Math.max(1.0F, getMaxHealth()), 0.0F, 1.0F));
             tickTaczOperator();
             ensureGunEquipped();
         }
@@ -718,6 +748,9 @@ public class BeaconBossEntity extends Monster implements SkillPlayerLikeTarget, 
 
     @Override
     public boolean hurt(DamageSource source, float amount) {
+        if (AsaraTrooperEntity.sourceIsAsara(source)) {
+            return false;
+        }
         // Player-like: soft-cap single-hit damage so other mods cannot true-one-shot the boss.
         if (!source.is(net.minecraft.tags.DamageTypeTags.BYPASSES_INVULNERABILITY)
                 && amount > 0.0F) {
@@ -901,20 +934,30 @@ public class BeaconBossEntity extends Monster implements SkillPlayerLikeTarget, 
 
     @Override
     public void die(DamageSource source) {
+        bossEvent.setVisible(false);
         if (!level().isClientSide && level() instanceof ServerLevel serverLevel) {
             int looting = 0;
             if (source.getEntity() instanceof LivingEntity living) {
                 looting = net.minecraft.world.item.enchantment.EnchantmentHelper.getMobLooting(living);
             }
-            BeaconLootHelper.dropAt(serverLevel, position(), looting);
-            if (source.getEntity() instanceof ServerPlayer killer) {
-                killer.giveExperiencePoints(BeaconLootHelper.experienceReward());
-            } else {
+            if (serverLevel.getGameRules().getBoolean(net.minecraft.world.level.GameRules.RULE_DOMOBLOOT)) {
+                BeaconLootHelper.dropAt(serverLevel, position(), looting);
+            }
+            ServerPlayer killer = source.getEntity() instanceof ServerPlayer directKiller
+                    ? directKiller
+                    : getKillCredit() instanceof ServerPlayer creditedKiller ? creditedKiller : null;
+            if (killer == null) {
                 Player nearest = serverLevel.getNearestPlayer(this, 32.0D);
                 if (nearest instanceof ServerPlayer serverPlayer) {
-                    serverPlayer.giveExperiencePoints(BeaconLootHelper.experienceReward());
+                    killer = serverPlayer;
                 }
             }
+            if (killer != null) {
+                killer.giveExperiencePoints(BeaconLootHelper.experienceReward());
+            }
+            // Beacon death unlocks the persistent natural-spawn loop even when no player
+            // can be credited as the killer; the killer is not the trigger condition.
+            AcceleratedTroopsSquadManager.unlockAfterBeaconKill(serverLevel.getServer());
         }
         super.die(source);
     }
@@ -928,6 +971,11 @@ public class BeaconBossEntity extends Monster implements SkillPlayerLikeTarget, 
                 FearManager.splashOnBeaconKill(serverLevel, player.position(), player);
             }
         }
+    }
+
+    @Override
+    protected boolean shouldDespawnInPeaceful() {
+        return true;
     }
 
     @Override

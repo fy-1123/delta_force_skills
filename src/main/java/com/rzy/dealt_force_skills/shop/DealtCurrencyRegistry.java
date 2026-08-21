@@ -1,6 +1,7 @@
 package com.rzy.dealt_force_skills.shop;
 
 import com.rzy.dealt_force_skills.character.lexninjia.LexNinjiaStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.saeed.SaeedStateManager;
 import com.rzy.dealt_force_skills.character.undead.UndeadStateManager;
 import net.minecraft.network.chat.Component;
@@ -43,6 +44,14 @@ public final class DealtCurrencyRegistry {
                 SaeedStateManager::setTacticalPoints
         ));
         registerBuiltin(new SimpleProvider(
+                "commander_tactical_points",
+                "currency.dealt_force_skills.commander_tactical_points",
+                CommanderStateManager::isCommander,
+                CommanderStateManager::tacticalPoints,
+                CommanderStateManager::grantTacticalPoints,
+                CommanderStateManager::setTacticalPoints
+        ));
+        registerBuiltin(new SimpleProvider(
                 "haff_coins",
                 "currency.dealt_force_skills.haff_coins",
                 player -> !LexNinjiaStateManager.isLexNinjia(player)
@@ -51,6 +60,14 @@ public final class DealtCurrencyRegistry {
                 HaffCoinManager::get,
                 HaffCoinManager::grant,
                 HaffCoinManager::set
+        ));
+        registerBuiltin(new SimpleProvider(
+                "havoc_coin",
+                "currency.dealt_force_skills.havoc_coin",
+                player -> true,
+                SpecialOperationsBaseManager::havocCoins,
+                SpecialOperationsBaseManager::grantHavocCoins,
+                SpecialOperationsBaseManager::setHavocCoins
         ));
     }
 
@@ -65,6 +82,18 @@ public final class DealtCurrencyRegistry {
 
     public static synchronized Optional<DealtCurrencyProvider> find(ServerPlayer player) {
         return PROVIDERS.stream().filter(provider -> provider.supports(player)).findFirst();
+    }
+
+    public static synchronized Optional<DealtCurrencyProvider> findById(String id) {
+        return PROVIDERS.stream().filter(provider -> provider.id().equals(id)).findFirst();
+    }
+
+    public static synchronized Optional<DealtCurrencyProvider> findActiveSpecial(ServerPlayer player) {
+        return PROVIDERS.stream()
+                .filter(provider -> !provider.id().equals("haff_coins")
+                        && !provider.id().equals("havoc_coin"))
+                .filter(provider -> provider.supports(player))
+                .findFirst();
     }
 
     public static synchronized List<DealtCurrencyProvider> providers() {

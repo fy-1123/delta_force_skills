@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.uluru.UluruExplosionHelper;
 import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -10,6 +12,7 @@ import com.rzy.dealt_force_skills.registry.ModEntities;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -77,6 +80,8 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
     private static volatile int GUIDED_MAX_TICKS_X2 = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("GUIDED_MAX_TICKS_X2", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.uluruloiteringmissileentity.guided_max_ticks_x2", 1200));
     private static final int FLIGHT_SOUND_INTERVAL_TICKS = 12;
     private static final double FLIGHT_SOUND_RANGE = 64.0D;
+    private static final double PATROL_TARGET_RADIUS = 36.0D;
+    private static final int PATROL_SHOT_INTERVAL_TICKS = 10;
     private static volatile int WARNING_INTERVAL_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("WARNING_INTERVAL_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.uluruloiteringmissileentity.warning_interval_ticks", 10));
     private static volatile double WARNING_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("WARNING_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.uluruloiteringmissileentity.warning_radius", 256.0));
     private static volatile int FORCED_CHUNK_RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("FORCED_CHUNK_RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.uluruloiteringmissileentity.forced_chunk_radius", 5));
@@ -124,6 +129,8 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
     private boolean guided;
     private boolean boosting;
     private boolean exploded;
+    private boolean patrolEnabled;
+    private boolean patrolChild;
     private double speed;
     private double directDropSpeed;
     private int flightCostX2;
@@ -143,6 +150,8 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
         super(type, level);
         setOwner(owner);
         this.guided = guided;
+        patrolEnabled = owner instanceof ServerPlayer player
+                && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.ULURU_PATROL_MISSILE);
     }
 
     @Override
@@ -170,11 +179,13 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
 
         updateMotion();
         if (level() instanceof ServerLevel serverLevel) {
-            updateForcedChunks(serverLevel);
+            // Camera control is restricted to chunks already tracked by the normal player view.
+            // Do not force-load or stream remote terrain from the missile tick.
+            releaseForcedChunks();
             playFlightSound(serverLevel);
             warnIncomingPlayers(serverLevel);
-            streamEntitiesForOwner(serverLevel);
             refreshGuidedCameraForOwner();
+            firePatrolMissile(serverLevel);
         }
 
         if (!level().noCollision(this, getBoundingBox().deflate(0.01D))) {
@@ -190,6 +201,12 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
         }
 
         Vec3 next = position().add(motion);
+        if (guided && level() instanceof ServerLevel serverLevel
+                && !isWithinOwnerLoadedView(serverLevel, next)) {
+            setDeltaMovement(Vec3.ZERO);
+            streamMissileStateForOwner();
+            return;
+        }
         setPos(next.x, next.y, next.z);
         if (!level().noCollision(this, getBoundingBox().deflate(0.01D))) {
             explode(position());
@@ -228,8 +245,7 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
         ACTIVE_GUIDED_ANCHORS.put(player.getUUID(), ControlAnchor.capture(player));
         lastGuidanceTick = tickCount;
         if (level() instanceof ServerLevel serverLevel) {
-            updateForcedChunks(serverLevel);
-            streamEntitiesForOwner(serverLevel);
+            releaseForcedChunks();
         }
         sendMissileStateToOwner(player, true);
         player.connection.send(new ClientboundSetCameraPacket(this));
@@ -306,6 +322,8 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
         speed = tag.getDouble("Speed");
         directDropSpeed = tag.getDouble("DirectDropSpeed");
         flightCostX2 = tag.getInt("FlightCostX2");
+        patrolEnabled = tag.getBoolean("PatrolEnabled");
+        patrolChild = tag.getBoolean("PatrolChild");
     }
 
     @Override
@@ -315,6 +333,8 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
         tag.putDouble("Speed", speed);
         tag.putDouble("DirectDropSpeed", directDropSpeed);
         tag.putInt("FlightCostX2", flightCostX2);
+        tag.putBoolean("PatrolEnabled", patrolEnabled);
+        tag.putBoolean("PatrolChild", patrolChild);
     }
 
     @Override
@@ -436,45 +456,20 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
     }
 
     private void updateForcedChunks(ServerLevel level) {
-        if (!guided) {
-            releaseForcedChunks();
-            return;
+        releaseForcedChunks();
+    }
+
+    private boolean isWithinOwnerLoadedView(ServerLevel level, Vec3 next) {
+        if (!(getOwner() instanceof ServerPlayer player)) {
+            return false;
         }
-
-        Vec3 motion = getDeltaMovement();
-        int curChunkX = blockPosition().getX() >> 4;
-        int curChunkZ = blockPosition().getZ() >> 4;
-        int nextChunkX = (int) Math.floor((getX() + motion.x * CHUNK_LOOKAHEAD_TICKS) / 16.0);
-        int nextChunkZ = (int) Math.floor((getZ() + motion.z * CHUNK_LOOKAHEAD_TICKS) / 16.0);
-        int farChunkX = (int) Math.floor((getX() + motion.x * FAR_CHUNK_LOOKAHEAD_TICKS) / 16.0);
-        int farChunkZ = (int) Math.floor((getZ() + motion.z * FAR_CHUNK_LOOKAHEAD_TICKS) / 16.0);
-
-        Set<Long> desired = new HashSet<>();
-        addChunkArea(desired, curChunkX, curChunkZ, FORCED_CHUNK_RADIUS);
-        addChunkArea(desired, nextChunkX, nextChunkZ, FORCED_CHUNK_RADIUS);
-        addChunkArea(desired, farChunkX, farChunkZ, FORCED_CHUNK_RADIUS);
-
-        for (long packed : desired) {
-            if (forcedChunks.add(packed)) {
-                retainForcedChunk(level, packed);
-            }
-        }
-
-        var iterator = forcedChunks.iterator();
-        while (iterator.hasNext()) {
-            long packed = iterator.next();
-            if (!desired.contains(packed)) {
-                releaseForcedChunk(level, packed);
-                iterator.remove();
-            }
-        }
-
-        ensureChunkLoaded(level, curChunkX, curChunkZ);
-        ensureChunkLoaded(level, nextChunkX, nextChunkZ);
-        ensureChunkLoaded(level, farChunkX, farChunkZ);
-        // Stream terrain around the missile without moving the player entity. Moving the player as a
-        // chunk anchor causes rubber-banding, view lock, and void/ground clipping on control release.
-        streamTerrainForOwner(level, desired, curChunkX, curChunkZ);
+        int nextChunkX = Mth.floor(next.x) >> 4;
+        int nextChunkZ = Mth.floor(next.z) >> 4;
+        int radius = Math.max(2, player.server.getPlayerList().getViewDistance() - 1);
+        ChunkPos ownerChunk = player.chunkPosition();
+        return Math.abs(nextChunkX - ownerChunk.x) <= radius
+                && Math.abs(nextChunkZ - ownerChunk.z) <= radius
+                && level.getChunkSource().hasChunk(nextChunkX, nextChunkZ);
     }
 
     private void ensureChunkLoaded(ServerLevel level, int centerX, int centerZ) {
@@ -647,19 +642,7 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
     }
 
     private static void restoreTerrainCenter(ServerPlayer player) {
-        ChunkPos playerChunk = player.chunkPosition();
-        RESTORING_TERRAIN.put(player.getUUID(), new RestoreTerrainSession(playerChunk.x, playerChunk.z, restoreTerrainRadius(player)));
-        sendRestoreTerrainCenter(player, playerChunk.x, playerChunk.z);
-        if (player.level() instanceof ServerLevel level) {
-            // Send a small critical area immediately, then keep trickling the rest for a short
-            // period from the player tick. This is smoother than hard-freezing the local player
-            // while still repairing the client's chunk cache after the missile used a remote center.
-            for (int dx = -CRITICAL_TERRAIN_RADIUS; dx <= CRITICAL_TERRAIN_RADIUS; dx++) {
-                for (int dz = -CRITICAL_TERRAIN_RADIUS; dz <= CRITICAL_TERRAIN_RADIUS; dz++) {
-                    sendChunkTerrain(level, player, ChunkPos.asLong(playerChunk.x + dx, playerChunk.z + dz));
-                }
-            }
-        }
+        RESTORING_TERRAIN.remove(player.getUUID());
     }
 
     public static void tickRestoreTerrain(ServerPlayer player) {
@@ -733,6 +716,37 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
             bomblet.setDeltaMovement(direction.scale(0.72));
             level.addFreshEntity(bomblet);
         }
+    }
+
+    private void firePatrolMissile(ServerLevel level) {
+        if (!patrolEnabled || patrolChild || tickCount % PATROL_SHOT_INTERVAL_TICKS != 0
+                || !(getOwner() instanceof ServerPlayer owner)) {
+            return;
+        }
+        LivingEntity target = level.getEntitiesOfClass(LivingEntity.class,
+                        getBoundingBox().inflate(PATROL_TARGET_RADIUS),
+                        candidate -> TargetingUtil.isHostileLivingFor(owner, candidate)
+                                && candidate.distanceToSqr(this) <= PATROL_TARGET_RADIUS * PATROL_TARGET_RADIUS)
+                .stream()
+                .min(Comparator.comparingDouble(candidate -> candidate.distanceToSqr(this)))
+                .orElse(null);
+        if (target == null) {
+            return;
+        }
+        Vec3 direction = target.getEyePosition().subtract(position()).normalize();
+        UluruLoiteringMissileEntity child = new UluruLoiteringMissileEntity(
+                ModEntities.ULURU_LOITERING_MISSILE.get(), level, owner, false);
+        child.patrolChild = true;
+        child.patrolEnabled = false;
+        child.speed = 0.6D;
+        child.setPos(getX() + direction.x * 0.8D, getY() + direction.y * 0.8D, getZ() + direction.z * 0.8D);
+        double horizontal = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+        child.setYRot((float) (Mth.atan2(direction.z, direction.x) * Mth.RAD_TO_DEG) - 90.0F);
+        child.setXRot((float) -(Mth.atan2(direction.y, horizontal) * Mth.RAD_TO_DEG));
+        child.setDeltaMovement(direction.scale(child.speed));
+        level.addFreshEntity(child);
+        level.playSound(null, child.blockPosition(), ModSounds.MISSILE_FIRE.get(),
+                SoundSource.PLAYERS, 0.8F, 1.15F);
     }
 
     private void streamMissileStateForOwner() {

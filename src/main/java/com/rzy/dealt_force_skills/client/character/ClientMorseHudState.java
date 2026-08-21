@@ -135,7 +135,8 @@ public final class ClientMorseHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != MorseTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.MORSE_ID))
+                && equippedTool != MorseTool.NONE;
     }
 
     public static int shockCharges() {

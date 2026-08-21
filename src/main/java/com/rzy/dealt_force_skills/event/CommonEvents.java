@@ -1,11 +1,17 @@
 package com.rzy.dealt_force_skills.event;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
+import com.rzy.dealt_force_skills.arena.HvkAsaraArenaManager;
 import com.rzy.dealt_force_skills.block.BladeWireBlockEntity;
 import com.rzy.dealt_force_skills.block.QuickCoverBlock;
 import com.rzy.dealt_force_skills.block.QuickCoverBlockEntity;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderSupportManager;
+import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
+import com.rzy.dealt_force_skills.compat.TrainingTargetCompat;
 import com.rzy.dealt_force_skills.character.catdad.CatDadStateManager;
 import com.rzy.dealt_force_skills.character.department.DepartmentOfTransportationStateManager;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfSkills;
@@ -24,6 +30,7 @@ import com.rzy.dealt_force_skills.character.morse.MorseStateManager;
 import com.rzy.dealt_force_skills.character.morse.MorseTool;
 import com.rzy.dealt_force_skills.character.nikaidou.NikaidouHiroStateManager;
 import com.rzy.dealt_force_skills.character.nikaidou.NikaidouHiroTool;
+import com.rzy.dealt_force_skills.character.nikaidou.NikaidouHiroWitchificationStateManager;
 import com.rzy.dealt_force_skills.character.nox.NoxStateManager;
 import com.rzy.dealt_force_skills.character.raptor.RaptorStateManager;
 import com.rzy.dealt_force_skills.character.raptor.RaptorTool;
@@ -54,6 +61,7 @@ import com.rzy.dealt_force_skills.character.vyron.VyronSkills;
 import com.rzy.dealt_force_skills.character.vyron.VyronStateManager;
 import com.rzy.dealt_force_skills.character.vyron.VyronTool;
 import com.rzy.dealt_force_skills.effect.NoxDelayedWoundEffect;
+import com.rzy.dealt_force_skills.effect.InjuryManager;
 import com.rzy.dealt_force_skills.effect.NoxFlashedEffect;
 import com.rzy.dealt_force_skills.effect.ModItemEffectHelper;
 import com.rzy.dealt_force_skills.effect.ManbaBlindedEffect;
@@ -63,10 +71,16 @@ import com.rzy.dealt_force_skills.effect.ShakehandsCombatHandler;
 import com.rzy.dealt_force_skills.effect.ToxikTearGasBlindEffect;
 import com.rzy.dealt_force_skills.effect.ToxikFireflyInterferenceEffect;
 import com.rzy.dealt_force_skills.team.TeamCombatRules;
+import com.rzy.dealt_force_skills.util.EmptyHandExtinguishHandler;
+import com.rzy.dealt_force_skills.util.ReconRevealThrottle;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import com.rzy.dealt_force_skills.entity.RaptorFalconDroneEntity;
+import com.rzy.dealt_force_skills.entity.AsaraTrooperEntity;
+import com.rzy.dealt_force_skills.entity.AcceleratedTroopsEntity;
 import com.rzy.dealt_force_skills.entity.SaeedGuardEntity;
 import com.rzy.dealt_force_skills.entity.UluruLoiteringMissileEntity;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem;
+import com.rzy.dealt_force_skills.item.EternalLoveBlessingItem;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem.Faction;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem.Profile;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem.SpecialAbility;
@@ -87,6 +101,8 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
@@ -99,6 +115,7 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.Container;
+import net.minecraft.world.Difficulty;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -108,12 +125,14 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.entity.npc.VillagerTrades;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
@@ -146,6 +165,7 @@ import net.minecraftforge.event.entity.living.LivingHealEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
 import net.minecraftforge.event.entity.living.MobEffectEvent;
+import net.minecraftforge.event.entity.living.MobSpawnEvent;
 import net.minecraftforge.event.entity.item.ItemTossEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -200,6 +220,8 @@ public class CommonEvents {
     private static final String RED_OWL_REVENGE_TYPE = "dealt_force_skills.red_owl_revenge_type";
     private static final String EQUIPMENT_RESTORE_UNTIL = "dealt_force_skills.equipment_restore_until";
     private static final String EQUIPMENT_SUMMON_UNTIL = "dealt_force_skills.equipment_summon_until";
+    private static final String EQUIPMENT_HEAVY_DODGE_SUMMON_UNTIL =
+            "dealt_force_skills.equipment_heavy_dodge_summon_until";
     private static final String FS_STATIONARY_STACKS = "dealt_force_skills.fs_stationary_stacks";
     private static final String FS_STATIONARY_TICKS = "dealt_force_skills.fs_stationary_ticks";
     private static final String FS_MOVING_TICKS = "dealt_force_skills.fs_moving_ticks";
@@ -252,6 +274,8 @@ public class CommonEvents {
     private static final String KING_KONG_COOLDOWN_UNTIL = "dealt_force_skills.king_kong_cooldown_until";
     private static final String KING_KONG_TARGET_ID = "dealt_force_skills.king_kong_target_id";
     private static final String KING_KONG_STRIKE_TICK = "dealt_force_skills.king_kong_strike_tick";
+    private static final String HACKCLAW_BACKSTAB_OWNER = "dealt_force_skills.hackclaw_backstab_owner";
+    private static final String HACKCLAW_BACKSTAB_UNTIL = "dealt_force_skills.hackclaw_backstab_until";
     private static final UUID EQUIPMENT_ASSAULT_MOVEMENT_UUID = UUID.fromString("ddf4b7a1-9809-46d6-8e8f-7d78cd7e1101");
     private static final UUID EQUIPMENT_MHS_ROOT_UUID = UUID.fromString("82b98383-88a5-4b72-935b-49b6b1d7f001");
     private static final Map<UUID, Map<MobEffect, TrackedEffect>> ULURU_EFFECT_TRACKING = new HashMap<>();
@@ -276,20 +300,51 @@ public class CommonEvents {
     private static boolean taczReloadBridgeChecked;
     private static boolean taczReloadBridgeAvailable;
     private static boolean ghrothNoonCopyingDamage;
+    private static boolean hackclawReflectingDamage;
+    private static boolean commanderGeneConvertingDamage;
     private static Method taczFromLivingEntity;
     private static Method taczCancelReload;
     private static final String UNDEAD_EXPLORER_LOOT_CLAIMED =
             DealtForceSkillsMod.MODID + ".undead_explorer_loot_claimed";
+    private static final String TOUHOU_MAID_PICKUP_POST_EVENT =
+            "com.github.tartaricacid.touhoulittlemaid.api.event.MaidPickupEvent$ItemResultPost";
+    private static final String TOUHOU_MAID_PICKUP_PRE_EVENT =
+            "com.github.tartaricacid.touhoulittlemaid.api.event.MaidPickupEvent$ItemResultPre";
+    private static final String EQUIPMENT_FEEDBACK_UNTIL = "DfsEquipmentFeedbackUntil";
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onLivingAttack(LivingAttackEvent event) {
         DamageSource source = event.getSource();
+        if (AsaraTrooperEntity.shouldCancelFriendlyDamage(event.getEntity(), source)) {
+            event.setCanceled(true);
+            return;
+        }
         if (TeamCombatRules.shouldCancelFriendlyDamage(event.getEntity(), source)) {
+            event.setCanceled(true);
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer target
+                && CommanderSupportManager.isAdsProtectedFor(target, damageSourceEntity(source), source)) {
+            event.setCanceled(true);
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer target
+                && NikaidouHiroWitchificationStateManager.shouldBlockFinalAttack(target, source)) {
             event.setCanceled(true);
             return;
         }
         ShakehandsCombatHandler.handleLivingAttack(event);
         if (event.isCanceled()) {
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer target
+                && UluruStateManager.tryRedirectDamageToCover(target, event.getAmount())) {
+            event.setCanceled(true);
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer target
+                && LexNinjiaStateManager.handleHandGuardAttack(target, source)) {
+            event.setCanceled(true);
             return;
         }
         if (UndeadSupportManager.shouldCancelFriendlyFire(event.getEntity(), source)) {
@@ -308,6 +363,9 @@ public class CommonEvents {
                 event.setCanceled(true);
                 return;
             }
+        }
+        if (tryConvertCommanderOrdinaryAttack(event)) {
+            return;
         }
         if (event.getEntity() instanceof ServerPlayer target
                 && DepartmentOfTransportationStateManager.isFullyConcealed(target)) {
@@ -394,7 +452,8 @@ public class CommonEvents {
         if (attacker == null) return;
 
         if (SinevaStateManager.isSineva(player)
-                && !SinevaStateManager.isShieldDeployed(player)
+                && (CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.SINEVA_FULL_PROTECTION)
+                || !SinevaStateManager.isShieldDeployed(player))
                 && Util.isFromBehind(player, sourcePos, 70.0f)
                 && Util.isUpperBodySource(player, attacker)) {
             event.setCanceled(true);
@@ -431,6 +490,52 @@ public class CommonEvents {
         ShakehandsCombatHandler.handleLivingHurt(event);
         if (event.isCanceled() || event.getAmount() <= 0.0f) {
             return;
+        }
+        if (hackclawReflectingDamage) {
+            return;
+        }
+        if (damageSourceRootPlayer(source) instanceof ServerPlayer attacker
+                && attacker == hurtEntity
+                && CommanderStateManager.isCommander(attacker)) {
+            // Commander-owned blasts/fields and inherited skills must never damage or
+            // control the caster, including direct damage calls that bypass SkillDamageHelper.
+            event.setCanceled(true);
+            event.setAmount(0.0F);
+            return;
+        }
+        if (SuperbWarfareCompat.isCommanderVehicle(hurtEntity,
+                com.rzy.dealt_force_skills.DealtForceSkillsMod.MODID + ".commander_vehicle")) {
+            if (!source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION)) {
+                event.setCanceled(true);
+                event.setAmount(0.0F);
+            } else {
+                event.setAmount(event.getAmount() * 0.10F);
+            }
+            return;
+        }
+        if (hurtEntity instanceof ServerPlayer target
+                && CommanderSupportManager.isAdsProtectedFor(target, damageSourceEntity(source), source)) {
+            event.setCanceled(true);
+            event.setAmount(0.0F);
+            return;
+        }
+        if (hurtEntity instanceof ServerPlayer target
+                && CommanderSupportManager.tryPreventFatal(target, source, event.getAmount())) {
+            event.setAmount(0.0F);
+            return;
+        }
+        event.setAmount(NoxStateManager.handleOutgoingDamage(source, event.getAmount()));
+        if (event.getAmount() <= 0.0f) {
+            return;
+        }
+        AsaraTrooperEntity asaraSource = AsaraTrooperEntity.sourceTrooper(source);
+        if (asaraSource != null) {
+            event.setAmount(event.getAmount() * asaraSource.outgoingDamageMultiplier());
+        }
+        if (source.getEntity() instanceof LivingEntity arenaAttacker) {
+            float amount = event.getAmount() * HvkAsaraArenaManager.outgoingDamageMultiplier(
+                    arenaAttacker, hurtEntity, source);
+            event.setAmount(HvkAsaraArenaManager.capPlayerDamage(arenaAttacker, hurtEntity, source, amount));
         }
         if (SaeedStateManager.shouldCancelTeamDamage(hurtEntity, source)) {
             event.setCanceled(true);
@@ -484,6 +589,7 @@ public class CommonEvents {
         if (ModItemEffectHelper.hasLaughingManiaThree(hurtEntity) && event.getAmount() > 0.0f) {
             event.setAmount(event.getAmount() * 0.6f);
         }
+        event.setAmount(LunaStateManager.applyWeakPointDamage(hurtEntity, event.getAmount()));
         LunaStateManager.handleDamageReveal(event);
         if (NoxStateManager.handleDecoyHurt(hurtEntity, event.getSource(), event.getAmount())) {
             event.setAmount(0.0f);
@@ -506,6 +612,23 @@ public class CommonEvents {
                 && !event.getSource().is(SkillDamageHelper.TRUE_SKILL_DAMAGE)) {
             event.setAmount(event.getAmount() * equipmentOutgoingDamageMultiplier(attacker, hurtEntity, event.getSource()));
         }
+        if (event.getAmount() > 0.0F) {
+            if (damageSourceRootPlayer(source) instanceof ServerPlayer attacker
+                    && CommanderStateManager.isCommander(attacker)) {
+                if (!SkillDamageHelper.isApplyingCommanderSkillDamage()
+                        && !commanderGeneConvertingDamage) {
+                    event.setAmount(event.getAmount()
+                            * CommanderStateManager.ordinaryDamageMultiplier(attacker));
+                }
+                if (!commanderGeneConvertingDamage) {
+                    event.setAmount(event.getAmount()
+                            * CommanderStateManager.criticalDamageMultiplier(attacker));
+                }
+            }
+            if (CommanderSupportManager.isMarked(hurtEntity)) {
+                event.setAmount(event.getAmount() * CommanderSupportManager.markedDamageMultiplier(hurtEntity));
+            }
+        }
         if (event.getSource().getEntity() instanceof ServerPlayer attacker
                 && UndeadStateManager.isUndead(attacker)
                 && event.getAmount() > 0.0f) {
@@ -517,6 +640,22 @@ public class CommonEvents {
                     .filter(attacker -> SaeedStateManager.shouldExecutePassiveTarget(attacker, hurtEntity))
                     .ifPresent(attacker -> event.setAmount(Math.max(
                             event.getAmount(), hurtEntity.getHealth() + hurtEntity.getAbsorptionAmount() + 1.0F)));
+        }
+        event.setAmount(NoxStateManager.capDeepWoundDamage(source, hurtEntity, event.getAmount()));
+        if (event.getAmount() > 0.0F
+                && damageSourceRootPlayer(source) instanceof ServerPlayer attacker
+                && CommanderStateManager.hasBranchUpgrade(
+                        attacker, CommanderBranchUpgrade.HACKCLAW_BACKSTAB_REPUTATION)
+                && isPassiveOrNeutralMob(hurtEntity)
+                && !TrainingTargetCompat.recordsDamageWithoutDying(hurtEntity)) {
+            markHackclawBackstab(hurtEntity, attacker);
+            event.setAmount(Math.max(event.getAmount(), hurtEntity.getMaxHealth() * 0.99F));
+        }
+        if (event.getAmount() > 0.0F
+                && !SkillDamageHelper.isApplyingCommanderSkillDamage()
+                && damageSourceRootPlayer(source) instanceof ServerPlayer attacker
+                && CommanderStateManager.isCommander(attacker)) {
+            CommanderStateManager.onOrdinaryDamage(attacker, hurtEntity);
         }
 
         if (hurtEntity instanceof SaeedGuardEntity guard && event.getAmount() > 0.0f) {
@@ -586,6 +725,34 @@ public class CommonEvents {
             event.setAmount(adjustedAmount);
         }
         if (player instanceof ServerPlayer serverPlayer
+                && NikaidouHiroWitchificationStateManager.isNikaidouHiroWitchification(player)
+                && event.getAmount() > 0.0f) {
+            float incomingAmount = event.getAmount();
+            if (NikaidouHiroWitchificationStateManager.tryRewindFatalRescue(
+                    serverPlayer, source, incomingAmount)) {
+                event.setAmount(0.0f);
+                return;
+            }
+            if (NikaidouHiroWitchificationStateManager.tryHandleFatalDamage(
+                    serverPlayer, source, incomingAmount)) {
+                event.setAmount(0.0f);
+                return;
+            }
+            float adjustedAmount = NikaidouHiroWitchificationStateManager.adjustIncomingDamage(
+                    serverPlayer, source, incomingAmount);
+            if (adjustedAmount <= 0.0f) {
+                event.setAmount(0.0f);
+                return;
+            }
+            event.setAmount(adjustedAmount);
+        }
+        if (source.getEntity() instanceof ServerPlayer attacker
+                && NikaidouHiroWitchificationStateManager.isNikaidouHiroWitchification(attacker)
+                && event.getAmount() > 0.0f) {
+            event.setAmount(NikaidouHiroWitchificationStateManager.handleOutgoingHurt(
+                    attacker, hurtEntity, source, event.getAmount()));
+        }
+        if (player instanceof ServerPlayer serverPlayer
                 && NikaidouHiroStateManager.isNikaidouHiro(player)
                 && event.getAmount() > 0.0f) {
             float adjustedAmount = source.is(SkillDamageHelper.NIKAIDOU_DECAY)
@@ -648,6 +815,17 @@ public class CommonEvents {
         }
 
         if (player instanceof ServerPlayer serverPlayer && event.getAmount() > 0.0f) {
+            if (CommanderStateManager.isCommander(serverPlayer)) {
+                if (CommanderStateManager.rollsDodge(serverPlayer)) {
+                    event.setAmount(0.0F);
+                    return;
+                }
+                event.setAmount(event.getAmount() * CommanderStateManager.incomingDamageMultiplier(serverPlayer));
+                event.setAmount(CommanderStateManager.capIncomingDamage(serverPlayer, event.getAmount()));
+                if (event.getAmount() <= 0.0F) {
+                    return;
+                }
+            }
             float equipmentAdjusted = handleEquipmentDefense(serverPlayer, source, event.getAmount());
             if (equipmentAdjusted <= 0.0f) {
                 event.setAmount(0.0f);
@@ -670,6 +848,16 @@ public class CommonEvents {
                 TempestStateManager.triggerEmergencyRecall(serverPlayer);
                 return;
             }
+        }
+
+        // Hive technology smoke keeps protected players alive at one health. Apply
+        // this before the generic Stinger downed interception so the smoke does not
+        // accidentally convert lethal damage into a downed state.
+        if (player instanceof ServerPlayer serverPlayer
+                && StingerStateManager.isHiveSmokeActive(serverPlayer)
+                && !event.getSource().is(SkillDamageHelper.NIKAIDOU_DECAY)
+                && event.getAmount() > 0.0F) {
+            event.setAmount(Math.min(event.getAmount(), Math.max(0.0F, serverPlayer.getHealth() - 1.0F)));
         }
 
         if (player instanceof ServerPlayer serverPlayer && StingerStateManager.shouldEnterDowned(serverPlayer, event.getAmount())) {
@@ -702,6 +890,7 @@ public class CommonEvents {
 
         if (player instanceof ServerPlayer serverPlayer && event.getAmount() > 0.0f) {
             CatDadStateManager.tryReflectDamage(serverPlayer, source, event.getAmount());
+            tryReflectHackclawExtremeHack(serverPlayer, source, event.getAmount());
         }
 
         if (event.getAmount() > 0.0f) {
@@ -842,6 +1031,10 @@ public class CommonEvents {
             event.setCanceled(true);
             return;
         }
+        if (NikaidouHiroWitchificationStateManager.shouldCancelHealing(event.getEntity())) {
+            event.setCanceled(true);
+            return;
+        }
         if (event.getEntity() instanceof ServerPlayer player
                 && UndeadStateManager.isUndead(player)) {
             event.setAmount(event.getAmount() * UndeadUpgradeManager.healingMultiplier(player));
@@ -936,6 +1129,11 @@ public class CommonEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onItemToss(ItemTossEvent event) {
+        if (event.getPlayer() instanceof ServerPlayer player
+                && LexNinjiaStateManager.shouldPreventHandGuardToss(player, event.getEntity().getItem())) {
+            event.setCanceled(true);
+            return;
+        }
         if (TempestStateManager.isActionLocked(event.getPlayer())
                 || CatDadStateManager.isDowned(event.getPlayer())
                 || NikaidouHiroStateManager.isWeaponActive(event.getPlayer())
@@ -1000,6 +1198,7 @@ public class CommonEvents {
             DepartmentOfTransportationStateManager.suppressOwnedSummonTarget(entity);
             UndeadSupportManager.tickOwnedSummon(entity);
             UndeadStateManager.tickExternalEffects(entity);
+            NikaidouHiroWitchificationStateManager.tickExternalEffects(entity);
         }
     }
 
@@ -1050,8 +1249,16 @@ public class CommonEvents {
             event.setDamageMultiplier(event.getDamageMultiplier() * 0.64f);
         }
         if (event.getEntity() instanceof Player player && VyronStateManager.isVyron(player)) {
-            event.setDamageMultiplier(event.getDamageMultiplier() * 0.64f);
-            if (event.getDistance() > 3.5f && player instanceof ServerPlayer serverPlayer) {
+            boolean propulsionMod = player instanceof ServerPlayer serverPlayer
+                    && CommanderStateManager.hasBranchUpgrade(serverPlayer,
+                    CommanderBranchUpgrade.VYRON_PROPULSION_MOD);
+            if (propulsionMod) {
+                event.setDamageMultiplier(0.0F);
+                event.setCanceled(true);
+            } else {
+                event.setDamageMultiplier(event.getDamageMultiplier() * 0.64f);
+            }
+            if ((propulsionMod || event.getDistance() > 3.5f) && player instanceof ServerPlayer serverPlayer) {
                 VyronStateManager.grantPowered(serverPlayer, true);
                 VyronStateManager.syncToClient(serverPlayer);
             }
@@ -1065,6 +1272,16 @@ public class CommonEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMobEffectApplicable(MobEffectEvent.Applicable event) {
         MobEffectInstance effect = event.getEffectInstance();
+        if (event.getEntity() instanceof ServerPlayer player
+                && com.rzy.dealt_force_skills.item.PortableAdsDeviceItem.isActive(player)) {
+            event.setResult(Event.Result.DENY);
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer player
+                && CommanderSupportManager.isAdsEffectProtected(player)) {
+            event.setResult(Event.Result.DENY);
+            return;
+        }
         // Team rules: deny teammate debuffs / enemy buffs before the effect is applied.
         // Note: Applicable has no effect-source API in all Forge versions; Added still strips
         // with source. When source is unavailable here, only same-team harmful self-checks
@@ -1104,11 +1321,32 @@ public class CommonEvents {
                 && CatDadStateManager.tryBlockIncoming(player)) {
             event.setResult(Event.Result.DENY);
         }
+        if (NikaidouHiroWitchificationStateManager.shouldDenyHealingEffect(
+                event.getEntity(), effect.getEffect())) {
+            event.setResult(Event.Result.DENY);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMobEffectAddedTeamRules(MobEffectEvent.Added event) {
         if (event.getEntity().level().isClientSide) {
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer player
+                && com.rzy.dealt_force_skills.item.PortableAdsDeviceItem.isActive(player)) {
+            player.removeEffect(event.getEffectInstance().getEffect());
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer player
+                && CommanderSupportManager.isAdsEffectProtected(player)) {
+            player.removeEffect(event.getEffectInstance().getEffect());
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer player
+                && CommanderStateManager.isCommander(player)
+                && event.getEffectSource() == player
+                && event.getEffectInstance().getEffect().getCategory() == MobEffectCategory.HARMFUL) {
+            player.removeEffect(event.getEffectInstance().getEffect());
             return;
         }
         if (TeamCombatRules.shouldBlockPlayerEffect(
@@ -1125,6 +1363,21 @@ public class CommonEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onMobEffectAdded(MobEffectEvent.Added event) {
+        if (event.getEntity() instanceof ServerPlayer player
+                && com.rzy.dealt_force_skills.item.PortableAdsDeviceItem.isActive(player)) {
+            player.removeEffect(event.getEffectInstance().getEffect());
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer player
+                && CommanderSupportManager.isAdsEffectProtected(player)) {
+            player.removeEffect(event.getEffectInstance().getEffect());
+            return;
+        }
+        if (NikaidouHiroWitchificationStateManager.shouldDenyHealingEffect(
+                event.getEntity(), event.getEffectInstance().getEffect())) {
+            event.getEntity().removeEffect(event.getEffectInstance().getEffect());
+            return;
+        }
         boolean rescaled = !event.getEntity().level().isClientSide
                 && ToxikStateManager.tryRescaleAddedEffect(
                 event.getEntity(), event.getEffectInstance(), event.getEffectSource());
@@ -1228,7 +1481,29 @@ public class CommonEvents {
             HaffCoinManager.awardSurvivalMinute(player);
             UndeadSoulManager.awardSurvivalMinute(player);
             LexNinjiaCurrencyManager.awardSurvivalMinute(player);
+            EmptyHandExtinguishHandler.tick(player);
             tickDfsEquipment(player);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onLivingHurtHiveSmokeFloor(LivingHurtEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+                || !StingerStateManager.isHiveSmokeActive(player)
+                || event.getSource().is(SkillDamageHelper.NIKAIDOU_DECAY)
+                || event.getAmount() <= 0.0F) {
+            return;
+        }
+        float allowed = Math.max(0.0F, player.getHealth() - 1.0F);
+        if (event.getAmount() > allowed) {
+            event.setAmount(allowed);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerTickEternalLoveBlessing(TickEvent.PlayerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END && event.player instanceof ServerPlayer player) {
+            EternalLoveBlessingItem.tickInventoryEffects(player);
         }
     }
 
@@ -1251,9 +1526,26 @@ public class CommonEvents {
     @SubscribeEvent
     public static void onLivingDeath(LivingDeathEvent event) {
         LivingEntity entity = event.getEntity();
+        if (entity instanceof ServerPlayer target
+                && CommanderSupportManager.tryPreventFatal(target, event.getSource(), Float.MAX_VALUE)) {
+            event.setCanceled(true);
+            return;
+        }
         if (entity.level() instanceof ServerLevel serverLevel
                 && DepartmentOfTransportationStateManager.isDepartmentChargedCreeper(entity)) {
             DepartmentOfTransportationStateManager.triggerChargedCreeperDeathExplosion(serverLevel, entity);
+        }
+        if (entity instanceof ServerPlayer protectedPlayer
+                && NikaidouHiroWitchificationStateManager.tryCancelDeath(protectedPlayer, event.getSource())) {
+            event.setCanceled(true);
+            return;
+        }
+        if (entity instanceof ServerPlayer protectedPlayer
+                && StingerStateManager.isHiveSmokeActive(protectedPlayer)
+                && !event.getSource().is(SkillDamageHelper.NIKAIDOU_DECAY)) {
+            event.setCanceled(true);
+            protectedPlayer.setHealth(Math.max(1.0F, protectedPlayer.getHealth()));
+            return;
         }
         if (entity instanceof ServerPlayer protectedPlayer
                 && !StingerStateManager.isExecutingDownedDeath(protectedPlayer)
@@ -1342,6 +1634,13 @@ public class CommonEvents {
         entity.removeEffect(ModEffects.VLINDER_RESCUE_PROTECTION.get());
         entity.removeEffect(ModEffects.VLINDER_PLASMA_INJECTED.get());
         if (entity instanceof ServerPlayer serverPlayer) {
+            InjuryManager.clearAll(serverPlayer);
+            for (MobEffectInstance instance : new ArrayList<>(serverPlayer.getActiveEffects())) {
+                ResourceLocation id = ForgeRegistries.MOB_EFFECTS.getKey(instance.getEffect());
+                if (id != null && DealtForceSkillsMod.MODID.equals(id.getNamespace())) {
+                    serverPlayer.removeEffect(instance.getEffect());
+                }
+            }
             SinevaSkills.clearForPlayer(serverPlayer);
             SinevaKnockdownState.clear(serverPlayer);
             UluruLoiteringMissileEntity.stopPlayerControl(serverPlayer);
@@ -1351,6 +1650,7 @@ public class CommonEvents {
             StingerStateManager.clearDownedOnDeath(serverPlayer);
             ManbaStateManager.clearRuntimeOnDeath(serverPlayer);
             NikaidouHiroStateManager.clearRuntimeOnDeath(serverPlayer);
+            NikaidouHiroWitchificationStateManager.clearRuntimeOnDeath(serverPlayer);
             CatDadStateManager.clearRuntimeOnDeath(serverPlayer);
             DepartmentOfTransportationStateManager.clearRuntimeOnDeath(serverPlayer);
             MorseStateManager.clearRuntimeOnDeath(serverPlayer);
@@ -1375,6 +1675,17 @@ public class CommonEvents {
         }
 
         Entity attacker = event.getSource().getEntity();
+        if (damageSourceRootPlayer(event.getSource()) instanceof ServerPlayer commanderKiller
+                && CommanderStateManager.isCommander(commanderKiller)
+                && commanderKiller != entity) {
+            CommanderStateManager.addTacticalPoints(commanderKiller,
+                    entity instanceof Player ? 1_000L : Math.max(1L, Math.round(entity.getMaxHealth() * 20.0D)));
+            CommanderSupportManager.onCommanderKill(commanderKiller, entity);
+        }
+        if (entity instanceof ServerPlayer commanderVictim
+                && CommanderStateManager.isCommander(commanderVictim)) {
+            CommanderStateManager.addTacticalPoints(commanderVictim, 1_000L);
+        }
         if (attacker instanceof net.minecraft.world.entity.animal.Wolf wolf
                 && wolf.getOwner() instanceof ServerPlayer owner) {
             LexNinjiaStateManager.onHamBeastKill(owner, wolf);
@@ -1418,6 +1729,10 @@ public class CommonEvents {
         if (entity.level().isClientSide) {
             return;
         }
+        if (!entity.level().getGameRules().getBoolean(GameRules.RULE_DOMOBLOOT)) {
+            event.getDrops().clear();
+            return;
+        }
         if (entity instanceof Animal) {
             int looting = Math.max(0, event.getLootingLevel());
             float chance = Math.min(1.0F, 0.10F + 0.10F * looting);
@@ -1439,6 +1754,9 @@ public class CommonEvents {
             }
             if (UndeadStateManager.consumeRogueExecutionMarker(entity, killer)) {
                 extraCopies += 4;
+            }
+            if (consumeHackclawBackstabMarker(entity, killer)) {
+                extraCopies += 2;
             }
             extraCopies += SaeedStateManager.extraLootCopies(killer, entity);
             duplicateLivingDrops(event, extraCopies);
@@ -1467,7 +1785,45 @@ public class CommonEvents {
     }
 
     @SubscribeEvent
+    public static void onCommanderServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            CommanderSupportManager.tickServer(event.getServer());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onCommanderRadiationSpawn(MobSpawnEvent.FinalizeSpawn event) {
+        if (event.getEntity().level() instanceof ServerLevel level
+                && CommanderSupportManager.shouldPreventSpawn(level, event.getEntity().blockPosition())) {
+            event.setSpawnCancelled(true);
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onModLivingTickPeaceful(LivingEvent.LivingTickEvent event) {
+        LivingEntity entity = event.getEntity();
+        if (entity.level().isClientSide || entity.level().getDifficulty() != Difficulty.PEACEFUL) {
+            return;
+        }
+        ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+        if (id != null && DealtForceSkillsMod.MODID.equals(id.getNamespace())
+                && !(entity instanceof AcceleratedTroopsEntity)) {
+            entity.discard();
+        }
+    }
+
+    @SubscribeEvent
     public static void onDfsItemCrafted(PlayerEvent.ItemCraftedEvent event) {
+        if (event.getCrafting().is(ModItems.HVK_ENCHANT_INFUSION.get())) {
+            double failureChance = Math.max(4.0D, 99.0D - event.getEntity().getAttributeValue(Attributes.LUCK) * 5.0D);
+            if (event.getEntity().getRandom().nextDouble() * 100.0D < failureChance) {
+                event.getCrafting().setCount(0);
+                event.getEntity().displayClientMessage(Component.translatable(
+                        "message.dealt_force_skills.hvk_enchant_infusion.craft_failed"), true);
+                return;
+            }
+        }
         grantBonusOutput(event.getEntity(), event.getCrafting(), durableConsumableMultiplier(event.getCrafting().getItem()));
     }
 
@@ -1905,6 +2261,24 @@ public class CommonEvents {
             ModItemEffectHelper.tickItemEffects(serverPlayer);
         }
         accelerateTaczAdrenalineTimers(player);
+        TaczSpeedMultipliers superbWarfareMultipliers = taczSpeedMultipliers(player);
+        boolean optionalGunDisabled = StingerStateManager.isDowned(player)
+                || VlinderStateManager.isDowned(player)
+                || CatDadStateManager.isDowned(player)
+                || TempestStateManager.isActionLocked(player)
+                || NikaidouHiroStateManager.isWeaponActive(player)
+                || isAnyToolEquipped(player)
+                || effectApplies(player, ModEffects.STUN.get())
+                || effectApplies(player, ModEffects.RAPTOR_ACTION_PAUSE.get());
+        SuperbWarfareCompat.applyPlayerWeaponModifiers(player,
+                superbWarfareMultipliers.fireRate(), superbWarfareMultipliers.reload(),
+                superbWarfareMultipliers.aim(), superbWarfareMultipliers.aimPenalty(),
+                superbWarfareMultipliers.bolt(), optionalGunDisabled);
+        if (player.getVehicle() != null) {
+            SuperbWarfareCompat.applyWeaponSpeedModifiers(player.getVehicle(),
+                    superbWarfareMultipliers.fireRate(), superbWarfareMultipliers.reload());
+            SuperbWarfareCompat.setVehicleWeaponDisabled(player.getVehicle(), optionalGunDisabled);
+        }
         if (StingerStateManager.isDowned(player) || VlinderStateManager.isDowned(player) || CatDadStateManager.isDowned(player)) {
             player.stopUsingItem();
             player.setSprinting(false);
@@ -2135,6 +2509,10 @@ public class CommonEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onAnyForgeEvent(Event event) {
         String eventName = event.getClass().getName();
+        if (TOUHOU_MAID_PICKUP_PRE_EVENT.equals(eventName)) {
+            handleTouhouMaidCoffeePickup(event);
+            return;
+        }
         if (TACZ_ATTACHMENT_PROPERTY_EVENT.equals(eventName)) {
             handleGhrothAttachmentProperty(event);
             return;
@@ -2146,6 +2524,7 @@ public class CommonEvents {
             if (handleShakehandsTaczPreDamage(event)) {
                 return;
             }
+            allowPortableAdsTaczHit(event);
             handleGhrothTaczPreDamage(event);
             return;
         }
@@ -2207,6 +2586,55 @@ public class CommonEvents {
         }
     }
 
+    private static void handleTouhouMaidCoffeePickup(Event event) {
+        try {
+            Object simulateObject = event.getClass().getMethod("isSimulate").invoke(event);
+            Object itemObject = event.getClass().getMethod("getEntityItem").invoke(event);
+            Object maidObject = event.getClass().getMethod("getMaid").invoke(event);
+            if (!(simulateObject instanceof Boolean simulate) || simulate
+                    || !(itemObject instanceof ItemEntity itemEntity)
+                    || !itemEntity.getItem().is(Items.COCOA_BEANS)
+                    || !(maidObject instanceof LivingEntity maid) || maid.level().isClientSide
+                    || maid.getRandom().nextFloat() >= 0.20F) {
+                return;
+            }
+            ItemStack remainder = insertTouhouMaidInventory(maid,
+                    new ItemStack(ModItems.PREMIUM_COFFEE_BEANS.get()));
+            if (!remainder.isEmpty()) {
+                maid.level().addFreshEntity(new ItemEntity(maid.level(), maid.getX(), maid.getY(), maid.getZ(), remainder));
+            }
+            maid.level().playSound(null, maid.blockPosition(), net.minecraft.sounds.SoundEvents.EXPERIENCE_ORB_PICKUP,
+                    net.minecraft.sounds.SoundSource.NEUTRAL, 0.8F, 1.15F);
+            if (maid instanceof net.minecraft.world.entity.OwnableEntity ownable
+                    && ownable.getOwner() instanceof ServerPlayer owner) {
+                owner.sendSystemMessage(Component.translatable(
+                        "message.dealt_force_skills.maid_lucky_coffee", maid.getDisplayName())
+                        .withStyle(net.minecraft.ChatFormatting.LIGHT_PURPLE));
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Optional Touhou Little Maid versions without this public event shape are left untouched.
+        }
+    }
+
+    private static ItemStack insertTouhouMaidInventory(LivingEntity maid, ItemStack stack)
+            throws ReflectiveOperationException {
+        Object inventory;
+        try {
+            inventory = maid.getClass().getMethod("getAvailableBackpackInv").invoke(maid);
+        } catch (NoSuchMethodException ignored) {
+            inventory = maid.getClass().getMethod("getAvailableInv", boolean.class).invoke(maid, false);
+        }
+        Method slotsMethod = inventory.getClass().getMethod("getSlots");
+        Method insertMethod = inventory.getClass().getMethod("insertItem", int.class, ItemStack.class, boolean.class);
+        int slots = ((Number) slotsMethod.invoke(inventory)).intValue();
+        ItemStack remainder = stack;
+        for (int slot = 0; slot < slots && !remainder.isEmpty(); slot++) {
+            Object next = insertMethod.invoke(inventory, slot, remainder, false);
+            if (next instanceof ItemStack nextStack) remainder = nextStack;
+        }
+        return remainder;
+    }
+
 
     private static boolean cancelTeamTaczPreDamage(Event event) {
         try {
@@ -2225,6 +2653,18 @@ public class CommonEvents {
             return true;
         } catch (ReflectiveOperationException | LinkageError ignored) {
             return false;
+        }
+    }
+
+    private static void allowPortableAdsTaczHit(Event event) {
+        try {
+            Object attackerObject = event.getClass().getMethod("getAttacker").invoke(event);
+            Object hurtObject = event.getClass().getMethod("getHurtEntity").invoke(event);
+            if (hurtObject instanceof ServerPlayer player && attackerObject instanceof Entity attacker
+                    && com.rzy.dealt_force_skills.item.PortableAdsDeviceItem.isActive(player)) {
+                com.rzy.dealt_force_skills.item.PortableAdsDeviceItem.allowNextTaczHit(player, attacker);
+            }
+        } catch (ReflectiveOperationException | LinkageError ignored) {
         }
     }
 
@@ -3308,11 +3748,13 @@ public class CommonEvents {
                 attacker.getBoundingBox().inflate(5.0D),
                 other -> other != attacker && other.isAlive()).isEmpty()) {
             multiplier *= 1.75D;
+            notifyEquipmentAbilityTrigger(attacker, chestProfile, ParticleTypes.CRIT);
         }
         if (equipmentAbility(attacker, chestProfile) == SpecialAbility.RED_OWL_REVENGE) {
             String revengeType = attacker.getPersistentData().getString(RED_OWL_REVENGE_TYPE);
             if (!revengeType.isBlank() && revengeType.equals(target.getType().getDescriptionId())) {
                 multiplier *= 1.75D;
+                notifyEquipmentAbilityTrigger(attacker, chestProfile, ParticleTypes.SOUL_FIRE_FLAME);
             }
         }
         if (equipmentAbility(attacker, chestProfile) == SpecialAbility.STATIONARY_STACKS) {
@@ -3329,11 +3771,13 @@ public class CommonEvents {
         }
         if (equipmentAbility(attacker, headProfile) == SpecialAbility.DICH9_ASSAULT) {
             addTimedEquipmentStacks(head, DICH9_STACKS, DICH9_UNTIL, attacker.level().getGameTime(), 20, 7 * 20L);
+            notifyEquipmentAbilityTrigger(attacker, headProfile, ParticleTypes.ELECTRIC_SPARK);
         }
         if (equipmentAbility(attacker, headProfile) == SpecialAbility.ELBOW_SPIRIT
                 && chestProfile != null && chestProfile.id().equals("samurai_ballistic_vest")
                 && isMeleeDamage(source, attacker)) {
             multiplier *= 12.45D;
+            notifyEquipmentAbilityTrigger(attacker, headProfile, ParticleTypes.SWEEP_ATTACK);
         }
         return (float) multiplier;
     }
@@ -3399,12 +3843,14 @@ public class CommonEvents {
                     && now >= player.getPersistentData().getLong(EQUIPMENT_FATAL_GUARD_UNTIL)) {
                 player.getPersistentData().putLong(EQUIPMENT_FATAL_GUARD_UNTIL, now + 600L * 20L);
                 player.invulnerableTime = Math.max(player.invulnerableTime, 10);
+                notifyEquipmentAbilityTrigger(player, chestProfile, ParticleTypes.TOTEM_OF_UNDYING);
                 return 0.0F;
             }
             if ((chestCovered || headCovered) && equipmentFactionCount(player, Faction.ASARA) >= 2
                     && now >= player.getPersistentData().getLong(ASARA_SET_FATAL_GUARD_UNTIL)) {
                 player.getPersistentData().putLong(ASARA_SET_FATAL_GUARD_UNTIL, now + 360L * 20L);
                 player.setHealth(player.getMaxHealth());
+                notifyEquipmentSetTrigger(player, Faction.ASARA, ParticleTypes.HEART);
                 return 0.0F;
             }
         }
@@ -3472,10 +3918,12 @@ public class CommonEvents {
         if (chestCovered && equipmentAbility(player, chestProfile) == SpecialAbility.FRONT_IMMUNE
                 && sourcePos != null && Util.isFromFront(player, sourcePos, 70.0F)
                 && player.getRandom().nextFloat() < 0.25F) {
+            notifyEquipmentAbilityTrigger(player, chestProfile, ParticleTypes.CRIT);
             return true;
         }
         if (chestCovered && equipmentAbility(player, chestProfile) == SpecialAbility.RANDOM_F4) {
             int roll = player.getRandom().nextInt(4);
+            notifyEquipmentAbilityTrigger(player, chestProfile, ParticleTypes.ENCHANT);
             if (roll == 0) {
                 return true;
             }
@@ -3494,12 +3942,19 @@ public class CommonEvents {
                 && chestProfile != null && chestProfile.id().equals("elite_ballistic_vest")
                 && !head.getOrCreateTag().getBoolean(EQUIPMENT_STATIONARY)
                 && player.getRandom().nextFloat() < 0.75F) {
+            notifyEquipmentAbilityTrigger(player, headProfile, ParticleTypes.CLOUD);
             return true;
         }
         if (chestCovered && equipmentAbility(player, chestProfile) == SpecialAbility.HEAVY_DODGE_SUMMON
                 && livingAttacker != null && livingAttacker != player
                 && player.getRandom().nextFloat() < 0.50F) {
-            spawnEquipmentSupport(player, livingAttacker, 2, true, true);
+            CompoundTag tag = chest.getOrCreateTag();
+            long now = player.level().getGameTime();
+            if (now >= tag.getLong(EQUIPMENT_HEAVY_DODGE_SUMMON_UNTIL)) {
+                tag.putLong(EQUIPMENT_HEAVY_DODGE_SUMMON_UNTIL, now + 5L * 20L);
+                spawnEquipmentSupport(player, livingAttacker, 2, true, true);
+                notifyEquipmentAbilityTrigger(player, chestProfile, ParticleTypes.POOF);
+            }
             return true;
         }
         if (chestCovered && equipmentAbility(player, chestProfile) == SpecialAbility.KING_KONG_EXECUTION
@@ -3513,10 +3968,12 @@ public class CommonEvents {
             if (now >= tag.getLong(EQUIPMENT_SUMMON_UNTIL)) {
                 tag.putLong(EQUIPMENT_SUMMON_UNTIL, now + 20L * 20L);
                 spawnEquipmentSupport(player, livingAttacker, 1 + player.getRandom().nextInt(4), false);
+                notifyEquipmentAbilityTrigger(player, chestProfile, ParticleTypes.HAPPY_VILLAGER);
             }
         }
         if (chestCovered && equipmentAbility(player, chestProfile) == SpecialAbility.TRICK_ASSAULT) {
             addTimedEquipmentStacks(chest, TRICK_STACKS, TRICK_UNTIL, player.level().getGameTime(), 20, 7 * 20L);
+            notifyEquipmentAbilityTrigger(player, chestProfile, ParticleTypes.ELECTRIC_SPARK);
         }
         if (chestCovered) {
             triggerCounterKick(player, source, amount, chestProfile);
@@ -3537,6 +3994,7 @@ public class CommonEvents {
                 && livingAttacker != player && isTaczGunStack(player.getMainHandItem())) {
             lookAtAim(player, livingAttacker);
         }
+        notifyEquipmentAbilityTrigger(player, headProfile, ParticleTypes.CLOUD);
         return true;
     }
 
@@ -3551,6 +4009,7 @@ public class CommonEvents {
         }
         double attackDamage = player.getAttributeValue(Attributes.ATTACK_DAMAGE);
         target.hurt(player.damageSources().playerAttack(player), (float) Math.max(amount, attackDamage * 3.0D));
+        notifyEquipmentAbilityTrigger(player, profile, ParticleTypes.SWEEP_ATTACK);
     }
 
     private static float applyEquipmentPassiveReductions(ServerPlayer player, DamageSource source, float amount,
@@ -3578,6 +4037,7 @@ public class CommonEvents {
         if (headCovered && equipmentAbility(player, headProfile) == SpecialAbility.GT5_STATIONARY_REDUCTION
                 && player.getItemBySlot(EquipmentSlot.HEAD).getOrCreateTag().getBoolean(EQUIPMENT_STATIONARY)) {
             multiplier *= 0.20D;
+            notifyEquipmentAbilityTrigger(player, headProfile, ParticleTypes.END_ROD);
         }
         return (float) (amount * Math.max(0.0D, multiplier));
     }
@@ -3623,9 +4083,15 @@ public class CommonEvents {
             return amount;
         }
 
-        if (!noDurabilityLoss && effectiveCost > 0.0D && !shouldSkipEquipmentDurability(player)) {
-            int rawCost = Math.max(1, (int) Math.ceil(absorbed * effectiveCost));
-            damageEquipmentStack(player, stack, profile, rawCost);
+        if (!noDurabilityLoss && effectiveCost > 0.0D) {
+            if (shouldSkipEquipmentDurability(player)) {
+                notifyEquipmentSetTrigger(player, Faction.HVK, ParticleTypes.WAX_ON);
+            } else {
+                int rawCost = Math.max(1, (int) Math.ceil(absorbed * effectiveCost));
+                damageEquipmentStack(player, stack, profile, rawCost);
+            }
+        } else if (noDurabilityLoss && equipmentAbility(player, profile) == SpecialAbility.NO_DURABILITY_LOSS) {
+            notifyEquipmentAbilityTrigger(player, profile, ParticleTypes.WAX_ON);
         }
         return (float) Math.max(0.0D, amount - absorbed);
     }
@@ -3678,8 +4144,13 @@ public class CommonEvents {
         int cost = Math.max(1, (int) Math.ceil(rawCost / (double) (unbreaking + 1)));
         boolean gtiOverload = canGtiOverloadEquipment(player, stack);
         int damageLimit = gtiOverload ? gtiOverloadLimit(stack) : DfsEquipmentItem.breakDamageLimit(stack);
+        int oldDamage = stack.getDamageValue();
         int newDamage = Math.min(damageLimit, stack.getDamageValue() + cost);
         stack.setDamageValue(newDamage);
+        if (gtiOverload && oldDamage < DfsEquipmentItem.breakDamageLimit(stack)
+                && newDamage >= DfsEquipmentItem.breakDamageLimit(stack)) {
+            notifyEquipmentSetTrigger(player, Faction.GTI, ParticleTypes.ELECTRIC_SPARK);
+        }
         if (gtiOverload && newDamage >= damageLimit) {
             stack.shrink(1);
             return;
@@ -3691,7 +4162,42 @@ public class CommonEvents {
             if (now >= tag.getLong(EQUIPMENT_RESTORE_UNTIL)) {
                 stack.setDamageValue(0);
                 tag.putLong(EQUIPMENT_RESTORE_UNTIL, now + 1800L * 20L);
+                notifyEquipmentAbilityTrigger(player, profile, ParticleTypes.HAPPY_VILLAGER);
             }
+        }
+    }
+
+    private static void notifyEquipmentAbilityTrigger(ServerPlayer player, Profile profile,
+                                                       ParticleOptions particle) {
+        if (player == null || profile == null) {
+            return;
+        }
+        notifyEquipmentTrigger(player, "ability." + profile.id(),
+                Component.translatable("message.dealt_force_skills.equipment.ability_trigger",
+                        Component.translatable("tooltip.dealt_force_skills." + profile.id() + ".ability")), particle);
+    }
+
+    private static void notifyEquipmentSetTrigger(ServerPlayer player, Faction faction, ParticleOptions particle) {
+        if (player == null || faction == null) {
+            return;
+        }
+        notifyEquipmentTrigger(player, "set." + faction.key(),
+                Component.translatable("message.dealt_force_skills.equipment.set_trigger",
+                        Component.translatable("faction.dealt_force_skills." + faction.key())), particle);
+    }
+
+    private static void notifyEquipmentTrigger(ServerPlayer player, String id, Component message,
+                                               ParticleOptions particle) {
+        long now = player.level().getGameTime();
+        String cooldownKey = EQUIPMENT_FEEDBACK_UNTIL + "." + id;
+        if (now < player.getPersistentData().getLong(cooldownKey)) {
+            return;
+        }
+        player.getPersistentData().putLong(cooldownKey, now + 10L);
+        player.displayClientMessage(message, true);
+        if (player.level() instanceof ServerLevel level) {
+            level.sendParticles(particle, player.getX(), player.getY() + player.getBbHeight() * 0.55D,
+                    player.getZ(), 14, 0.35D, 0.45D, 0.35D, 0.03D);
         }
     }
 
@@ -3721,10 +4227,11 @@ public class CommonEvents {
         // Helmet night vision / thermal vision are NOT special abilities — always tick.
         tickHelmetVisionEffect(player, head);
         if (equipmentFactionCount(player, Faction.GLOBAL_FORCES) >= 1 && player.tickCount % 100 == 0) {
-            regenerateEquipmentDurability(head);
-            regenerateEquipmentDurability(chest);
+            if (regenerateEquipmentDurability(head) | regenerateEquipmentDurability(chest)) {
+                notifyEquipmentSetTrigger(player, Faction.GLOBAL_FORCES, ParticleTypes.HAPPY_VILLAGER);
+            }
         }
-        // Faction set bonuses / handling stay; ability procs respect dealtarmorspecial.
+        // Base protection and handling stay; abilities and faction set bonuses respect dealtarmorspecial.
         tickGlobalForcesAllyLock(player);
         if (armorSpecialsEnabled(player)) {
             tickEquipmentStationaryFlag(player, head);
@@ -3816,7 +4323,11 @@ public class CommonEvents {
             if (!isGlobalForcesProtecting(protector, victim)) {
                 continue;
             }
+            float before = adjusted;
             adjusted = absorbWithGlobalForcesAllyEquipment(protector, adjusted);
+            if (adjusted < before) {
+                notifyEquipmentSetTrigger(protector, Faction.GLOBAL_FORCES, ParticleTypes.HEART);
+            }
             if (adjusted <= 0.0F) {
                 return 0.0F;
             }
@@ -3905,12 +4416,13 @@ public class CommonEvents {
         tag.remove(GLOBAL_FORCES_LOCK_PROGRESS_TICKS);
     }
 
-    private static void regenerateEquipmentDurability(ItemStack stack) {
+    private static boolean regenerateEquipmentDurability(ItemStack stack) {
         if (stack.isEmpty() || !stack.isDamageableItem() || !stack.isDamaged()) {
-            return;
+            return false;
         }
         int repair = Math.max(1, stack.getMaxDamage() / 100);
         stack.setDamageValue(Math.max(0, stack.getDamageValue() - repair));
+        return true;
     }
 
     private static void tickFsStationaryStacks(ServerPlayer player, ItemStack stack) {
@@ -3934,8 +4446,12 @@ public class CommonEvents {
             tag.putInt(FS_STATIONARY_TICKS, stationaryTicks);
             tag.putInt(FS_MOVING_TICKS, 0);
             if (stationaryTicks >= 5 * 20) {
-                tag.putInt(FS_STATIONARY_STACKS, Math.min(8, tag.getInt(FS_STATIONARY_STACKS) + 1));
+                int oldStacks = tag.getInt(FS_STATIONARY_STACKS);
+                tag.putInt(FS_STATIONARY_STACKS, Math.min(8, oldStacks + 1));
                 tag.putInt(FS_STATIONARY_TICKS, 0);
+                if (oldStacks < 8) {
+                    notifyEquipmentAbilityTrigger(player, DfsEquipmentItem.profile(stack), ParticleTypes.END_ROD);
+                }
             }
         } else {
             int movingTicks = tag.getInt(FS_MOVING_TICKS) + 1;
@@ -4000,6 +4516,7 @@ public class CommonEvents {
             replacement.setTag(head.getTag().copy());
             replacement.setDamageValue(0);
         }
+        notifyEquipmentAbilityTrigger(player, DfsEquipmentItem.profile(head), ParticleTypes.TOTEM_OF_UNDYING);
         player.setItemSlot(EquipmentSlot.HEAD, replacement);
     }
 
@@ -4018,7 +4535,7 @@ public class CommonEvents {
             tag.putLong(MHS_FURY_UNTIL, now + MHS_FURY_DURATION_TICKS);
             tag.putInt(MHS_FURY_SLOT, player.getInventory().selected);
             active = true;
-            player.displayClientMessage(Component.translatable("message.dealt_force_skills.mhs_fury.started"), true);
+            notifyEquipmentAbilityTrigger(player, headProfile, ParticleTypes.ANGRY_VILLAGER);
         }
 
         if (!active) {
@@ -4046,7 +4563,8 @@ public class CommonEvents {
         AABB area = player.getBoundingBox().inflate(MHS_FURY_TRIGGER_RANGE);
         for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, area,
                 entity -> entity != player && entity.isAlive() && !entity.isSpectator()
-                        && entity.getType() != EntityType.ARMOR_STAND)) {
+                        && entity.getType() != EntityType.ARMOR_STAND
+                        && TargetingUtil.isHostileLivingFor(player, entity))) {
             if (target.distanceToSqr(player) <= MHS_FURY_TRIGGER_RANGE * MHS_FURY_TRIGGER_RANGE) {
                 return true;
             }
@@ -4217,11 +4735,21 @@ public class CommonEvents {
         if (chance <= 0.0D || killer.getRandom().nextDouble() >= chance) {
             return;
         }
+        boolean duplicated = false;
         for (ItemEntity original : new ArrayList<>(event.getDrops())) {
             ItemStack copy = original.getItem().copy();
             if (!copy.isEmpty()) {
                 LivingEntity entity = event.getEntity();
                 event.getDrops().add(new ItemEntity(entity.level(), entity.getX(), entity.getY(), entity.getZ(), copy));
+                duplicated = true;
+            }
+        }
+        if (duplicated) {
+            Profile profile = equippedProfileWithAbility(killer, SpecialAbility.LOOT_DUPLICATE);
+            if (profile != null) {
+                notifyEquipmentAbilityTrigger(killer, profile, ParticleTypes.HAPPY_VILLAGER);
+            } else {
+                notifyEquipmentSetTrigger(killer, Faction.GTI, ParticleTypes.HAPPY_VILLAGER);
             }
         }
     }
@@ -4240,6 +4768,51 @@ public class CommonEvents {
                             entity.level(), entity.getX(), entity.getY(), entity.getZ(), copy));
                 }
             }
+        }
+    }
+
+    private static boolean isPassiveOrNeutralMob(LivingEntity entity) {
+        return entity instanceof Mob && (!(entity instanceof Enemy) || entity instanceof NeutralMob);
+    }
+
+    private static void markHackclawBackstab(LivingEntity target, ServerPlayer attacker) {
+        CompoundTag tag = target.getPersistentData();
+        tag.putUUID(HACKCLAW_BACKSTAB_OWNER, attacker.getUUID());
+        tag.putLong(HACKCLAW_BACKSTAB_UNTIL, target.level().getGameTime() + 5L);
+    }
+
+    private static boolean consumeHackclawBackstabMarker(LivingEntity target, ServerPlayer killer) {
+        CompoundTag tag = target.getPersistentData();
+        long until = tag.getLong(HACKCLAW_BACKSTAB_UNTIL);
+        boolean matches = until >= target.level().getGameTime()
+                && tag.hasUUID(HACKCLAW_BACKSTAB_OWNER)
+                && killer.getUUID().equals(tag.getUUID(HACKCLAW_BACKSTAB_OWNER));
+        tag.remove(HACKCLAW_BACKSTAB_OWNER);
+        tag.remove(HACKCLAW_BACKSTAB_UNTIL);
+        return matches;
+    }
+
+    private static void tryReflectHackclawExtremeHack(ServerPlayer player, DamageSource source, float amount) {
+        if (amount <= 0.0F
+                || !CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.HACKCLAW_EXTREME_HACK)) {
+            return;
+        }
+        Entity attacker = source.getEntity();
+        if (!(attacker instanceof LivingEntity) && source.getDirectEntity() instanceof Projectile projectile) {
+            attacker = projectile.getOwner();
+        }
+        if (!(attacker instanceof LivingEntity livingAttacker)
+                || attacker == player
+                || !livingAttacker.isAlive()
+                || !ReconRevealThrottle.isActive(livingAttacker)) {
+            return;
+        }
+        float reflected = amount >= Float.MAX_VALUE / 2.0F ? Float.MAX_VALUE : amount * 2.0F;
+        hackclawReflectingDamage = true;
+        try {
+            livingAttacker.hurt(player.damageSources().playerAttack(player), reflected);
+        } finally {
+            hackclawReflectingDamage = false;
         }
     }
 
@@ -4309,6 +4882,9 @@ public class CommonEvents {
     }
 
     private static int equipmentFactionCount(Player player, Faction faction) {
+        if (!armorSpecialsEnabled(player)) {
+            return 0;
+        }
         int count = 0;
         Profile chest = DfsEquipmentItem.profile(player.getItemBySlot(EquipmentSlot.CHEST));
         Profile head = DfsEquipmentItem.profile(player.getItemBySlot(EquipmentSlot.HEAD));
@@ -4530,6 +5106,7 @@ public class CommonEvents {
         player.teleportTo(destination.x, target.getY(), destination.z);
         lookAt(player, target);
         lookAt(target, player);
+        notifyEquipmentAbilityTrigger(player, DfsEquipmentItem.profile(chest), ParticleTypes.PORTAL);
     }
 
     private static void tickKingKongExecution(ServerPlayer player) {
@@ -4598,6 +5175,7 @@ public class CommonEvents {
             double radius = 1.5D + player.getRandom().nextDouble() * 2.0D;
             mob.moveTo(player.getX() + Math.cos(angle) * radius, player.getY(), player.getZ() + Math.sin(angle) * radius,
                     player.getRandom().nextFloat() * 360.0F, 0.0F);
+            mob.getPersistentData().putUUID(UndeadSupportManager.SUMMON_OWNER, player.getUUID());
             if (boosted) {
                 var maxHealth = mob.getAttribute(Attributes.MAX_HEALTH);
                 if (maxHealth != null) {
@@ -4633,8 +5211,10 @@ public class CommonEvents {
         double multiplier = 5.0D;
         if (equipmentAbility(player, head) == SpecialAbility.H70_FOLLOWER_BOOST) {
             multiplier *= 2.0D;
+            notifyEquipmentAbilityTrigger(player, head, ParticleTypes.HAPPY_VILLAGER);
         } else if (equipmentAbility(player, head) == SpecialAbility.H70_NIGHT_FOLLOWER_BOOST) {
             multiplier *= 3.5D;
+            notifyEquipmentAbilityTrigger(player, head, ParticleTypes.ENCHANT);
         }
         return multiplier;
     }
@@ -4643,6 +5223,50 @@ public class CommonEvents {
     private static Entity damageSourceEntity(DamageSource source) {
         Entity attacker = source.getDirectEntity();
         return attacker != null ? attacker : source.getEntity();
+    }
+
+    private static boolean tryConvertCommanderOrdinaryAttack(LivingAttackEvent event) {
+        LivingEntity target = event.getEntity();
+        Player root = damageSourceRootPlayer(event.getSource());
+        if (commanderGeneConvertingDamage || SkillDamageHelper.isApplyingCommanderSkillDamage()
+                || !(root instanceof ServerPlayer attacker) || target == attacker
+                || !CommanderStateManager.convertsSkillDamage(attacker)
+                || TrainingTargetCompat.recordsDamageWithoutDying(target)
+                || !(target.level() instanceof ServerLevel level) || event.getAmount() <= 0.0F) {
+            return false;
+        }
+
+        float amount = event.getAmount()
+                * CommanderStateManager.ordinaryDamageMultiplier(attacker)
+                * CommanderStateManager.criticalDamageMultiplier(attacker);
+        event.setCanceled(true);
+        commanderGeneConvertingDamage = true;
+        try {
+            applyCommanderGeneDamage(target,
+                    SkillDamageHelper.source(level, DamageTypes.FELL_OUT_OF_WORLD, attacker, attacker), amount);
+            applyCommanderGeneDamage(target,
+                    SkillDamageHelper.source(level, DamageTypes.PLAYER_ATTACK, attacker, attacker), amount);
+            applyCommanderGeneDamage(target,
+                    SkillDamageHelper.source(level, DamageTypes.MAGIC, attacker, attacker), amount);
+            applyCommanderGeneDamage(target,
+                    SkillDamageHelper.source(level, DamageTypes.WITHER, attacker, attacker), amount);
+            applyCommanderGeneDamage(target,
+                    SkillDamageHelper.source(level, DamageTypes.ON_FIRE, attacker, attacker), amount);
+            applyCommanderGeneDamage(target,
+                    SkillDamageHelper.source(level, DamageTypes.LIGHTNING_BOLT, attacker, attacker), amount);
+            applyCommanderGeneDamage(target, level.damageSources().explosion(attacker, attacker), amount);
+        } finally {
+            commanderGeneConvertingDamage = false;
+        }
+        return true;
+    }
+
+    private static void applyCommanderGeneDamage(LivingEntity target, DamageSource source, float amount) {
+        if (!target.isAlive() || amount <= 0.0F) {
+            return;
+        }
+        target.invulnerableTime = 0;
+        target.hurt(source, amount);
     }
 
     private static Player damageSourceRootPlayer(DamageSource source) {
@@ -4746,11 +5370,17 @@ public class CommonEvents {
             return;
         }
         var drops = Block.getDrops(state, serverLevel, pos, serverLevel.getBlockEntity(pos), player, player.getMainHandItem());
+        boolean duplicated = false;
         for (ItemStack stack : drops) {
             if (!stack.isEmpty()) {
                 serverLevel.addFreshEntity(new ItemEntity(serverLevel,
                         pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, stack.copy()));
+                duplicated = true;
             }
+        }
+        if (duplicated && player instanceof ServerPlayer serverPlayer) {
+            notifyEquipmentAbilityTrigger(serverPlayer,
+                    equippedProfileWithAbility(player, SpecialAbility.NEW_RECRUIT), ParticleTypes.HAPPY_VILLAGER);
         }
     }
 
@@ -4839,24 +5469,41 @@ public class CommonEvents {
         return equipmentAbility(player, headProfile) == ability;
     }
 
+    private static Profile equippedProfileWithAbility(Player player, SpecialAbility ability) {
+        Profile chestProfile = DfsEquipmentItem.profile(player.getItemBySlot(EquipmentSlot.CHEST));
+        if (equipmentAbility(player, chestProfile) == ability) {
+            return chestProfile;
+        }
+        Profile headProfile = DfsEquipmentItem.profile(player.getItemBySlot(EquipmentSlot.HEAD));
+        return equipmentAbility(player, headProfile) == ability ? headProfile : null;
+    }
+
     private static void handleFrugalDisassemblyCraft(PlayerEvent.ItemCraftedEvent event) {
         Player player = event.getEntity();
         if (player.level().isClientSide) {
             return;
         }
         Container inventory = event.getInventory();
+        Profile triggeredProfile = null;
         if (craftingContains(inventory, ModItems.SIMPLE_STAB_VEST.get())) {
             giveOrDrop(player, new ItemStack(Items.STRING, 3));
             giveOrDrop(player, new ItemStack(Items.WHITE_WOOL, 3));
+            triggeredProfile = DfsEquipmentItem.profile(new ItemStack(ModItems.SIMPLE_STAB_VEST.get()));
         } else if (craftingContains(inventory, ModItems.UNIVERSAL_TACTICAL_VEST.get())) {
             giveOrDrop(player, new ItemStack(Items.WHITE_WOOL, 2));
             giveOrDrop(player, new ItemStack(Items.STRING, 2));
+            triggeredProfile = DfsEquipmentItem.profile(new ItemStack(ModItems.UNIVERSAL_TACTICAL_VEST.get()));
         } else if (craftingContains(inventory, ModItems.H01_TACTICAL_HELMET.get())) {
             giveOrDrop(player, new ItemStack(Items.STRING, 2));
             giveOrDrop(player, new ItemStack(ModItems.RAW_WOOD_PLANK.get(), 2));
+            triggeredProfile = DfsEquipmentItem.profile(new ItemStack(ModItems.H01_TACTICAL_HELMET.get()));
         } else if (craftingContains(inventory, ModItems.MC_BALLISTIC_HELMET.get())) {
             giveOrDrop(player, new ItemStack(Items.STRING, 2));
             giveOrDrop(player, new ItemStack(ModItems.RAW_WOOD_PLANK.get(), 3));
+            triggeredProfile = DfsEquipmentItem.profile(new ItemStack(ModItems.MC_BALLISTIC_HELMET.get()));
+        }
+        if (triggeredProfile != null && player instanceof ServerPlayer serverPlayer) {
+            notifyEquipmentAbilityTrigger(serverPlayer, triggeredProfile, ParticleTypes.HAPPY_VILLAGER);
         }
     }
 
@@ -4909,6 +5556,10 @@ public class CommonEvents {
         if (hasEquipmentAbility(player, SpecialAbility.NEW_RECRUIT)
                 && player.getRandom().nextDouble() < NEW_RECRUIT_MINING_DUPLICATE_CHANCE) {
             spawnHvkBlockLootBonus(serverLevel, pos, stack);
+            if (player instanceof ServerPlayer serverPlayer) {
+                notifyEquipmentAbilityTrigger(serverPlayer,
+                        equippedProfileWithAbility(player, SpecialAbility.NEW_RECRUIT), ParticleTypes.HAPPY_VILLAGER);
+            }
         }
         if (player instanceof ServerPlayer
                 && UndeadStateManager.isUndead(player)

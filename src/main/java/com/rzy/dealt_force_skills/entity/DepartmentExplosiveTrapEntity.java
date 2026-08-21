@@ -222,7 +222,8 @@ public class DepartmentExplosiveTrapEntity extends Entity implements ItemSupplie
 
         AABB box = new AABB(position(), position()).inflate(radius);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
-            if (isOwnerOrTeammate(target) && !isOwnedBy(target.getUUID())) {
+            if ((isOwnerOrTeammate(target) && !isOwnedBy(target.getUUID()))
+                    || TargetingUtil.isPlayerOwnedSummonOf(ownerLiving, target)) {
                 continue;
             }
             if (!TargetingUtil.isTargetableLiving(target)) {
@@ -276,7 +277,9 @@ public class DepartmentExplosiveTrapEntity extends Entity implements ItemSupplie
     }
 
     private boolean canTrigger(LivingEntity entity) {
-        if (!entity.isAlive() || isOwnerOrTeammate(entity) || !TargetingUtil.isTargetableLiving(entity)) {
+        Entity owner = level() instanceof ServerLevel serverLevel ? owner(serverLevel) : null;
+        if (!entity.isAlive() || isOwnerOrTeammate(entity)
+                || !TargetingUtil.isHostileLivingFor(owner, entity)) {
             return false;
         }
         if (ownerId != null

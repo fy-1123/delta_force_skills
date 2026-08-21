@@ -1,7 +1,9 @@
 package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.ntwo.NTwoColdMarker;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientNTwoHudState;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import net.minecraft.client.KeyMapping;
@@ -13,7 +15,6 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -27,7 +28,7 @@ public final class NTwoHudOverlay {
 
     @SubscribeEvent
     public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        if (!VanillaGuiOverlay.HOTBAR.id().equals(event.getOverlay().id())) {
+        if (!SkillHudRenderCompat.shouldRender(event)) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
@@ -43,8 +44,12 @@ public final class NTwoHudOverlay {
             return;
         }
         Font font = minecraft.font;
-        if (ClientNTwoHudState.shouldDisplay()) {
+        boolean nativeDisplay = ClientNTwoHudState.shouldDisplay();
+        boolean inherited = ClientCommanderState.inherits(ModCharacters.N_TWO_ID);
+        if (nativeDisplay) {
             renderSkillHud(graphics, font);
+        }
+        if (nativeDisplay || inherited) {
             renderColdList(graphics, font);
         }
         if (minecraft.player.hasEffect(ModEffects.N_TWO_FROZEN.get())) {

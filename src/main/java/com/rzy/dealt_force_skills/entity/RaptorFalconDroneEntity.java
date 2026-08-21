@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.raptor.RaptorStateManager;
 import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -105,6 +107,7 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
     private boolean boosting;
     private boolean selfDestructing;
     private boolean falconPulseAvailable = true;
+    private boolean hummingbirdFalcon;
     private float forwardInput;
     private float strafeInput;
     private float verticalInput;
@@ -132,6 +135,8 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
     public RaptorFalconDroneEntity(EntityType<? extends RaptorFalconDroneEntity> type, Level level, ServerPlayer owner) {
         this(type, level);
         ownerId = owner.getUUID();
+        hummingbirdFalcon = CommanderStateManager.hasBranchUpgrade(
+                owner, CommanderBranchUpgrade.RAPTOR_HUMMINGBIRD_FALCON);
         Vec3 look = owner.getLookAngle().normalize();
         rememberDirection(look);
     }
@@ -174,10 +179,10 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
             rememberDirection(getViewVector(1.0F));
         }
         setDeltaMovement(motion);
-        if (controlled) {
-            updateControlledChunks(level, owner, motion);
-        } else {
-            releaseForcedChunks();
+        releaseForcedChunks();
+        if (controlled && !isWithinOwnerLoadedView(level, owner, position().add(motion))) {
+            motion = Vec3.ZERO;
+            setDeltaMovement(Vec3.ZERO);
         }
         move(MoverType.SELF, motion);
         if (selfDestructing && shouldSelfDestructExplode(level, owner)) {
@@ -207,6 +212,7 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
         boosting = tag.getBoolean("Boosting");
         selfDestructing = tag.getBoolean("SelfDestructing");
         falconPulseAvailable = !tag.contains("FalconPulseAvailable") || tag.getBoolean("FalconPulseAvailable");
+        hummingbirdFalcon = tag.getBoolean("HummingbirdFalcon");
         health = tag.contains("Health") ? tag.getFloat("Health") : 12.0F;
         falconModulesSpawned = tag.getBoolean("FalconModulesSpawned");
         sonicModuleId = tag.contains("SonicModuleId") ? tag.getInt("SonicModuleId") : -1;
@@ -226,6 +232,7 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
         tag.putBoolean("Boosting", boosting);
         tag.putBoolean("SelfDestructing", selfDestructing);
         tag.putBoolean("FalconPulseAvailable", falconPulseAvailable);
+        tag.putBoolean("HummingbirdFalcon", hummingbirdFalcon);
         tag.putFloat("Health", health);
         tag.putBoolean("FalconModulesSpawned", falconModulesSpawned);
         tag.putInt("SonicModuleId", sonicModuleId);
@@ -383,6 +390,7 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
                 .sorted(Comparator.comparingDouble(this::distanceToSqr))
                 .limit(8)
                 .toList();
+        RaptorStateManager.applyFalconHummingbird(owner, targets, hummingbirdFalcon);
         RaptorStateManager.revealEntities(owner, targets, REVEAL_TICKS);
         if (!targets.isEmpty()) {
             for (LivingEntity target : targets) {
@@ -684,37 +692,17 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
     }
 
     private void updateControlledChunks(ServerLevel level, ServerPlayer player, Vec3 motion) {
-        int curChunkX = blockPosition().getX() >> 4;
-        int curChunkZ = blockPosition().getZ() >> 4;
-        int nextChunkX = (int) Math.floor((getX() + motion.x * 16.0D) / 16.0D);
-        int nextChunkZ = (int) Math.floor((getZ() + motion.z * 16.0D) / 16.0D);
-        long currentPacked = ChunkPos.asLong(curChunkX, curChunkZ);
-        long nextPacked = ChunkPos.asLong(nextChunkX, nextChunkZ);
+        releaseForcedChunks();
+    }
 
-        desiredForcedChunks.clear();
-        addChunkArea(desiredForcedChunks, curChunkX, curChunkZ, FORCED_CHUNK_RADIUS);
-        addChunkArea(desiredForcedChunks, nextChunkX, nextChunkZ, FORCED_CHUNK_RADIUS);
-
-        for (long packed : desiredForcedChunks) {
-            if (forcedChunks.add(packed)) {
-                retainForcedChunk(level, packed);
-            }
-        }
-
-        Iterator<Long> iterator = forcedChunks.iterator();
-        while (iterator.hasNext()) {
-            long packed = iterator.next();
-            if (!desiredForcedChunks.contains(packed)) {
-                releaseForcedChunk(level, packed);
-                iterator.remove();
-            }
-        }
-
-        ensureChunkLoadedIfNeeded(level, curChunkX, curChunkZ, currentPacked, true);
-        if (nextPacked != currentPacked) {
-            ensureChunkLoadedIfNeeded(level, nextChunkX, nextChunkZ, nextPacked, false);
-        }
-        streamTerrainForOwner(level, player, desiredForcedChunks, curChunkX, curChunkZ);
+    private static boolean isWithinOwnerLoadedView(ServerLevel level, ServerPlayer player, Vec3 next) {
+        int nextChunkX = Mth.floor(next.x) >> 4;
+        int nextChunkZ = Mth.floor(next.z) >> 4;
+        int radius = Math.max(2, player.server.getPlayerList().getViewDistance() - 1);
+        ChunkPos ownerChunk = player.chunkPosition();
+        return Math.abs(nextChunkX - ownerChunk.x) <= radius
+                && Math.abs(nextChunkZ - ownerChunk.z) <= radius
+                && level.getChunkSource().hasChunk(nextChunkX, nextChunkZ);
     }
 
     private static void addChunkArea(Set<Long> chunks, int centerX, int centerZ, int radius) {
@@ -873,16 +861,7 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
     }
 
     private static void restoreTerrainCenter(ServerPlayer player) {
-        ChunkPos playerChunk = player.chunkPosition();
-        player.connection.send(new ClientboundSetChunkCacheRadiusPacket(player.server.getPlayerList().getViewDistance()));
-        player.connection.send(new ClientboundSetChunkCacheCenterPacket(playerChunk.x, playerChunk.z));
-        if (player.level() instanceof ServerLevel level) {
-            for (int dx = -CRITICAL_TERRAIN_RADIUS; dx <= CRITICAL_TERRAIN_RADIUS; dx++) {
-                for (int dz = -CRITICAL_TERRAIN_RADIUS; dz <= CRITICAL_TERRAIN_RADIUS; dz++) {
-                    sendChunkTerrain(level, player, ChunkPos.asLong(playerChunk.x + dx, playerChunk.z + dz));
-                }
-            }
-        }
+        // The controlled camera no longer changes the client's terrain cache center.
     }
 
     private void spawnClientParticles() {

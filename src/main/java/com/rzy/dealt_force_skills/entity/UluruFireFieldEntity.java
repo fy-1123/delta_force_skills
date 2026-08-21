@@ -6,6 +6,9 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -20,6 +23,8 @@ import net.minecraftforge.network.NetworkHooks;
 import java.util.UUID;
 
 public class UluruFireFieldEntity extends Entity implements ItemSupplier {
+    private static final EntityDataAccessor<Boolean> DATA_EARTH_FIRE =
+            SynchedEntityData.defineId(UluruFireFieldEntity.class, EntityDataSerializers.BOOLEAN);
     private static volatile int LIFE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("LIFE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.ulurufirefieldentity.life_ticks", 400));
     private static volatile int DAMAGE_INTERVAL_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("DAMAGE_INTERVAL_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("summons.ulurufirefieldentity.damage_interval_ticks", 8));
     private static volatile double RADIUS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("RADIUS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.ulurufirefieldentity.radius", 6.0));
@@ -44,33 +49,36 @@ public class UluruFireFieldEntity extends Entity implements ItemSupplier {
 
     @Override
     protected void defineSynchedData() {
+        entityData.define(DATA_EARTH_FIRE, false);
     }
 
     @Override
     public void tick() {
         super.tick();
+        double radius = effectiveRadius();
         if (level().isClientSide) {
             for (int i = 0; i < 3; i++) {
-                double x = getX() + (random.nextDouble() - 0.5) * RADIUS * 2.0;
-                double z = getZ() + (random.nextDouble() - 0.5) * RADIUS * 2.0;
+                double x = getX() + (random.nextDouble() - 0.5) * radius * 2.0;
+                double z = getZ() + (random.nextDouble() - 0.5) * radius * 2.0;
                 level().addParticle(ParticleTypes.FLAME, x, getY() + 0.08, z, 0.0, 0.02, 0.0);
             }
             return;
         }
 
-        if (tickCount % DAMAGE_INTERVAL_TICKS == 0 && level() instanceof ServerLevel serverLevel) {
+        int interval = entityData.get(DATA_EARTH_FIRE) ? 2 : DAMAGE_INTERVAL_TICKS;
+        if (tickCount % interval == 0 && level() instanceof ServerLevel serverLevel) {
             LivingEntity owner = ownerId == null ? null : findOwner(serverLevel);
             if (owner instanceof ServerPlayer player) {
                 int targets = serverLevel.getEntitiesOfClass(LivingEntity.class,
-                        getBoundingBox().inflate(RADIUS),
+                        getBoundingBox().inflate(radius),
                         target -> target.isAlive()
-                                && target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(position()) <= RADIUS).size();
+                                && target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(position()) <= radius).size();
                 DfsAchievements.recordUluruFireFieldTargets(player, targets);
             }
-            UluruExplosionHelper.damageRadiusIgnoringInvulnerability(serverLevel, position(), this, owner, RADIUS,
+            UluruExplosionHelper.damageRadiusIgnoringInvulnerability(serverLevel, position(), this, owner, radius,
                     3.0f, 3.0f, false, true, 20, true);
             serverLevel.sendParticles(ParticleTypes.FLAME, getX(), getY() + 0.1, getZ(),
-                    48, RADIUS * 0.95, 0.25, RADIUS * 0.95, 0.01);
+                    entityData.get(DATA_EARTH_FIRE) ? 96 : 48, radius * 0.95, 0.25, radius * 0.95, 0.01);
         }
 
         if (tickCount >= LIFE_TICKS) {
@@ -81,6 +89,7 @@ public class UluruFireFieldEntity extends Entity implements ItemSupplier {
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         ownerId = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
+        entityData.set(DATA_EARTH_FIRE, tag.getBoolean("EarthFire"));
     }
 
     @Override
@@ -88,6 +97,7 @@ public class UluruFireFieldEntity extends Entity implements ItemSupplier {
         if (ownerId != null) {
             tag.putUUID("Owner", ownerId);
         }
+        tag.putBoolean("EarthFire", entityData.get(DATA_EARTH_FIRE));
     }
 
     @Override
@@ -98,5 +108,13 @@ public class UluruFireFieldEntity extends Entity implements ItemSupplier {
     private LivingEntity findOwner(ServerLevel level) {
         Entity entity = level.getEntity(ownerId);
         return entity instanceof LivingEntity living ? living : null;
+    }
+
+    public void setEarthFire(boolean earthFire) {
+        entityData.set(DATA_EARTH_FIRE, earthFire);
+    }
+
+    private double effectiveRadius() {
+        return entityData.get(DATA_EARTH_FIRE) ? RADIUS * 3.0D : RADIUS;
     }
 }

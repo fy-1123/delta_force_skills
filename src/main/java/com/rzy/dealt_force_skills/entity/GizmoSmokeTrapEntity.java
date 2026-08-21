@@ -4,6 +4,7 @@ import com.rzy.dealt_force_skills.registry.ModEntities;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
@@ -157,7 +158,9 @@ public class GizmoSmokeTrapEntity extends Entity implements ItemSupplier, Blockb
     }
 
     private boolean canTrigger(LivingEntity entity) {
-        if (!entity.isAlive() || isOwnerOrTeammate(entity)) {
+        if (!entity.isAlive() || isOwnerOrTeammate(entity)
+                || !(level() instanceof ServerLevel level)
+                || !TargetingUtil.isHostileLivingFor(owner(level), entity)) {
             return false;
         }
         return entity instanceof ServerPlayer || entity instanceof Enemy;

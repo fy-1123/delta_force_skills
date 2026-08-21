@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.registry;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem;
+import com.rzy.dealt_force_skills.item.AcceleratedTroopsSpawnEggItem;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem.Faction;
 import com.rzy.dealt_force_skills.item.DfsEquipmentItem.SpecialAbility;
 import com.rzy.dealt_force_skills.item.DfsItemQuality;
@@ -17,20 +18,25 @@ import com.rzy.dealt_force_skills.item.HvkAdvancedDisassemblyBeamEmitterItem;
 import com.rzy.dealt_force_skills.item.HvkAdvancedStandardTemplateConstructorItem;
 import com.rzy.dealt_force_skills.item.HvkAdvancedTreasureCompassItem;
 import com.rzy.dealt_force_skills.item.HvkClonePrototypeItem;
+import com.rzy.dealt_force_skills.item.HvkLoreBlockItem;
 import com.rzy.dealt_force_skills.item.HvkTreasureChestBoxItem;
 import com.rzy.dealt_force_skills.item.HvkUniversalGlueItem;
+import com.rzy.dealt_force_skills.item.HookAuthorBlessingItem;
 import com.rzy.dealt_force_skills.item.InterdimensionalBlockItem;
 import com.rzy.dealt_force_skills.item.LuckyCoinItem;
+import com.rzy.dealt_force_skills.item.PortableAdsDeviceItem;
 import com.rzy.dealt_force_skills.item.QualityTooltipItem;
 import com.rzy.dealt_force_skills.item.RainbowInjectionItem;
 import com.rzy.dealt_force_skills.item.RandomEffectConsumableItem;
 import com.rzy.dealt_force_skills.item.RepairKitItem;
+import com.rzy.dealt_force_skills.item.RespawnBeaconItem;
 import com.rzy.dealt_force_skills.item.SpecialEquipmentSupplyItem;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.BlockItem;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.RegistryObject;
@@ -42,6 +48,9 @@ import java.util.function.Supplier;
 public class ModItems {
     public static final DeferredRegister<Item> ITEMS =
             DeferredRegister.create(ForgeRegistries.ITEMS, DealtForceSkillsMod.MODID);
+
+    public static final RegistryObject<Item> GTI_SPECIAL_OPERATIONS = ITEMS.register("gti_special_operations",
+            () -> new BlockItem(ModBlocks.GTI_SPECIAL_OPERATIONS.get(), new Item.Properties()));
 
     public static final RegistryObject<Item> NYLON_BODY_ARMOR = ITEMS.register("nylon_body_armor",
             () -> armor("nylon_body_armor", DfsItemQuality.WHITE, Faction.GLOBAL_FORCES, 250, 3, 1.0D, "upper_torso",
@@ -386,11 +395,11 @@ public class ModItems {
     public static final RegistryObject<Item> SCREWDRIVER = ITEMS.register("screwdriver",
             () -> material("screwdriver"));
     public static final RegistryObject<Item> DANCING_LADY = ITEMS.register("dancing_lady",
-            () -> material("dancing_lady"));
+            () -> material("dancing_lady", DfsItemQuality.BLUE));
     public static final RegistryObject<Item> LENS = ITEMS.register("lens",
             () -> material("lens"));
     public static final RegistryObject<Item> BLUEPRINT = ITEMS.register("blueprint",
-            () -> material("blueprint"));
+            () -> material("blueprint", DfsItemQuality.GOLD));
     public static final RegistryObject<Item> HIGH_OUTPUT_CRUSHING_PLIERS = ITEMS.register("high_output_crushing_pliers",
             () -> material("high_output_crushing_pliers"));
     public static final RegistryObject<Item> POLYMER_FABRIC = ITEMS.register("polymer_fabric",
@@ -405,6 +414,32 @@ public class ModItems {
             () -> material("beacon_brain_unit", DfsItemQuality.RED));
     public static final RegistryObject<Item> BEACON_BOSS_SPAWN_EGG = ITEMS.register("beacon_boss_spawn_egg",
             () -> new ForgeSpawnEggItem(ModEntities.BEACON_BOSS, 0x1A0A24, 0x8B3DFF, new Item.Properties()));
+    public static final RegistryObject<Item> ACCELERATED_TROOPS_SPAWN_EGG = ITEMS.register("accelerated_troops_spawn_egg",
+            () -> new AcceleratedTroopsSpawnEggItem(new Item.Properties()));
+    public static final RegistryObject<Item> PORTABLE_ADS_DEVICE = ITEMS.register("portable_ads_device",
+            () -> new PortableAdsDeviceItem(new Item.Properties()));
+    public static final RegistryObject<Item> RESPAWN_BEACON = ITEMS.register("respawn_beacon",
+            () -> new RespawnBeaconItem(new Item.Properties()));
+    public static final RegistryObject<Item> ASARA_FLAMETHROWER_SPAWN_EGG = ITEMS.register("asara_flamethrower_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.ASARA_FLAMETHROWER, 0x4A3028, 0xE06A2B, new Item.Properties()));
+    public static final RegistryObject<Item> ASARA_MACHINE_GUNNER_SPAWN_EGG = ITEMS.register("asara_machine_gunner_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.ASARA_MACHINE_GUNNER, 0x313A32, 0xA9A06C, new Item.Properties()));
+    public static final RegistryObject<Item> ASARA_SHIELD_TROOPER_SPAWN_EGG = ITEMS.register("asara_shield_trooper_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.ASARA_SHIELD_TROOPER, 0x333A43, 0x6D879B, new Item.Properties()));
+    public static final RegistryObject<Item> ASARA_ROCKET_TROOPER_SPAWN_EGG = ITEMS.register("asara_rocket_trooper_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.ASARA_ROCKET_TROOPER, 0x403629, 0xC1A354, new Item.Properties()));
+    public static final RegistryObject<Item> ASARA_SNIPER_SPAWN_EGG = ITEMS.register("asara_sniper_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.ASARA_SNIPER, 0x283735, 0x7EAA8B, new Item.Properties()));
+    public static final RegistryObject<Item> ASARA_SENTRY_SNIPER_SPAWN_EGG = ITEMS.register("asara_sentry_sniper_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.ASARA_SENTRY_SNIPER, 0x1B2726, 0xB8D8BE, new Item.Properties()));
+    public static final RegistryObject<Item> ASARA_GUARD_SOLDIER_SPAWN_EGG = ITEMS.register("asara_guard_soldier_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.ASARA_GUARD_SOLDIER, 0x38433A, 0xA7B18C, new Item.Properties()));
+    public static final RegistryObject<Item> HVK_ASARA_ARENA = ITEMS.register("hvk_asara_arena",
+            () -> new HvkLoreBlockItem(ModBlocks.HVK_ASARA_ARENA.get(), new Item.Properties(),
+                    HvkLoreBlockItem.Kind.ASARA_ARENA));
+    public static final RegistryObject<Item> HVK_ENCHANT_INFUSION = ITEMS.register("hvk_enchant_infusion",
+            () -> new HvkLoreBlockItem(ModBlocks.HVK_ENCHANT_INFUSION.get(), new Item.Properties(),
+                    HvkLoreBlockItem.Kind.ENCHANT_INFUSION));
     public static final RegistryObject<Item> PROGRAMMABLE_PROCESSOR = ITEMS.register("programmable_processor",
             () -> material("programmable_processor"));
     public static final RegistryObject<Item> HVK_ADVANCED_STANDARD_TEMPLATE_CONSTRUCTOR =
@@ -415,6 +450,10 @@ public class ModItems {
             ITEMS.register("hvk_advanced_disassembly_beam_emitter",
                     () -> new HvkAdvancedDisassemblyBeamEmitterItem(ModBlocks.HVK_ADVANCED_DISASSEMBLY_BEAM_EMITTER.get(),
                             new Item.Properties()));
+    public static final RegistryObject<Item> HVK_ADVANCED_SPAWNER =
+            ITEMS.register("hvk_advanced_spawner",
+                    () -> new HvkLoreBlockItem(ModBlocks.HVK_ADVANCED_SPAWNER.get(), new Item.Properties(),
+                            HvkLoreBlockItem.Kind.ADVANCED_SPAWNER));
     public static final RegistryObject<Item> HVK_CLONE_PROTOTYPE =
             ITEMS.register("hvk_clone_prototype",
                     () -> new HvkClonePrototypeItem(ModBlocks.HVK_CLONE_PROTOTYPE.get(), new Item.Properties()));
@@ -436,6 +475,8 @@ public class ModItems {
             () -> new HvkUniversalGlueItem(new Item.Properties().stacksTo(16)));
     public static final RegistryObject<Item> ETERNAL_LOVE_BLESSING = ITEMS.register("eternal_love_blessing",
             () -> new EternalLoveBlessingItem(new Item.Properties().stacksTo(1)));
+    public static final RegistryObject<Item> HOOK_AUTHOR_BLESSING = ITEMS.register("hook_author_blessing",
+            () -> new HookAuthorBlessingItem(new Item.Properties()));
 
     private static RepairKitItem armorRepairKit(DfsItemQuality quality, int durability, String id) {
         String key = "consumables." + id;

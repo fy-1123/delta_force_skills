@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.config;
 import com.electronwill.nightconfig.core.AbstractConfig;
 import com.electronwill.nightconfig.core.UnmodifiableConfig;
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
+import com.rzy.dealt_force_skills.compat.TamarindLootConfig;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,11 +22,13 @@ public final class ConfigAccess {
     public static List<ConfigEntryData> snapshotAllServerFiles() {
         List<ConfigEntryData> entries = new ArrayList<>();
         entries.addAll(snapshot(ConfigFileId.GAMEPLAY));
+        entries.addAll(snapshot(ConfigFileId.BASE));
         entries.addAll(snapshot(ConfigFileId.BOSSES));
         entries.addAll(snapshot(ConfigFileId.SHOP));
         entries.addAll(snapshot(ConfigFileId.SHOP_SET));
         entries.addAll(snapshot(ConfigFileId.PLAYER));
         entries.addAll(snapshot(ConfigFileId.GAMBLER));
+        entries.addAll(snapshot(ConfigFileId.TAMARIND_LOOT));
         entries.sort(Comparator.comparing((ConfigEntryData e) -> e.file().name())
                 .thenComparing(ConfigEntryData::path));
         return entries;
@@ -72,11 +75,13 @@ public final class ConfigAccess {
         }
         switch (file) {
             case GAMEPLAY -> DealtForceConfig.flush();
+            case BASE -> DealtBaseConfig.flush();
             case BOSSES -> DealtBossesConfig.flush();
             case SHOP -> DealtForceShopConfig.flush();
             case SHOP_SET -> DealtShopSetConfig.flush();
             case PLAYER -> DealtForcePlayerConfig.flush();
             case GAMBLER -> GamblerArenaConfig.flush();
+            case TAMARIND_LOOT -> TamarindLootConfig.flush();
             case HUD -> {
             }
         }
@@ -84,11 +89,13 @@ public final class ConfigAccess {
 
     public static void flushAllServerFiles() {
         DealtForceConfig.flush();
+        DealtBaseConfig.flush();
         DealtBossesConfig.flush();
         DealtForceShopConfig.flush();
         DealtShopSetConfig.flush();
         DealtForcePlayerConfig.flush();
         GamblerArenaConfig.flush();
+        TamarindLootConfig.flush();
     }
 
     /** Applies a server snapshot to this client's memory without touching its local TOML. */
@@ -100,11 +107,13 @@ public final class ConfigAccess {
     private static CommentedFileConfig rawConfig(ConfigFileId file) {
         return switch (file) {
             case GAMEPLAY -> DealtForceConfig.rawConfig();
+            case BASE -> DealtBaseConfig.rawConfig();
             case BOSSES -> DealtBossesConfig.rawConfig();
             case SHOP -> DealtForceShopConfig.rawConfig();
             case SHOP_SET -> DealtShopSetConfig.rawConfig();
             case PLAYER -> DealtForcePlayerConfig.rawConfig();
             case GAMBLER -> GamblerArenaConfig.rawConfig();
+            case TAMARIND_LOOT -> TamarindLootConfig.rawConfig();
             case HUD -> null;
         };
     }
@@ -112,11 +121,13 @@ public final class ConfigAccess {
     private static void markDirty(ConfigFileId file) {
         switch (file) {
             case GAMEPLAY -> DealtForceConfig.markDirty();
+            case BASE -> DealtBaseConfig.markDirty();
             case BOSSES -> DealtBossesConfig.markDirty();
             case SHOP -> DealtForceShopConfig.markDirty();
             case SHOP_SET -> DealtShopSetConfig.markDirty();
             case PLAYER -> DealtForcePlayerConfig.markDirty();
             case GAMBLER -> GamblerArenaConfig.markDirty();
+            case TAMARIND_LOOT -> TamarindLootConfig.markDirty();
             case HUD -> {
             }
         }
@@ -168,6 +179,9 @@ public final class ConfigAccess {
         if (entry.file() == ConfigFileId.BOSSES) {
             return "bosses";
         }
+        if (entry.file() == ConfigFileId.BASE) {
+            return "rules";
+        }
         if (entry.file() == ConfigFileId.SHOP || entry.file() == ConfigFileId.SHOP_SET) {
             return "shop";
         }
@@ -176,6 +190,9 @@ public final class ConfigAccess {
         }
         if (entry.file() == ConfigFileId.GAMBLER) {
             return "gambler";
+        }
+        if (entry.file() == ConfigFileId.TAMARIND_LOOT) {
+            return "tamarind";
         }
         String path = entry.path().toLowerCase(Locale.ROOT);
         if (path.startsWith("characters.")) {
@@ -206,6 +223,12 @@ public final class ConfigAccess {
         }
         if (entry.file() == ConfigFileId.BOSSES) {
             return parts.length > 0 ? parts[0] : "boss";
+        }
+        if (entry.file() == ConfigFileId.TAMARIND_LOOT) {
+            if (parts.length > 1 && ("containers".equals(parts[0]) || "pools".equals(parts[0]))) {
+                return parts[1];
+            }
+            return "global";
         }
         if (path.startsWith("characters.") && parts.length > 1) {
             return parts[1];

@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.compat;
 import com.rzy.dealt_force_skills.skill.SkillCooldownHelper;
 
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -12,7 +13,20 @@ import java.util.UUID;
 public final class ParcoolStaminaBridge {
     private static final String STAMINA_API_CLASS = "com.alrex.parcool.api.Stamina";
     private static final String SYNC_MESSAGE_CLASS = "com.alrex.parcool.common.network.SyncStaminaMessage";
+    private static final String SYNC_TO_CLIENT_CLASS = "com.alrex.parcool.common.network.SyncStaminaToClientMessage";
+    private static final String PARKOURABILITY_CLASS = "com.alrex.parcool.common.capability.Parkourability";
     private static final Map<UUID, Long> ACTIVE_STAMINA_RECOVERY_SUPPRESSION_UNTIL = new HashMap<>();
+    private static Method staminaGet;
+    private static Method staminaGetMax;
+    private static Method staminaGetValue;
+    private static Method staminaIsExhausted;
+    private static Method staminaConsume;
+    private static Method staminaRecover;
+    private static Method syncToServer;
+    private static Method syncToClient;
+    private static Method parkourabilityGet;
+    private static Method parkourabilityIsDoingNothing;
+    private static boolean reflectionResolved;
 
     private ParcoolStaminaBridge() {
     }
@@ -30,7 +44,7 @@ public final class ParcoolStaminaBridge {
             return ConsumeResult.UNAVAILABLE;
         }
 
-        int maxValue = invokeInt(stamina, "getMaxValue", -1);
+        int maxValue = invokeInt(stamina, staminaGetMax, -1);
         if (maxValue <= 0) {
             return ConsumeResult.UNAVAILABLE;
         }
@@ -52,13 +66,13 @@ public final class ParcoolStaminaBridge {
             return ConsumeResult.UNAVAILABLE;
         }
 
-        int maxValue = invokeInt(stamina, "getMaxValue", -1);
+        int maxValue = invokeInt(stamina, staminaGetMax, -1);
         if (maxValue <= 0) {
             return ConsumeResult.UNAVAILABLE;
         }
 
-        int value = invokeInt(stamina, "getValue", -1);
-        boolean exhausted = invokeBoolean(stamina, "isExhausted", false);
+        int value = invokeInt(stamina, staminaGetValue, -1);
+        boolean exhausted = invokeBoolean(stamina, staminaIsExhausted, false);
         if (value <= 0 || exhausted) {
             return ConsumeResult.NOT_ENOUGH;
         }
@@ -71,7 +85,7 @@ public final class ParcoolStaminaBridge {
 
         int requested = Math.max(1, (maxValue * percent + 99) / 100);
         int amount = Math.min(requested, available);
-        if (!invokeVoid(stamina, "consume", amount)) {
+        if (!invokeVoid(stamina, staminaConsume, amount)) {
             return ConsumeResult.UNAVAILABLE;
         }
         syncLocal(player);
@@ -91,14 +105,14 @@ public final class ParcoolStaminaBridge {
             return ConsumeResult.UNAVAILABLE;
         }
 
-        int maxValue = invokeInt(stamina, "getMaxValue", -1);
+        int maxValue = invokeInt(stamina, staminaGetMax, -1);
         if (maxValue <= 0) {
             return ConsumeResult.UNAVAILABLE;
         }
 
         int amount = Math.max(1, (maxValue * percent + 99) / 100);
-        int value = invokeInt(stamina, "getValue", -1);
-        boolean exhausted = invokeBoolean(stamina, "isExhausted", false);
+        int value = invokeInt(stamina, staminaGetValue, -1);
+        boolean exhausted = invokeBoolean(stamina, staminaIsExhausted, false);
         return value >= amount && !exhausted ? ConsumeResult.SUCCESS : ConsumeResult.NOT_ENOUGH;
     }
 
@@ -118,13 +132,25 @@ public final class ParcoolStaminaBridge {
             return ConsumeResult.UNAVAILABLE;
         }
 
-        int maxValue = invokeInt(stamina, "getMaxValue", -1);
+        int maxValue = invokeInt(stamina, staminaGetMax, -1);
         if (maxValue <= 0) {
             return ConsumeResult.UNAVAILABLE;
         }
 
         int amount = Math.max(1, (maxValue * percent + 99) / 100);
-        if (!invokeVoid(stamina, "recover", amount)) {
+        if (!invokeVoid(stamina, staminaRecover, amount)) {
+            return ConsumeResult.UNAVAILABLE;
+        }
+        syncLocal(player);
+        return ConsumeResult.SUCCESS;
+    }
+
+    public static ConsumeResult recoverLocal(Player player, int amount) {
+        if (player == null || amount <= 0) {
+            return ConsumeResult.UNAVAILABLE;
+        }
+        Object stamina = getStamina(player);
+        if (stamina == null || !invokeVoid(stamina, staminaRecover, amount)) {
             return ConsumeResult.UNAVAILABLE;
         }
         syncLocal(player);
@@ -149,17 +175,17 @@ public final class ParcoolStaminaBridge {
 
     public static int currentValue(Player player) {
         Object stamina = player == null ? null : getStamina(player);
-        return stamina == null ? -1 : invokeInt(stamina, "getValue", -1);
+        return stamina == null ? -1 : invokeInt(stamina, staminaGetValue, -1);
     }
 
     private static ConsumeResult consumeLocal(Object stamina, Player player, int amount) {
-        int value = invokeInt(stamina, "getValue", -1);
-        boolean exhausted = invokeBoolean(stamina, "isExhausted", false);
+        int value = invokeInt(stamina, staminaGetValue, -1);
+        boolean exhausted = invokeBoolean(stamina, staminaIsExhausted, false);
         if (value < amount || exhausted) {
             return ConsumeResult.NOT_ENOUGH;
         }
 
-        if (!invokeVoid(stamina, "consume", amount)) {
+        if (!invokeVoid(stamina, staminaConsume, amount)) {
             return ConsumeResult.UNAVAILABLE;
         }
         syncLocal(player);
@@ -182,12 +208,31 @@ public final class ParcoolStaminaBridge {
     }
 
     private static Object getStamina(Player player) {
+        resolveReflection();
+        if (staminaGet == null) {
+            return null;
+        }
         try {
-            Class<?> apiClass = Class.forName(STAMINA_API_CLASS);
-            Method get = apiClass.getMethod("get", Player.class);
-            return get.invoke(null, player);
+            return staminaGet.invoke(null, player);
         } catch (ReflectiveOperationException | LinkageError ignored) {
             return null;
+        }
+    }
+
+    public static boolean isParcoolActionActive(Player player) {
+        if (player == null) {
+            return false;
+        }
+        resolveReflection();
+        if (parkourabilityGet == null || parkourabilityIsDoingNothing == null) {
+            return false;
+        }
+        try {
+            Object parkourability = parkourabilityGet.invoke(null, player);
+            Object doingNothing = parkourability == null ? null : parkourabilityIsDoingNothing.invoke(parkourability);
+            return doingNothing instanceof Boolean bool && !bool;
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            return false;
         }
     }
 
@@ -203,27 +248,36 @@ public final class ParcoolStaminaBridge {
         return true;
     }
 
-    private static int invokeInt(Object target, String methodName, int fallback) {
+    private static int invokeInt(Object target, Method method, int fallback) {
+        if (method == null) {
+            return fallback;
+        }
         try {
-            Object value = target.getClass().getMethod(methodName).invoke(target);
+            Object value = method.invoke(target);
             return value instanceof Integer integer ? integer : fallback;
         } catch (ReflectiveOperationException | LinkageError ignored) {
             return fallback;
         }
     }
 
-    private static boolean invokeBoolean(Object target, String methodName, boolean fallback) {
+    private static boolean invokeBoolean(Object target, Method method, boolean fallback) {
+        if (method == null) {
+            return fallback;
+        }
         try {
-            Object value = target.getClass().getMethod(methodName).invoke(target);
+            Object value = method.invoke(target);
             return value instanceof Boolean bool ? bool : fallback;
         } catch (ReflectiveOperationException | LinkageError ignored) {
             return fallback;
         }
     }
 
-    private static boolean invokeVoid(Object target, String methodName, int value) {
+    private static boolean invokeVoid(Object target, Method method, int value) {
+        if (method == null) {
+            return false;
+        }
         try {
-            target.getClass().getMethod(methodName, int.class).invoke(target, value);
+            method.invoke(target, value);
             return true;
         } catch (ReflectiveOperationException | LinkageError ignored) {
             return false;
@@ -231,11 +285,40 @@ public final class ParcoolStaminaBridge {
     }
 
     private static void syncLocal(Player player) {
+        resolveReflection();
         try {
-            Class<?> syncClass = Class.forName(SYNC_MESSAGE_CLASS);
-            syncClass.getMethod("sync", Player.class).invoke(null, player);
+            if (player instanceof ServerPlayer serverPlayer) {
+                if (syncToClient != null) {
+                    syncToClient.invoke(null, serverPlayer);
+                }
+            } else if (syncToServer != null) {
+                syncToServer.invoke(null, player);
+            }
         } catch (ReflectiveOperationException | LinkageError ignored) {
             // Parcool performs periodic stamina sync; this immediate sync is only a latency reduction.
+        }
+    }
+
+    private static synchronized void resolveReflection() {
+        if (reflectionResolved) {
+            return;
+        }
+        reflectionResolved = true;
+        try {
+            Class<?> stamina = Class.forName(STAMINA_API_CLASS);
+            staminaGet = stamina.getMethod("get", Player.class);
+            staminaGetMax = stamina.getMethod("getMaxValue");
+            staminaGetValue = stamina.getMethod("getValue");
+            staminaIsExhausted = stamina.getMethod("isExhausted");
+            staminaConsume = stamina.getMethod("consume", int.class);
+            staminaRecover = stamina.getMethod("recover", int.class);
+            syncToServer = Class.forName(SYNC_MESSAGE_CLASS).getMethod("sync", Player.class);
+            syncToClient = Class.forName(SYNC_TO_CLIENT_CLASS).getMethod("requestSync", ServerPlayer.class);
+            Class<?> parkourability = Class.forName(PARKOURABILITY_CLASS);
+            parkourabilityGet = parkourability.getMethod("get", Player.class);
+            parkourabilityIsDoingNothing = parkourability.getMethod("isDoingNothing");
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            staminaGet = null;
         }
     }
 

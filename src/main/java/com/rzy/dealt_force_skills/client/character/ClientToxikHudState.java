@@ -82,7 +82,8 @@ public final class ClientToxikHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != ToxikTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.TOXIK_ID))
+                && equippedTool != ToxikTool.NONE;
     }
 
     public static int adrenalineCooldownTicks() {

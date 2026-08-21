@@ -3,10 +3,12 @@ package com.rzy.dealt_force_skills.client;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.morse.MorseTool;
 import com.rzy.dealt_force_skills.character.morse.MorseToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import com.rzy.dealt_force_skills.client.character.ClientMorseHudState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.ClientToolReleaseAction;
 import com.rzy.dealt_force_skills.network.C2S_MorseToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -59,14 +61,31 @@ public final class MorseInputHandler {
 
         applyMorseShockClientSlow(minecraft);
 
-        if (!ClientMorseHudState.shouldRender()) {
+        boolean nativeCharacter = ClientMorseHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.MORSE_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.MORSE_ID, SkillSlot.ACTIVE_2);
+        boolean coreOwned = nativeCharacter || coreWasDown || ClientCommanderState.handlesSkill(
+                ModCharacters.MORSE_ID, SkillSlot.CORE, minecraft.player.isShiftKeyDown());
+        if (!active1Owned && !active2Owned && !coreOwned && !ClientMorseHudState.hasEquippedTool()) {
             resetActive2();
             resetCore();
             return;
         }
-        handleActive1Key();
-        handleActive2Key();
-        handleCoreKey();
+        if (active1Owned) {
+            handleActive1Key();
+        }
+        if (active2Owned) {
+            handleActive2Key();
+        } else {
+            resetActive2();
+        }
+        if (coreOwned) {
+            handleCoreKey();
+        } else {
+            resetCore();
+        }
         if (ClientMorseHudState.hasEquippedTool()) {
             releaseBlockedKey(minecraft.options.keyAttack);
             releaseBlockedKey(minecraft.options.keyUse);
@@ -77,7 +96,9 @@ public final class MorseInputHandler {
     }
 
     public static boolean ownsCoreSkill() {
-        return ClientMorseHudState.shouldRender();
+        var player = Minecraft.getInstance().player;
+        return ClientMorseHudState.shouldRender() || coreWasDown || player != null && ClientCommanderState.handlesSkill(
+                ModCharacters.MORSE_ID, SkillSlot.CORE, player.isShiftKeyDown());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -184,7 +205,7 @@ public final class MorseInputHandler {
             return;
         }
         while (KeybindRegister.ACTIVE_SKILL_1.consumeClick()) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_1);
+            ClientCommanderState.useNativeOrInherited(ModCharacters.MORSE_ID, SkillSlot.ACTIVE_1, false);
         }
     }
 
@@ -217,7 +238,8 @@ public final class MorseInputHandler {
                 equipped
                         ? () -> NetworkHandler.sendToServer(new C2S_MorseToolAction(
                                 MorseToolAction.THROW_FLASH_GRENADE, true))
-                        : () -> ClientCharacterSelectionState.useSkill(SkillSlot.ACTIVE_2));
+                        : () -> ClientCommanderState.useNativeOrInherited(
+                                ModCharacters.MORSE_ID, SkillSlot.ACTIVE_2, false));
     }
 
     private static void handleCoreKey() {
@@ -232,7 +254,7 @@ public final class MorseInputHandler {
             return;
         }
         if (coreWasDown) {
-            ClientCharacterSelectionState.useSkill(SkillSlot.CORE);
+            ClientCommanderState.useNativeOrInherited(ModCharacters.MORSE_ID, SkillSlot.CORE, false);
         }
         resetCore();
     }

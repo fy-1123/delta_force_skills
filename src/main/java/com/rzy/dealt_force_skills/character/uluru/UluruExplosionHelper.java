@@ -7,6 +7,7 @@ import com.rzy.dealt_force_skills.entity.UluruIncendiaryGrenadeEntity;
 import com.rzy.dealt_force_skills.registry.ModBlocks;
 import com.rzy.dealt_force_skills.registry.ModGameRules;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
@@ -133,6 +134,9 @@ public final class UluruExplosionHelper {
     ) {
         AABB box = new AABB(center, center).inflate(radius);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
+            if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)) {
+                continue;
+            }
             double distance = target.position().add(0.0, target.getBbHeight() * 0.5, 0.0).distanceTo(center);
             if (distance > radius) {
                 continue;

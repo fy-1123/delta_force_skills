@@ -1,6 +1,7 @@
 package com.rzy.dealt_force_skills.character;
 
 import com.rzy.dealt_force_skills.character.catdad.CatDadStateManager;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.department.DepartmentOfTransportationStateManager;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfStateManager;
 import com.rzy.dealt_force_skills.character.gambler.GamblerStateManager;
@@ -85,6 +86,9 @@ public final class CharacterEffectHooks {
         }
         if (ModCharacters.GHROTH_ID.equals(character.id())) {
             GhrothStateManager.clearState(player);
+        }
+        if (ModCharacters.COMMANDER_ID.equals(character.id())) {
+            CommanderStateManager.onDeselected(player);
         }
         player.removeEffect(ModEffects.CHARACTER_FRAMEWORK.get());
     }

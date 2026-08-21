@@ -44,20 +44,20 @@ public class S2C_HvkConstructorDetail {
         buf.writeVarInt(Math.min(HvkAdvancedStandardTemplateConstructorBlockEntity.MAX_RECIPE_TREE_LINES, tree.size()));
         for (int i = 0; i < Math.min(HvkAdvancedStandardTemplateConstructorBlockEntity.MAX_RECIPE_TREE_LINES, tree.size()); i++) {
             RecipeTreeLine line = tree.get(i);
-            buf.writeItem(line.stack());
+            writeCountedItem(buf, line.stack());
             buf.writeVarInt(line.depth());
             buf.writeBoolean(line.raw());
             buf.writeBoolean(line.missing());
             List<ItemStack> alternatives = line.alternatives();
             buf.writeVarInt(Math.min(MAX_ALTERNATIVES, alternatives.size()));
             for (int j = 0; j < Math.min(MAX_ALTERNATIVES, alternatives.size()); j++) {
-                buf.writeItem(alternatives.get(j));
+                writeCountedItem(buf, alternatives.get(j));
             }
         }
         List<ItemStack> missing = msg.detail.missing();
         buf.writeVarInt(Math.min(MAX_MISSING, missing.size()));
         for (int i = 0; i < Math.min(MAX_MISSING, missing.size()); i++) {
-            buf.writeItem(missing.get(i));
+            writeCountedItem(buf, missing.get(i));
         }
         buf.writeVarInt(msg.detail.queuedCrafts());
         buf.writeVarInt(msg.detail.queuedCompleted());
@@ -76,21 +76,21 @@ public class S2C_HvkConstructorDetail {
                 HvkAdvancedStandardTemplateConstructorBlockEntity.MAX_RECIPE_TREE_LINES, buf.readVarInt()));
         List<RecipeTreeLine> tree = new ArrayList<>(treeCount);
         for (int i = 0; i < treeCount; i++) {
-            ItemStack stack = buf.readItem();
+            ItemStack stack = readCountedItem(buf);
             int depth = buf.readVarInt();
             boolean raw = buf.readBoolean();
             boolean missing = buf.readBoolean();
             int alternativeCount = Math.max(0, Math.min(MAX_ALTERNATIVES, buf.readVarInt()));
             List<ItemStack> alternatives = new ArrayList<>(alternativeCount);
             for (int j = 0; j < alternativeCount; j++) {
-                alternatives.add(buf.readItem());
+                alternatives.add(readCountedItem(buf));
             }
             tree.add(new RecipeTreeLine(stack, depth, raw, missing, alternatives));
         }
         int missingCount = Math.max(0, Math.min(MAX_MISSING, buf.readVarInt()));
         List<ItemStack> missing = new ArrayList<>(missingCount);
         for (int i = 0; i < missingCount; i++) {
-            missing.add(buf.readItem());
+            missing.add(readCountedItem(buf));
         }
         int queuedCrafts = Math.max(0, buf.readVarInt());
         int queuedCompleted = Math.max(0, Math.min(queuedCrafts, buf.readVarInt()));
@@ -119,5 +119,27 @@ public class S2C_HvkConstructorDetail {
         } catch (RuntimeException ex) {
             return ResourceLocation.fromNamespaceAndPath("minecraft", "air");
         }
+    }
+
+    private static void writeCountedItem(FriendlyByteBuf buf, ItemStack stack) {
+        if (stack == null || stack.isEmpty() || stack.getCount() <= 0) {
+            buf.writeItem(ItemStack.EMPTY);
+            buf.writeVarInt(0);
+            return;
+        }
+        ItemStack wireStack = stack.copy();
+        wireStack.setCount(1);
+        buf.writeItem(wireStack);
+        buf.writeVarInt(stack.getCount());
+    }
+
+    private static ItemStack readCountedItem(FriendlyByteBuf buf) {
+        ItemStack stack = buf.readItem();
+        int count = Math.max(0, buf.readVarInt());
+        if (stack.isEmpty() || count <= 0) {
+            return ItemStack.EMPTY;
+        }
+        stack.setCount(count);
+        return stack;
     }
 }

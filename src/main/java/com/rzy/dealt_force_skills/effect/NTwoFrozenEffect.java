@@ -32,6 +32,6 @@ public class NTwoFrozenEffect extends MobEffect {
         if (entity instanceof Mob mob) {
             mob.setNoAi(false);
         }
-        NTwoStateManager.clearCold(entity);
+        NTwoStateManager.onFreezeEnded(entity);
     }
 }

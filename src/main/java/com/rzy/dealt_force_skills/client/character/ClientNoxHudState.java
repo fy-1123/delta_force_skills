@@ -108,7 +108,8 @@ public final class ClientNoxHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != NoxTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.NOX_ID))
+                && equippedTool != NoxTool.NONE;
     }
 
     public static boolean isEntityRevealed(int entityId) {

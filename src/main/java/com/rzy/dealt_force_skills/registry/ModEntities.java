@@ -1,6 +1,11 @@
 package com.rzy.dealt_force_skills.registry;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.saeed.SaeedGuardType;
+import com.rzy.dealt_force_skills.entity.AsaraTrooperEntity;
+import com.rzy.dealt_force_skills.entity.AsaraTrooperRole;
+import com.rzy.dealt_force_skills.entity.AcceleratedTroopsEntity;
+import com.rzy.dealt_force_skills.entity.AcceleratedTroopsPayloadEntity;
 import com.rzy.dealt_force_skills.entity.BeaconBossEntity;
 import com.rzy.dealt_force_skills.entity.BladeWireProjectileEntity;
 import com.rzy.dealt_force_skills.entity.CatDadRoadTruckEntity;
@@ -13,6 +18,7 @@ import com.rzy.dealt_force_skills.entity.DepartmentOverheatLaserEntity;
 import com.rzy.dealt_force_skills.entity.DWolfHandCannonGrenadeEntity;
 import com.rzy.dealt_force_skills.entity.DWolfSmokeCloudEntity;
 import com.rzy.dealt_force_skills.entity.DWolfSmokeGrenadeEntity;
+import com.rzy.dealt_force_skills.entity.DeathCrateEntity;
 import com.rzy.dealt_force_skills.entity.GizmoSmokeCloudEntity;
 import com.rzy.dealt_force_skills.entity.GizmoSmokeTrapEntity;
 import com.rzy.dealt_force_skills.entity.GizmoSpiderNestTrapEntity;
@@ -37,6 +43,7 @@ import com.rzy.dealt_force_skills.entity.NTwoIceFieldEntity;
 import com.rzy.dealt_force_skills.entity.NTwoTrackingStunGrenadeEntity;
 import com.rzy.dealt_force_skills.entity.RaptorFalconDroneEntity;
 import com.rzy.dealt_force_skills.entity.RaptorPulseGrenadeEntity;
+import com.rzy.dealt_force_skills.entity.RespawnBeaconMarkerEntity;
 import com.rzy.dealt_force_skills.entity.SaeedFireArrowEntity;
 import com.rzy.dealt_force_skills.entity.SaeedFireFieldEntity;
 import com.rzy.dealt_force_skills.entity.SaeedGuardEntity;
@@ -63,6 +70,7 @@ import com.rzy.dealt_force_skills.entity.VlinderMedicalDroneEntity;
 import com.rzy.dealt_force_skills.entity.VlinderRemoteSmokeRoundEntity;
 import com.rzy.dealt_force_skills.entity.VyronMagneticBombEntity;
 import com.rzy.dealt_force_skills.entity.VyronTigerCannonEntity;
+import com.rzy.dealt_force_skills.entity.VisualSmokeCloudEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.registries.DeferredRegister;
@@ -72,6 +80,14 @@ import net.minecraftforge.registries.RegistryObject;
 public class ModEntities {
     public static final DeferredRegister<EntityType<?>> ENTITIES =
             DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, DealtForceSkillsMod.MODID);
+
+    public static final RegistryObject<EntityType<DeathCrateEntity>> DEATH_CRATE =
+            ENTITIES.register("death_crate",
+                    () -> EntityType.Builder.<DeathCrateEntity>of(DeathCrateEntity::new, MobCategory.MISC)
+                            .sized(1.0F, 1.0F)
+                            .clientTrackingRange(64)
+                            .updateInterval(10)
+                            .build("death_crate"));
 
     public static final RegistryObject<EntityType<GrappleHookEntity>> GRAPPLE_HOOK =
             ENTITIES.register("grapple_hook",
@@ -127,7 +143,7 @@ public class ModEntities {
                             .sized(0.25f, 0.25f)
                             .clientTrackingRange(96)
                             .updateInterval(1)
-                            .build("uluru_bomblet"));
+                    .build("uluru_bomblet"));
 
     public static final RegistryObject<EntityType<DWolfHandCannonGrenadeEntity>> D_WOLF_HAND_CANNON_GRENADE =
             ENTITIES.register("d_wolf_hand_cannon_grenade",
@@ -149,7 +165,7 @@ public class ModEntities {
             ENTITIES.register("d_wolf_smoke_cloud",
                     () -> EntityType.Builder.<DWolfSmokeCloudEntity>of(DWolfSmokeCloudEntity::new, MobCategory.MISC)
                             .sized(0.1f, 0.1f)
-                            .clientTrackingRange(96)
+                            .clientTrackingRange(512)
                             .updateInterval(5)
                             .build("d_wolf_smoke_cloud"));
 
@@ -165,7 +181,7 @@ public class ModEntities {
             ENTITIES.register("gizmo_smoke_cloud",
                     () -> EntityType.Builder.<GizmoSmokeCloudEntity>of(GizmoSmokeCloudEntity::new, MobCategory.MISC)
                             .sized(0.1f, 0.1f)
-                            .clientTrackingRange(96)
+                            .clientTrackingRange(512)
                             .updateInterval(5)
                             .build("gizmo_smoke_cloud"));
 
@@ -375,7 +391,7 @@ public class ModEntities {
             ENTITIES.register("stinger_smoke_cloud",
                     () -> EntityType.Builder.<StingerSmokeCloudEntity>of(StingerSmokeCloudEntity::new, MobCategory.MISC)
                             .sized(0.1f, 0.1f)
-                            .clientTrackingRange(96)
+                            .clientTrackingRange(512)
                             .updateInterval(5)
                             .build("stinger_smoke_cloud"));
 
@@ -407,9 +423,17 @@ public class ModEntities {
             ENTITIES.register("toxik_tear_gas_cloud",
                     () -> EntityType.Builder.<ToxikTearGasCloudEntity>of(ToxikTearGasCloudEntity::new, MobCategory.MISC)
                             .sized(0.1f, 0.1f)
-                            .clientTrackingRange(96)
+                            .clientTrackingRange(512)
                             .updateInterval(5)
                             .build("toxik_tear_gas_cloud"));
+
+    public static final RegistryObject<EntityType<VisualSmokeCloudEntity>> VISUAL_SMOKE_CLOUD =
+            ENTITIES.register("visual_smoke_cloud",
+                    () -> EntityType.Builder.<VisualSmokeCloudEntity>of(VisualSmokeCloudEntity::new, MobCategory.MISC)
+                            .sized(0.1f, 0.1f)
+                            .clientTrackingRange(512)
+                            .updateInterval(1)
+                            .build("visual_smoke_cloud"));
 
     public static final RegistryObject<EntityType<ToxikFireflyEntity>> TOXIK_FIREFLY =
             ENTITIES.register("toxik_firefly",
@@ -504,7 +528,96 @@ public class ModEntities {
                             .sized(0.6f, 1.8f)
                             .clientTrackingRange(128)
                             .updateInterval(2)
-                            .build("saeed_guard"));
+                             .build("saeed_guard"));
+
+    public static final RegistryObject<EntityType<AsaraTrooperEntity>> ASARA_FLAMETHROWER =
+            ENTITIES.register("asara_flamethrower",
+                    () -> EntityType.Builder.<AsaraTrooperEntity>of(
+                                    (type, level) -> new AsaraTrooperEntity(type, level, AsaraTrooperRole.FLAMETHROWER),
+                                    MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f)
+                            .clientTrackingRange(128)
+                            .updateInterval(2)
+                            .build("asara_flamethrower"));
+    public static final RegistryObject<EntityType<AsaraTrooperEntity>> ASARA_MACHINE_GUNNER =
+            ENTITIES.register("asara_machine_gunner",
+                    () -> EntityType.Builder.<AsaraTrooperEntity>of(
+                                    (type, level) -> new AsaraTrooperEntity(type, level, AsaraTrooperRole.MACHINE_GUNNER),
+                                    MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f)
+                            .clientTrackingRange(128)
+                            .updateInterval(2)
+                            .build("asara_machine_gunner"));
+    public static final RegistryObject<EntityType<AsaraTrooperEntity>> ASARA_SHIELD_TROOPER =
+            ENTITIES.register("asara_shield_trooper",
+                    () -> EntityType.Builder.<AsaraTrooperEntity>of(
+                                    (type, level) -> new AsaraTrooperEntity(type, level, AsaraTrooperRole.SHIELD_TROOPER),
+                                    MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f)
+                            .clientTrackingRange(128)
+                            .updateInterval(2)
+                            .build("asara_shield_trooper"));
+    public static final RegistryObject<EntityType<AsaraTrooperEntity>> ASARA_ROCKET_TROOPER =
+            ENTITIES.register("asara_rocket_trooper",
+                    () -> EntityType.Builder.<AsaraTrooperEntity>of(
+                                    (type, level) -> new AsaraTrooperEntity(type, level, AsaraTrooperRole.ROCKET_TROOPER),
+                                    MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f)
+                            .clientTrackingRange(128)
+                            .updateInterval(2)
+                            .build("asara_rocket_trooper"));
+    public static final RegistryObject<EntityType<AsaraTrooperEntity>> ASARA_SNIPER =
+            ENTITIES.register("asara_sniper",
+                    () -> EntityType.Builder.<AsaraTrooperEntity>of(
+                                    (type, level) -> new AsaraTrooperEntity(type, level, AsaraTrooperRole.SNIPER),
+                                    MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f)
+                            .clientTrackingRange(192)
+                            .updateInterval(2)
+                            .build("asara_sniper"));
+    public static final RegistryObject<EntityType<AsaraTrooperEntity>> ASARA_SENTRY_SNIPER =
+            ENTITIES.register("asara_sentry_sniper",
+                    () -> EntityType.Builder.<AsaraTrooperEntity>of(
+                                    (type, level) -> new AsaraTrooperEntity(type, level, AsaraTrooperRole.SENTRY_SNIPER),
+                                    MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f).clientTrackingRange(256).updateInterval(2)
+                            .build("asara_sentry_sniper"));
+    public static final RegistryObject<EntityType<AsaraTrooperEntity>> ASARA_GUARD_SOLDIER =
+            ENTITIES.register("asara_guard_soldier",
+                    () -> EntityType.Builder.<AsaraTrooperEntity>of(
+                                    (type, level) -> new AsaraTrooperEntity(type, level, AsaraTrooperRole.GUARD_SOLDIER),
+                                    MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f)
+                            .clientTrackingRange(128)
+                            .updateInterval(2)
+                            .build("asara_guard_soldier"));
+
+    public static final RegistryObject<EntityType<AcceleratedTroopsEntity>> ACCELERATED_TROOPS =
+            ENTITIES.register("accelerated_troops",
+                    () -> EntityType.Builder.<AcceleratedTroopsEntity>of(
+                                    AcceleratedTroopsEntity::new, MobCategory.MONSTER)
+                            .sized(0.6f, 1.8f)
+                            .clientTrackingRange(192)
+                            .updateInterval(1)
+                            .build("accelerated_troops"));
+
+    public static final RegistryObject<EntityType<AcceleratedTroopsPayloadEntity>> ACCELERATED_TROOPS_PAYLOAD =
+            ENTITIES.register("accelerated_troops_payload",
+                    () -> EntityType.Builder.<AcceleratedTroopsPayloadEntity>of(
+                                    AcceleratedTroopsPayloadEntity::new, MobCategory.MISC)
+                            .sized(0.25f, 0.25f)
+                            .clientTrackingRange(128)
+                            .updateInterval(1)
+                            .build("accelerated_troops_payload"));
+
+    public static final RegistryObject<EntityType<RespawnBeaconMarkerEntity>> RESPAWN_BEACON_MARKER =
+            ENTITIES.register("respawn_beacon_marker",
+                    () -> EntityType.Builder.<RespawnBeaconMarkerEntity>of(
+                                    RespawnBeaconMarkerEntity::new, MobCategory.MISC)
+                            .sized(0.5f, 0.75f)
+                            .clientTrackingRange(96)
+                            .updateInterval(20)
+                            .build("respawn_beacon_marker"));
 
     public static final RegistryObject<EntityType<BeaconBossEntity>> BEACON_BOSS =
             ENTITIES.register("beacon_boss",

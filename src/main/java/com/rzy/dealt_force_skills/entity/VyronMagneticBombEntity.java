@@ -1,11 +1,14 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.vyron.VyronStateManager;
 import com.rzy.dealt_force_skills.compat.SuperbWarfareCompat;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
+import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -150,6 +153,15 @@ public class VyronMagneticBombEntity extends Projectile implements ItemSupplier 
 
     private void stickToEntity(EntityHitResult hit) {
         Entity entity = hit.getEntity();
+        if (entity instanceof LivingEntity living
+                && getOwner() instanceof ServerPlayer owner
+                && CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.VYRON_FAST_FUSE)
+                && TargetingUtil.isHostileLivingFor(owner, living)) {
+            setPos(hit.getLocation().x, hit.getLocation().y, hit.getLocation().z);
+            stuckEntityId = living.getUUID();
+            explode();
+            return;
+        }
         setStuck(true);
         fuseRemaining = VyronStateManager.MAGNETIC_BOMB_FUSE_TICKS;
         stuckEntityId = entity.getUUID();
@@ -205,22 +217,24 @@ public class VyronMagneticBombEntity extends Projectile implements ItemSupplier 
 
         LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
         ServerPlayer ownerPlayer = owner instanceof ServerPlayer player ? player : null;
+        double radius = CommanderStateManager.skillRadius(ownerPlayer, RADIUS);
+        double falloff = CommanderStateManager.skillDamageFalloff(ownerPlayer, 0.14D);
         Vec3 center = position();
         RangedSoundHelper.playThrottled(serverLevel, center, ModSounds.VYRON_MAGNETIC_BOMB_EXPLODE.get(),
                 SoundSource.PLAYERS, 1.25f, 1.0f, 26.0D, 3, 4.0D);
         serverLevel.sendParticles(ParticleTypes.EXPLOSION, center.x, center.y + 0.2D, center.z,
                 14, 0.8D, 0.35D, 0.8D, 0.02D);
         serverLevel.sendParticles(ParticleTypes.CLOUD, center.x, center.y + 0.2D, center.z,
-                80, RADIUS * 0.65D, 0.45D, RADIUS * 0.65D, 0.05D);
+                80, radius * 0.65D, 0.45D, radius * 0.65D, 0.05D);
 
-        AABB box = new AABB(center, center).inflate(RADIUS);
+        AABB box = new AABB(center, center).inflate(radius);
         for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
             Vec3 targetCenter = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
             double distance = targetCenter.distanceTo(center);
-            if (distance > RADIUS || !hasLineOfSight(center, targetCenter)) {
+            if (distance > radius || !hasLineOfSight(center, targetCenter)) {
                 continue;
             }
-            float damage = 100.0f * Math.max(0.0f, 1.0f - (float) distance * 0.14f);
+            float damage = 100.0f * Math.max(0.0f, 1.0f - (float) (distance * falloff));
             if (damage <= 0.0f) {
                 continue;
             }
@@ -234,7 +248,7 @@ public class VyronMagneticBombEntity extends Projectile implements ItemSupplier 
             target.setDeltaMovement(before);
             target.hurtMarked = true;
         }
-        SuperbWarfareCompat.damageVehicles(serverLevel, center, RADIUS,
+        SuperbWarfareCompat.damageVehicles(serverLevel, center, radius,
                 SkillDamageHelper.vyronMagneticBomb(serverLevel, this, owner), this, 1.0F, true);
         discard();
     }

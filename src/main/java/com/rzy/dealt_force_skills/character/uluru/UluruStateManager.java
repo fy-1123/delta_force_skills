@@ -1,16 +1,22 @@
 package com.rzy.dealt_force_skills.character.uluru;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.block.QuickCoverBlockEntity;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncUluruState;
 import com.rzy.dealt_force_skills.skill.SkillCooldownHelper;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public final class UluruStateManager {
@@ -28,13 +34,16 @@ public final class UluruStateManager {
     private static final String MISSILE_COOLDOWN_UNTIL = "MissileCooldownUntil";
     private static final String EQUIPPED_TOOL = "EquippedTool";
     private static final String COVER_PERPENDICULAR = "CoverPerpendicular";
+    private static final String PROTECTED_COVER_ROOTS = "ProtectedCoverRoots";
 
     private UluruStateManager() {
     }
 
     public static boolean isUluru(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.ULURU_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.ULURU_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.ULURU_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -48,9 +57,9 @@ public final class UluruStateManager {
         }
 
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(INCENDIARY_CHARGES, INCENDIARY_MAX_CHARGES);
+        tag.putInt(INCENDIARY_CHARGES, incendiaryCapacity(player));
         tag.putLong(INCENDIARY_NEXT_RECHARGE, 0L);
-        tag.putInt(COVER_CHARGES, COVER_MAX_CHARGES);
+        tag.putInt(COVER_CHARGES, coverCapacity(player));
         tag.putLong(COVER_NEXT_RECHARGE, 0L);
         tag.putLong(MISSILE_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, UluruTool.NONE.ordinal());
@@ -74,39 +83,39 @@ public final class UluruStateManager {
         }
         initializeIfNeeded(player);
         long now = SkillCooldownHelper.now(player);
-        recharge(player, now, INCENDIARY_CHARGES, INCENDIARY_MAX_CHARGES, INCENDIARY_NEXT_RECHARGE, INCENDIARY_RECHARGE_TICKS);
-        recharge(player, now, COVER_CHARGES, COVER_MAX_CHARGES, COVER_NEXT_RECHARGE, COVER_RECHARGE_TICKS);
+        recharge(player, now, INCENDIARY_CHARGES, incendiaryCapacity(player), INCENDIARY_NEXT_RECHARGE, INCENDIARY_RECHARGE_TICKS);
+        recharge(player, now, COVER_CHARGES, coverCapacity(player), COVER_NEXT_RECHARGE, COVER_RECHARGE_TICKS);
     }
 
     public static int incendiaryCharges(Player player) {
-        return data(player).getInt(INCENDIARY_CHARGES);
+        return Math.min(incendiaryCapacity(player), data(player).getInt(INCENDIARY_CHARGES));
     }
 
     public static int incendiaryRechargeRemainingTicks(Player player) {
-        if (incendiaryCharges(player) >= INCENDIARY_MAX_CHARGES) {
+        if (incendiaryCharges(player) >= incendiaryCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, INCENDIARY_NEXT_RECHARGE);
     }
 
     public static boolean consumeIncendiaryCharge(ServerPlayer player) {
-        return consumeCharge(player, INCENDIARY_CHARGES, INCENDIARY_MAX_CHARGES,
+        return consumeCharge(player, INCENDIARY_CHARGES, incendiaryCapacity(player),
                 INCENDIARY_NEXT_RECHARGE, INCENDIARY_RECHARGE_TICKS);
     }
 
     public static int coverCharges(Player player) {
-        return data(player).getInt(COVER_CHARGES);
+        return Math.min(coverCapacity(player), data(player).getInt(COVER_CHARGES));
     }
 
     public static int coverRechargeRemainingTicks(Player player) {
-        if (coverCharges(player) >= COVER_MAX_CHARGES) {
+        if (coverCharges(player) >= coverCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, COVER_NEXT_RECHARGE);
     }
 
     public static boolean consumeCoverCharge(ServerPlayer player) {
-        return consumeCharge(player, COVER_CHARGES, COVER_MAX_CHARGES, COVER_NEXT_RECHARGE, COVER_RECHARGE_TICKS);
+        return consumeCharge(player, COVER_CHARGES, coverCapacity(player), COVER_NEXT_RECHARGE, COVER_RECHARGE_TICKS);
     }
 
     public static boolean isMissileReady(Player player) {
@@ -141,6 +150,45 @@ public final class UluruStateManager {
         tag.putBoolean(COVER_PERPENDICULAR, !tag.getBoolean(COVER_PERPENDICULAR));
     }
 
+    public static void registerProtectedCover(ServerPlayer player, BlockPos rootPos) {
+        if (!CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.ULURU_COVER_PROTECTION)) {
+            return;
+        }
+        long packed = rootPos.asLong();
+        long[] existing = data(player).getLongArray(PROTECTED_COVER_ROOTS);
+        for (long value : existing) {
+            if (value == packed) {
+                return;
+            }
+        }
+        long[] updated = java.util.Arrays.copyOf(existing, existing.length + 1);
+        updated[existing.length] = packed;
+        data(player).putLongArray(PROTECTED_COVER_ROOTS, updated);
+    }
+
+    public static boolean tryRedirectDamageToCover(ServerPlayer player, float amount) {
+        long[] stored = data(player).getLongArray(PROTECTED_COVER_ROOTS);
+        if (stored.length == 0) {
+            return false;
+        }
+        List<Long> valid = new ArrayList<>(stored.length);
+        BlockPos absorbAt = null;
+        for (long packed : stored) {
+            BlockPos pos = BlockPos.of(packed);
+            if (player.serverLevel().getBlockEntity(pos) instanceof QuickCoverBlockEntity cover
+                    && cover.isOwnedBy(player.getUUID())) {
+                valid.add(packed);
+                if (absorbAt == null) {
+                    absorbAt = pos;
+                }
+            }
+        }
+        data(player).putLongArray(PROTECTED_COVER_ROOTS,
+                valid.stream().mapToLong(Long::longValue).toArray());
+        return absorbAt != null && QuickCoverBlockEntity.damageCoverAt(
+                player.serverLevel(), absorbAt, Math.max(1, (int) Math.ceil(amount)));
+    }
+
     public static void syncToClient(ServerPlayer player) {
         if (!isUluru(player)) {
             return;
@@ -148,10 +196,10 @@ public final class UluruStateManager {
         initializeIfNeeded(player);
         NetworkHandler.sendToPlayer(new S2C_SyncUluruState(
                 incendiaryCharges(player),
-                INCENDIARY_MAX_CHARGES,
+                incendiaryCapacity(player),
                 incendiaryRechargeRemainingTicks(player),
                 coverCharges(player),
-                COVER_MAX_CHARGES,
+                coverCapacity(player),
                 coverRechargeRemainingTicks(player),
                 missileCooldownRemainingTicks(player),
                 equippedTool(player).ordinal(),
@@ -167,12 +215,14 @@ public final class UluruStateManager {
             int rechargeTicks
     ) {
         CompoundTag tag = data(player);
-        int charges = Math.min(maxCharges, tag.getInt(chargesKey));
+        int capacity = Math.max(0, maxCharges);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(chargesKey)));
+        tag.putInt(chargesKey, charges);
         if (charges <= 0) {
             return false;
         }
         tag.putInt(chargesKey, charges - 1);
-        if (charges == maxCharges) {
+        if (charges == capacity) {
             tag.putLong(rechargeKey, SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), rechargeTicks));
         }
         return true;
@@ -180,19 +230,37 @@ public final class UluruStateManager {
 
     private static void recharge(ServerPlayer player, long now, String chargesKey, int maxCharges, String rechargeKey, int rechargeTicks) {
         CompoundTag tag = data(player);
-        int charges = Math.min(maxCharges, tag.getInt(chargesKey));
+        int capacity = Math.max(0, maxCharges);
+        int charges = Math.min(capacity, Math.max(0, tag.getInt(chargesKey)));
+        tag.putInt(chargesKey, charges);
         long nextRecharge = tag.getLong(rechargeKey);
-        if (charges >= maxCharges || nextRecharge <= 0L || now < nextRecharge) {
+        if (charges >= capacity) {
+            tag.putLong(rechargeKey, 0L);
+            return;
+        }
+        if (nextRecharge <= 0L) {
+            tag.putLong(rechargeKey, SkillCooldownHelper.until(player, now, rechargeTicks));
+            return;
+        }
+        if (now < nextRecharge) {
             return;
         }
 
         charges++;
         tag.putInt(chargesKey, charges);
-        tag.putLong(rechargeKey, charges < maxCharges ? SkillCooldownHelper.until(player, now, rechargeTicks) : 0L);
+        tag.putLong(rechargeKey, charges < capacity ? SkillCooldownHelper.until(player, now, rechargeTicks) : 0L);
     }
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int incendiaryCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, INCENDIARY_MAX_CHARGES);
+    }
+
+    private static int coverCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, COVER_MAX_CHARGES);
     }
 
     private static CompoundTag data(Player player) {

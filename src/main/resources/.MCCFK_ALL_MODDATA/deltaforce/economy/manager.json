@@ -1,0 +1,14 @@
+{
+  "initial_quantity": [
+    {"havoc_coin": "10000"},
+    {"delta_coin": "1"}
+  ],
+  "max":  [
+    {"havoc_coin": "2147483647"},
+    {"delta_coin": "2147483647"}
+  ],
+  "min": [
+    {"havoc_coin": "0"},
+    {"delta_coin": "0"}
+  ]
+}

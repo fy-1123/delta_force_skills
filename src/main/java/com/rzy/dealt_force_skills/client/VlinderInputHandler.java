@@ -2,9 +2,11 @@ package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
 import com.rzy.dealt_force_skills.character.vlinder.VlinderToolAction;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientVlinderHudState;
 import com.rzy.dealt_force_skills.network.C2S_VlinderToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -30,14 +32,22 @@ public final class VlinderInputHandler {
     }
 
     public static void tick(Minecraft minecraft) {
-        if (minecraft.player == null || !ClientVlinderHudState.shouldRender()) {
+        boolean nativeCharacter = ClientVlinderHudState.shouldRender();
+        boolean active1Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.VLINDER_ID, SkillSlot.ACTIVE_1);
+        boolean active2Owned = nativeCharacter || ClientCommanderState.handlesSkill(
+                ModCharacters.VLINDER_ID, SkillSlot.ACTIVE_2);
+        if (minecraft.player == null || (!active1Owned && !active2Owned
+                && !ClientVlinderHudState.hasEquippedTool())) {
             resetActive1();
             resetCore();
             return;
         }
-        handleActive1Key();
-        handleActive2Key();
-        handleCoreKey();
+        handleActive1Key(active1Owned);
+        handleActive2Key(active2Owned);
+        if (nativeCharacter) {
+            handleCoreKey();
+        }
         if (ClientVlinderHudState.hasEquippedTool()) {
             releaseBlockedKey(minecraft.options.keyAttack);
             releaseBlockedKey(minecraft.options.keyUse);
@@ -94,8 +104,9 @@ public final class VlinderInputHandler {
         }
     }
 
-    private static void handleActive1Key() {
-        if (KeybindRegister.ACTIVE_SKILL_1 == null) {
+    private static void handleActive1Key(boolean active1Owned) {
+        if (!active1Owned || KeybindRegister.ACTIVE_SKILL_1 == null) {
+            resetActive1();
             return;
         }
         boolean down = KeybindRegister.ACTIVE_SKILL_1.isDown();
@@ -121,8 +132,8 @@ public final class VlinderInputHandler {
         resetActive1();
     }
 
-    private static void handleActive2Key() {
-        if (KeybindRegister.ACTIVE_SKILL_2 == null) {
+    private static void handleActive2Key(boolean active2Owned) {
+        if (!active2Owned || KeybindRegister.ACTIVE_SKILL_2 == null) {
             return;
         }
         while (KeybindRegister.ACTIVE_SKILL_2.consumeClick()) {

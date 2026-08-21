@@ -13,7 +13,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -27,7 +26,7 @@ public final class GenericSkillHudOverlay {
 
     @SubscribeEvent
     public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        if (!VanillaGuiOverlay.HOTBAR.id().equals(event.getOverlay().id())) {
+        if (!SkillHudRenderCompat.shouldRender(event)) {
             return;
         }
 
@@ -107,7 +106,8 @@ public final class GenericSkillHudOverlay {
     }
 
     private static boolean hasDedicatedHud(String selectedId) {
-        return ModCharacters.SINEVA_ID.equals(selectedId)
+        return ModCharacters.COMMANDER_ID.equals(selectedId)
+                || ModCharacters.SINEVA_ID.equals(selectedId)
                 || ModCharacters.ULURU_ID.equals(selectedId)
                 || ModCharacters.D_WOLF_ID.equals(selectedId)
                 || ModCharacters.GIZMO_ID.equals(selectedId)

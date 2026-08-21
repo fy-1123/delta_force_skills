@@ -1,5 +1,6 @@
 package com.rzy.dealt_force_skills.item;
 
+import com.rzy.dealt_force_skills.effect.ModItemEffectHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -23,7 +24,9 @@ public class RepairKitItem extends QualityTooltipItem {
     private static volatile int REPAIR_INTERVAL_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("REPAIR_INTERVAL_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("items.repair_kit_item.repair_interval_ticks", 20));
     private static volatile int BASE_COST = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BASE_COST", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("items.repair_kit_item.base_cost", 100));
     private static volatile int BASE_REPAIR = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BASE_REPAIR", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("items.repair_kit_item.base_repair", 100));
-    private static final String TAG_USE_START_TICK = "DfsRepairUseStartTick";
+    private static final String TAG_USE_PROGRESS = "DfsRepairUseProgress";
+    private static final String TAG_LAST_PROGRESS_TICK = "DfsRepairLastProgressTick";
+    private static final String TAG_NEXT_REPAIR_PROGRESS = "DfsRepairNextProgress";
 
     private final EquipmentSlot targetSlot;
     private final int windupTicks;
@@ -67,7 +70,10 @@ public class RepairKitItem extends QualityTooltipItem {
         }
         player.startUsingItem(hand);
         if (!level.isClientSide) {
-            stack.getOrCreateTag().putLong(TAG_USE_START_TICK, level.getGameTime());
+            CompoundTag tag = stack.getOrCreateTag();
+            tag.putDouble(TAG_USE_PROGRESS, 0.0D);
+            tag.putLong(TAG_LAST_PROGRESS_TICK, level.getGameTime());
+            tag.putInt(TAG_NEXT_REPAIR_PROGRESS, Math.max(0, windupTicks));
             level.playSound(null, player.blockPosition(), startSound.get(), SoundSource.PLAYERS, 0.75F, 1.0F);
             player.displayClientMessage(Component.translatable(startMessageKey), true);
         }
@@ -79,13 +85,19 @@ public class RepairKitItem extends QualityTooltipItem {
         if (level.isClientSide || !(entity instanceof ServerPlayer player)) {
             return;
         }
-        int elapsed = elapsedUseTicks(level, stack, remainingUseDuration);
-        if (elapsed < windupTicks || (elapsed - windupTicks) % REPAIR_INTERVAL_TICKS != 0) {
+        int elapsed = advanceUseProgress(level, entity, stack);
+        CompoundTag tag = stack.getOrCreateTag();
+        int nextRepairProgress = tag.contains(TAG_NEXT_REPAIR_PROGRESS)
+                ? tag.getInt(TAG_NEXT_REPAIR_PROGRESS)
+                : Math.max(0, windupTicks);
+        if (elapsed < nextRepairProgress) {
             return;
         }
         if (!repairOnePulse(player, stack)) {
             player.stopUsingItem();
+            return;
         }
+        tag.putInt(TAG_NEXT_REPAIR_PROGRESS, nextRepairProgress + Math.max(1, REPAIR_INTERVAL_TICKS));
     }
 
     @Override
@@ -96,20 +108,24 @@ public class RepairKitItem extends QualityTooltipItem {
         }
     }
 
-    private int elapsedUseTicks(Level level, ItemStack stack, int remainingUseDuration) {
+    private int advanceUseProgress(Level level, LivingEntity entity, ItemStack stack) {
         CompoundTag tag = stack.getOrCreateTag();
-        if (!tag.contains(TAG_USE_START_TICK)) {
-            tag.putLong(TAG_USE_START_TICK, level.getGameTime());
-            return Math.max(0, USE_DURATION - Math.max(0, remainingUseDuration));
-        }
-        long elapsed = level.getGameTime() - tag.getLong(TAG_USE_START_TICK);
-        return (int) Math.max(0L, Math.min(Integer.MAX_VALUE, elapsed));
+        long now = level.getGameTime();
+        long last = tag.contains(TAG_LAST_PROGRESS_TICK) ? tag.getLong(TAG_LAST_PROGRESS_TICK) : now;
+        long elapsed = Math.max(0L, now - last);
+        double progress = Math.max(0.0D, tag.getDouble(TAG_USE_PROGRESS));
+        progress += elapsed * ModItemEffectHelper.medicineUseSpeedMultiplier(entity);
+        tag.putDouble(TAG_USE_PROGRESS, progress);
+        tag.putLong(TAG_LAST_PROGRESS_TICK, now);
+        return (int) Math.min(Integer.MAX_VALUE, Math.floor(progress));
     }
 
     private void clearUseStart(ItemStack stack) {
         CompoundTag tag = stack.getTag();
         if (tag != null) {
-            tag.remove(TAG_USE_START_TICK);
+            tag.remove(TAG_USE_PROGRESS);
+            tag.remove(TAG_LAST_PROGRESS_TICK);
+            tag.remove(TAG_NEXT_REPAIR_PROGRESS);
         }
     }
 

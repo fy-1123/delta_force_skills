@@ -73,6 +73,14 @@ public final class DealtForceShopConfig {
         return value instanceof Number number ? Math.max(0, number.intValue()) : Math.max(0, defaultValue);
     }
 
+    public static synchronized void setIntValue(String path, int value) {
+        CommentedFileConfig current = config();
+        current.set(path, Math.max(0, value));
+        ensureComment(current, path, value);
+        current.save();
+        dirty = false;
+    }
+
     public static double doubleValue(String path, double defaultValue) {
         Object value = value(path, defaultValue);
         return value instanceof Number number && Double.isFinite(number.doubleValue())

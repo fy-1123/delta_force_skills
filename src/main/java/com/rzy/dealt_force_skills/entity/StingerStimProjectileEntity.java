@@ -2,6 +2,8 @@ package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.character.stinger.StingerStateManager;
 import com.rzy.dealt_force_skills.character.stinger.StingerStimMode;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
@@ -153,6 +155,10 @@ public class StingerStimProjectileEntity extends Projectile implements ItemSuppl
         }
 
         LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
+        if (mode == StingerStimMode.SUPPRESS && !TargetingUtil.isHostileLivingFor(owner, target)) {
+            discard();
+            return;
+        }
         if (owner instanceof ServerPlayer ownerPlayer) {
             if (mode == StingerStimMode.HEAL && !DealtTeamManager.isSelfOrTeammate(ownerPlayer, target)) {
                 discard();
@@ -163,12 +169,14 @@ public class StingerStimProjectileEntity extends Projectile implements ItemSuppl
                 return;
             }
         }
+        boolean mixedAmmo = owner instanceof ServerPlayer ownerPlayer
+                && CommanderStateManager.hasBranchUpgrade(ownerPlayer, CommanderBranchUpgrade.STINGER_MIXED_AMMO);
         if (mode == StingerStimMode.HEAL) {
-            StingerStateManager.applyStimHeal(target);
+            StingerStateManager.applyStimHeal(target, mixedAmmo);
         } else {
             target.invulnerableTime = 0;
             SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(serverLevel, this, owner), owner, com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("summons.stinger_stim_projectile_entity.skill_hurt.0.damage", 20.0f));
-            StingerStateManager.applyStimSuppression(target);
+            StingerStateManager.applyStimSuppression(target, mixedAmmo);
         }
         RangedSoundHelper.playThrottled(serverLevel, target.position(), ModSounds.STINGER_STIM_HIT.get(),
                 SoundSource.PLAYERS, 0.75f, mode == StingerStimMode.HEAL ? 1.18f : 0.82f, 14.0D, 4, 3.0D);

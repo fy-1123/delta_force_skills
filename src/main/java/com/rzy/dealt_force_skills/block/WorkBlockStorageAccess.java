@@ -2,6 +2,7 @@ package com.rzy.dealt_force_skills.block;
 
 import com.rzy.dealt_force_skills.compat.HvkLogisticsBridge;
 import com.rzy.dealt_force_skills.event.CommonEvents;
+import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
@@ -34,6 +35,9 @@ public final class WorkBlockStorageAccess {
         if (player.level() == level
                 && player.distanceToSqr(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D)
                 <= OWNER_INVENTORY_RANGE * OWNER_INVENTORY_RANGE) {
+            for (SpecialOperationsBaseManager.WarehouseEntry entry : SpecialOperationsBaseManager.warehouseEntries(player)) {
+                sources.add(new WarehouseSourceSlot(player, entry.slot(), entry.stack()));
+            }
             Inventory inventory = player.getInventory();
             for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
                 sources.add(new PlayerSourceSlot(inventory, slot));
@@ -94,6 +98,30 @@ public final class WorkBlockStorageAccess {
         return consumeMatching(sources, stack -> stack.getItem() == item, count);
     }
 
+    public static int availableItemWithRedemption(ServerPlayer player, List<SourceSlot> sources,
+                                                  Item item, int requested) {
+        int safeRequested = Math.max(0, requested);
+        int available = Math.min(safeRequested, countItem(sources, item));
+        int missing = safeRequested - available;
+        return available + SpecialOperationsBaseManager.maxRedeemableCountMatching(
+                player, stack -> stack.getItem() == item, missing);
+    }
+
+    /** Consumes available sources, then buys the exact sold variant for the remaining amount. */
+    public static int consumeItemWithRedemption(ServerPlayer player, List<SourceSlot> sources, Item item, int count) {
+        int requested = Math.max(0, count);
+        if (availableItemWithRedemption(player, sources, item, requested) < requested) {
+            return 0;
+        }
+        int consumed = consumeItem(sources, item, requested);
+        if (player == null || consumed >= requested) {
+            return consumed;
+        }
+        ItemStack purchased = SpecialOperationsBaseManager.redeemCheapestMatching(player,
+                stack -> stack.getItem() == item, requested - consumed);
+        return consumed + (purchased.isEmpty() ? 0 : purchased.getCount());
+    }
+
     public static int consumeMatching(List<SourceSlot> sources, Predicate<ItemStack> predicate, int count) {
         int remaining = Math.max(0, count);
         for (SourceSlot source : sources) {
@@ -103,6 +131,38 @@ public final class WorkBlockStorageAccess {
             remaining -= source.extract(predicate, remaining);
         }
         return count - remaining;
+    }
+
+    public static int availableMatchingWithRedemption(ServerPlayer player, List<SourceSlot> sources,
+                                                       Predicate<ItemStack> predicate, ItemStack wanted,
+                                                       int requested) {
+        int safeRequested = Math.max(0, requested);
+        int available = Math.min(safeRequested, countMatching(sources, predicate));
+        return available + SpecialOperationsBaseManager.maxRedeemableCountMatching(
+                player, predicate, safeRequested - available);
+    }
+
+    public static int consumeMatchingWithRedemption(ServerPlayer player, List<SourceSlot> sources,
+                                                     Predicate<ItemStack> predicate, ItemStack wanted, int count) {
+        int requested = Math.max(0, count);
+        if (availableMatchingWithRedemption(player, sources, predicate, wanted, requested) < requested) {
+            return 0;
+        }
+        int consumed = consumeMatching(sources, predicate, requested);
+        if (consumed >= requested) {
+            return consumed;
+        }
+        ItemStack purchased = SpecialOperationsBaseManager.redeemCheapestMatching(
+                player, predicate, requested - consumed);
+        return consumed + (purchased.isEmpty() ? 0 : purchased.getCount());
+    }
+
+    /** Returns the Havoc-coin shortfall cost after all physical sources, or -1 when unavailable. */
+    public static long redemptionCostForItem(ServerPlayer player, List<SourceSlot> sources,
+                                             Item item, int requested) {
+        int missing = Math.max(0, requested - countItem(sources, item));
+        return missing == 0 ? 0L : SpecialOperationsBaseManager.redemptionCostMatching(
+                player, stack -> stack.getItem() == item, missing);
     }
 
     public static void giveOrDrop(Player player, ItemStack stack) {
@@ -184,6 +244,36 @@ public final class WorkBlockStorageAccess {
                 return 0;
             }
             ItemStack extracted = handler.extractItem(slot, max, false);
+            return !extracted.isEmpty() && predicate.test(extracted) ? extracted.getCount() : 0;
+        }
+    }
+
+    private static final class WarehouseSourceSlot implements SourceSlot {
+        private final ServerPlayer owner;
+        private final int slot;
+
+        private WarehouseSourceSlot(ServerPlayer owner, int slot, ItemStack fallback) {
+            this.owner = owner;
+            this.slot = slot;
+        }
+
+        @Override
+        public ItemStack stack() {
+            for (SpecialOperationsBaseManager.WarehouseEntry entry : SpecialOperationsBaseManager.warehouseEntries(owner)) {
+                if (entry.slot() == slot) {
+                    return entry.stack();
+                }
+            }
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public int extract(Predicate<ItemStack> predicate, int max) {
+            ItemStack current = stack();
+            if (current.isEmpty() || !predicate.test(current)) {
+                return 0;
+            }
+            ItemStack extracted = SpecialOperationsBaseManager.extractWarehouse(owner, slot, max);
             return !extracted.isEmpty() && predicate.test(extracted) ? extracted.getCount() : 0;
         }
     }

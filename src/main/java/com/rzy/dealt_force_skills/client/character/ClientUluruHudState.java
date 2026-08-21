@@ -115,7 +115,8 @@ public final class ClientUluruHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != UluruTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.ULURU_ID))
+                && equippedTool != UluruTool.NONE;
     }
 
     public static boolean coverPerpendicular() {
@@ -127,6 +128,7 @@ public final class ClientUluruHudState {
     }
 
     public static void setMissileAiming(boolean aiming) {
-        missileAiming = shouldRender() && equippedTool == UluruTool.MISSILE && aiming;
+        missileAiming = (shouldRender() || ClientCommanderState.inherits(ModCharacters.ULURU_ID))
+                && equippedTool == UluruTool.MISSILE && aiming;
     }
 }

@@ -4,6 +4,8 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.effect.NoxCrippledEffect;
 import com.rzy.dealt_force_skills.effect.NoxDelayedWoundEffect;
 import com.rzy.dealt_force_skills.entity.NoxDecoyEntity;
@@ -12,7 +14,6 @@ import com.rzy.dealt_force_skills.network.S2C_NoxRevealPosition;
 import com.rzy.dealt_force_skills.network.S2C_SyncNoxState;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModEntities;
-import com.rzy.dealt_force_skills.registry.ModGameRules;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillCooldownHelper;
 import com.rzy.dealt_force_skills.util.RangedSoundHelper;
@@ -28,6 +29,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -52,14 +54,14 @@ public final class NoxStateManager {
     public static volatile int FLASH_RECHARGE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("FLASH_RECHARGE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.flash_recharge_ticks", 900));
     public static volatile int CORE_PREP_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CORE_PREP_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.core_prep_ticks", 12));
     public static volatile int CORE_DURATION_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CORE_DURATION_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.core_duration_ticks", 700));
-    public static volatile int CORE_COOLDOWN_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CORE_COOLDOWN_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.core_cooldown_ticks", 1500));
+    public static volatile int CORE_COOLDOWN_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CORE_COOLDOWN_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.core_cooldown_ticks", 90 * 20));
     public static volatile int DELAYED_WOUND_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("DELAYED_WOUND_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.delayed_wound_ticks", 200));
     public static volatile int CRIPPLED_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CRIPPLED_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.crippled_ticks", 160));
     public static volatile int DECOY_INTERVAL_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("DECOY_INTERVAL_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.decoy_interval_ticks", 100));
     public static volatile int MAX_ACTIVE_DECOYS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("MAX_ACTIVE_DECOYS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.max_active_decoys", 2));
     public static final int STEALTH_PARTICLE_INTERVAL_TICKS = 10;
     public static volatile double STEALTH_WARNING_RANGE = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("STEALTH_WARNING_RANGE", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("characters.nox.nox_state_manager.stealth_warning_range", 15.0));
-    private static volatile float DECOY_DAMAGE_MULTIPLIER = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("DECOY_DAMAGE_MULTIPLIER", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("characters.nox.nox_state_manager.decoy_damage_multiplier", 0.5F));
+    private static volatile float DECOY_DAMAGE_MULTIPLIER = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("DECOY_DAMAGE_MULTIPLIER", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("characters.nox.nox_state_manager.decoy_damage_multiplier", 2.0F));
     public static final UUID STEALTH_SPEED_UUID = UUID.fromString("2b5d4b8a-5e6b-4b2e-8fe5-6e94337104ea");
     public static final String DECOY_TAG = DealtForceSkillsMod.MODID + ".nox_decoy";
     public static final String DECOY_OWNER = "NoxOwner";
@@ -74,6 +76,7 @@ public final class NoxStateManager {
     private static final String CORE_PREP_UNTIL = "CorePrepUntil";
     private static final String CORE_ACTIVE_UNTIL = "CoreActiveUntil";
     private static final String CORE_COOLDOWN_UNTIL = "CoreCooldownUntil";
+    private static final String STEALTH_DAMAGE_REDUCED_UNTIL = "StealthDamageReducedUntil";
     private static final String NEXT_DECOY_TICK = "NextDecoyTick";
     private static final String EQUIPPED_TOOL = "EquippedTool";
     private static final String STEALTH_SOUND_ACTIVE = "StealthSoundActive";
@@ -86,7 +89,9 @@ public final class NoxStateManager {
 
     public static boolean isNox(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.NOX_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.NOX_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.NOX_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -101,11 +106,12 @@ public final class NoxStateManager {
 
         tag.putBoolean(INITIALIZED, true);
         tag.putLong(ROTOR_COOLDOWN_UNTIL, 0L);
-        tag.putInt(FLASH_CHARGES, FLASH_MAX_CHARGES);
+        tag.putInt(FLASH_CHARGES, flashCapacity(player));
         tag.putLong(FLASH_NEXT_RECHARGE, 0L);
         tag.putLong(CORE_PREP_UNTIL, 0L);
         tag.putLong(CORE_ACTIVE_UNTIL, 0L);
         tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
+        tag.putLong(STEALTH_DAMAGE_REDUCED_UNTIL, 0L);
         tag.putLong(NEXT_DECOY_TICK, 0L);
         tag.putInt(EQUIPPED_TOOL, NoxTool.NONE.ordinal());
         tag.putBoolean(STEALTH_SOUND_ACTIVE, false);
@@ -153,11 +159,11 @@ public final class NoxStateManager {
     }
 
     public static int flashCharges(Player player) {
-        return Math.min(FLASH_MAX_CHARGES, data(player).getInt(FLASH_CHARGES));
+        return Math.min(flashCapacity(player), data(player).getInt(FLASH_CHARGES));
     }
 
     public static int flashRechargeRemainingTicks(Player player) {
-        if (flashCharges(player) >= FLASH_MAX_CHARGES) {
+        if (flashCharges(player) >= flashCapacity(player)) {
             return 0;
         }
         return remainingTicks(player, FLASH_NEXT_RECHARGE);
@@ -170,7 +176,7 @@ public final class NoxStateManager {
             return false;
         }
         tag.putInt(FLASH_CHARGES, charges - 1);
-        if (charges == FLASH_MAX_CHARGES) {
+        if (charges == flashCapacity(player)) {
             tag.putLong(FLASH_NEXT_RECHARGE,
                     SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), FLASH_RECHARGE_TICKS));
         }
@@ -200,6 +206,10 @@ public final class NoxStateManager {
     }
 
     public static boolean startStealthPreparation(ServerPlayer player) {
+        if (isStealthed(player)) {
+            endStealth(player, true);
+            return true;
+        }
         if (!coreReady(player)) {
             SkillCooldownHelper.notifyCooldown(player,
                     Component.translatable("message.dealt_force_skills.nox.stealth_cooldown"));
@@ -237,10 +247,21 @@ public final class NoxStateManager {
         if (owner == target || !TargetingUtil.isHostileLivingFor(owner, target)) {
             return;
         }
+        int duration = CommanderStateManager.skillDuration(owner, DELAYED_WOUND_TICKS);
+        int amplifier = CommanderStateManager.skillEffectAmplifier(owner,
+                com.rzy.dealt_force_skills.config.DealtForceConfig.intValue(
+                        "characters.nox.nox_state_manager.effect.nox_delayed_wound.0.amplifier", 0));
         boolean applied = target.addEffect(new MobEffectInstance(ModEffects.NOX_DELAYED_WOUND.get(),
-                DELAYED_WOUND_TICKS, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.effect.nox_delayed_wound.0.amplifier", 0), false, true, true), owner);
+                duration, amplifier, false, true, true), owner);
         if (applied || target.hasEffect(ModEffects.NOX_DELAYED_WOUND.get())) {
             NoxDelayedWoundEffect.resetCaps(target, healthCap);
+            if (CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.NOX_DEEP_WOUND)) {
+                target.getActiveEffects().stream()
+                        .filter(instance -> instance.getEffect().getCategory() == MobEffectCategory.BENEFICIAL)
+                        .map(MobEffectInstance::getEffect)
+                        .toList()
+                        .forEach(target::removeEffect);
+            }
         } else {
             NoxDelayedWoundEffect.clearCaps(target);
         }
@@ -251,9 +272,16 @@ public final class NoxStateManager {
         if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)) {
             return;
         }
+        int duration = CRIPPLED_TICKS;
+        int amplifier = com.rzy.dealt_force_skills.config.DealtForceConfig.intValue(
+                "characters.nox.nox_state_manager.effect.nox_crippled.1.amplifier", 0);
+        if (owner instanceof Player player) {
+            duration = CommanderStateManager.skillDuration(player, duration);
+            amplifier = CommanderStateManager.skillEffectAmplifier(player, amplifier);
+        }
         NoxCrippledEffect.setOwner(target, owner);
         target.addEffect(new MobEffectInstance(ModEffects.NOX_CRIPPLED.get(),
-                CRIPPLED_TICKS, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.effect.nox_crippled.1.amplifier", 0), false, true, true), owner);
+                duration, amplifier, false, true, true), owner);
     }
 
     public static void tryApplyDelayedWound(DamageSource source, LivingEntity target, float amount) {
@@ -273,6 +301,13 @@ public final class NoxStateManager {
         CompoundTag tag = entity.getPersistentData();
         if (!tag.getBoolean(DECOY_TAG)) {
             return false;
+        }
+
+        if (entity.level() instanceof ServerLevel level && tag.hasUUID(DECOY_OWNER)
+                && level.getEntity(tag.getUUID(DECOY_OWNER)) instanceof ServerPlayer owner
+                && CommanderStateManager.hasBranchUpgrade(owner, CommanderBranchUpgrade.NOX_SILENT_STEALTH)) {
+            recordDecoyLook(entity, source);
+            return true;
         }
 
         recordDecoyLook(entity, source);
@@ -352,9 +387,7 @@ public final class NoxStateManager {
         }
         if (stealthRemainingTicks(player) > 0) {
             applyStealthRuntime(player);
-            if (ModGameRules.isNoxInvisibilityEnabled(player)) {
-                spawnStealthParticles(player);
-            }
+            spawnStealthParticles(player);
         }
         syncToClient(player);
     }
@@ -367,7 +400,7 @@ public final class NoxStateManager {
         NetworkHandler.sendToPlayer(new S2C_SyncNoxState(
                 rotorCooldownRemainingTicks(player),
                 flashCharges(player),
-                FLASH_MAX_CHARGES,
+                flashCapacity(player),
                 flashRechargeRemainingTicks(player),
                 coreCooldownRemainingTicks(player),
                 corePrepRemainingTicks(player),
@@ -389,14 +422,9 @@ public final class NoxStateManager {
         long activeUntil = now + CORE_DURATION_TICKS;
         tag.putLong(CORE_PREP_UNTIL, 0L);
         tag.putLong(CORE_ACTIVE_UNTIL, activeUntil);
-        tag.putLong(CORE_COOLDOWN_UNTIL, activeUntil + SkillCooldownHelper.ticks(player, CORE_COOLDOWN_TICKS));
-        boolean invisibilityEnabled = ModGameRules.isNoxInvisibilityEnabled(player);
-        tag.putLong(NEXT_DECOY_TICK, invisibilityEnabled ? now + 1L : 0L);
-        if (invisibilityEnabled) {
-            STEALTH_WARNED_PLAYERS.put(player.getUUID(), new HashSet<>());
-        } else {
-            STEALTH_WARNED_PLAYERS.remove(player.getUUID());
-        }
+        tag.putLong(CORE_COOLDOWN_UNTIL, 0L);
+        tag.putLong(NEXT_DECOY_TICK, now + 1L);
+        STEALTH_WARNED_PLAYERS.put(player.getUUID(), new HashSet<>());
         applyStealthRuntime(player);
         startStealthSound(player);
         player.displayClientMessage(Component.translatable("message.dealt_force_skills.nox.stealth_active"), true);
@@ -415,21 +443,26 @@ public final class NoxStateManager {
         }
 
         applyStealthRuntime(player);
-        if (ModGameRules.isNoxInvisibilityEnabled(player)) {
-            clearMobTargets(player);
-            warnNearbyPlayers(player, now);
-            if (now % STEALTH_PARTICLE_INTERVAL_TICKS == 0L) {
-                spawnStealthParticles(player);
-            }
-            if (now >= data(player).getLong(NEXT_DECOY_TICK)) {
-                spawnDecoy(player);
-                data(player).putLong(NEXT_DECOY_TICK, now + DECOY_INTERVAL_TICKS);
-            }
+        clearMobTargets(player);
+        warnNearbyPlayers(player, now);
+        if (now % STEALTH_PARTICLE_INTERVAL_TICKS == 0L) {
+            spawnStealthParticles(player);
+        }
+        if (now >= data(player).getLong(NEXT_DECOY_TICK)) {
+            spawnDecoy(player);
+            data(player).putLong(NEXT_DECOY_TICK, now + DECOY_INTERVAL_TICKS);
         }
     }
 
     private static void endStealth(ServerPlayer player, boolean notify) {
         CompoundTag tag = data(player);
+        boolean wasActive = tag.getLong(CORE_ACTIVE_UNTIL) > 0L;
+        if (wasActive) {
+            tag.putLong(CORE_COOLDOWN_UNTIL,
+                    SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), CORE_COOLDOWN_TICKS));
+            tag.putLong(STEALTH_DAMAGE_REDUCED_UNTIL,
+                    SkillCooldownHelper.until(player, SkillCooldownHelper.now(player), 20));
+        }
         tag.putLong(CORE_PREP_UNTIL, 0L);
         tag.putLong(CORE_ACTIVE_UNTIL, 0L);
         tag.putLong(NEXT_DECOY_TICK, 0L);
@@ -451,16 +484,8 @@ public final class NoxStateManager {
             ));
         }
         player.setSilent(true);
-        if (ModGameRules.isNoxInvisibilityEnabled(player)) {
-            player.setInvisible(true);
-            player.addEffect(new MobEffectInstance(ModEffects.NOX_STEALTH.get(), com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.effect.nox_stealth.2.duration_ticks", 40), com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.effect.nox_stealth.2.amplifier", 0), false, false, false));
-        } else {
-            player.setInvisible(false);
-            player.removeEffect(ModEffects.NOX_STEALTH.get());
-            data(player).putLong(NEXT_DECOY_TICK, 0L);
-            removeStealthDecoys(player);
-            STEALTH_WARNED_PLAYERS.remove(player.getUUID());
-        }
+        player.setInvisible(true);
+        player.addEffect(new MobEffectInstance(ModEffects.NOX_STEALTH.get(), com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.effect.nox_stealth.2.duration_ticks", 40), com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.nox.nox_state_manager.effect.nox_stealth.2.amplifier", 0), false, false, false));
     }
 
     private static void spawnStealthParticles(ServerPlayer player) {
@@ -657,7 +682,8 @@ public final class NoxStateManager {
     private static void rechargeFlash(ServerPlayer player, long now) {
         CompoundTag tag = data(player);
         int charges = flashCharges(player);
-        if (charges >= FLASH_MAX_CHARGES) {
+        int capacity = flashCapacity(player);
+        if (charges >= capacity) {
             tag.putLong(FLASH_NEXT_RECHARGE, 0L);
             return;
         }
@@ -667,12 +693,16 @@ public final class NoxStateManager {
             tag.putLong(FLASH_NEXT_RECHARGE, SkillCooldownHelper.until(player, now, FLASH_RECHARGE_TICKS));
             return;
         }
-        while (charges < FLASH_MAX_CHARGES && now >= next) {
+        while (charges < capacity && now >= next) {
             charges++;
             next += SkillCooldownHelper.ticks(player, FLASH_RECHARGE_TICKS);
         }
         tag.putInt(FLASH_CHARGES, charges);
-        tag.putLong(FLASH_NEXT_RECHARGE, charges >= FLASH_MAX_CHARGES ? 0L : next);
+        tag.putLong(FLASH_NEXT_RECHARGE, charges >= capacity ? 0L : next);
+    }
+
+    private static int flashCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, FLASH_MAX_CHARGES);
     }
 
     private static Optional<ServerPlayer> playerFromSource(DamageSource source) {
@@ -686,6 +716,48 @@ public final class NoxStateManager {
             return Optional.of(player);
         }
         return Optional.empty();
+    }
+
+    public static void endStealthEarly(ServerPlayer player) {
+        if (isStealthed(player)
+                && !CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NOX_SILENT_STEALTH)) {
+            endStealth(player, true);
+        }
+    }
+
+    public static boolean preservesStealth(ServerPlayer player) {
+        return CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NOX_SILENT_STEALTH);
+    }
+
+    public static float handleOutgoingDamage(DamageSource source, float amount) {
+        if (amount <= 0.0F) {
+            return amount;
+        }
+        ServerPlayer attacker = playerFromSource(source).orElse(null);
+        if (attacker == null || !isNox(attacker)) {
+            return amount;
+        }
+        if (CommanderStateManager.hasBranchUpgrade(attacker, CommanderBranchUpgrade.NOX_SILENT_STEALTH)) {
+            return amount;
+        }
+        boolean reduced = isStealthed(attacker)
+                || data(attacker).getLong(STEALTH_DAMAGE_REDUCED_UNTIL) > SkillCooldownHelper.now(attacker);
+        if (isStealthed(attacker)) {
+            endStealth(attacker, true);
+        }
+        return reduced ? amount * 0.5F : amount;
+    }
+
+    public static float capDeepWoundDamage(DamageSource source, LivingEntity target, float amount) {
+        if (amount <= 0.0F || target == null) {
+            return amount;
+        }
+        ServerPlayer attacker = playerFromSource(source).orElse(null);
+        if (attacker == null
+                || !CommanderStateManager.hasBranchUpgrade(attacker, CommanderBranchUpgrade.NOX_DEEP_WOUND)) {
+            return amount;
+        }
+        return Math.min(amount, target.getMaxHealth() * 0.30F);
     }
 
     private static int remainingTicks(Player player, String key) {

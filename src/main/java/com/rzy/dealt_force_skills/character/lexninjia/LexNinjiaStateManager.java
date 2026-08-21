@@ -9,6 +9,8 @@ import com.rzy.dealt_force_skills.network.S2C_SyncLexNinjiaState;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModGameRules;
 import com.rzy.dealt_force_skills.registry.ModParticles;
+import com.rzy.dealt_force_skills.registry.ModEntities;
+import com.rzy.dealt_force_skills.entity.VisualSmokeCloudEntity;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import com.rzy.dealt_force_skills.skill.SkillAnimationScheduler;
 import com.rzy.dealt_force_skills.skill.SkillCooldownHelper;
@@ -47,6 +49,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BonemealableBlock;
 import net.minecraft.world.level.block.Blocks;
@@ -139,6 +142,14 @@ public final class LexNinjiaStateManager {
     private static final float RETURN_HAND_HEAL_FRACTION_PER_SECOND = artFloatValue(
             "return_hand", "heal_max_health_fraction_per_second", 0.04F, "return_hand_heal_fraction");
     private static final int SHIELD_GUARD_DURATION_TICKS = artIntValue("shield_guard", "duration_ticks", 30 * 20);
+    private static final String HAND_GUARD_SHIELD_TAG = "dealt_force_skills.lex_ninjia.hand_guard_shield";
+    private static final float SPIN_ION_CHARGE_FRACTION_PER_SECOND = 0.05F;
+    private static final float SPIN_ION_BASE_RANGE = 4.0F;
+    private static final float SPIN_ION_RANGE_PER_LEICRA = 0.05F;
+    private static final float SPIN_ION_BASE_WIDTH = 2.0F;
+    private static final float SPIN_ION_WIDTH_PER_LEICRA = 0.01F;
+    private static final double MAX_FRONT_AREA_QUERY_RANGE = 128.0D;
+    private static final int SPIN_ION_FEEDBACK_INTERVAL_TICKS = 10;
     private static final int SAND_WALL_DURATION_TICKS = artIntValue("sand_wall", "duration_ticks", 30 * 20);
     private static final int SAND_WALL_FORWARD_DISTANCE = artIntValue("sand_wall", "forward_distance", 4);
     private static final int SAND_WALL_HALF_WIDTH = artIntValue("sand_wall", "half_width", 2);
@@ -321,6 +332,7 @@ public final class LexNinjiaStateManager {
             SkillModelVisualSync.play(player, SkillModelVisual.LEX_HAM_PRESENCE, 14);
         }
         state.prepared = matchPrepared(player, state, now).orElse(null);
+        tickSpinIonCharge(player, state, now);
         syncToClient(player);
     }
 
@@ -420,7 +432,7 @@ public final class LexNinjiaStateManager {
                 state.prepared = matchPrepared(player, state, now).orElse(null);
             }
             case RIGHT_PRESS -> {
-                state.rightPressTick = now;
+                state.rightPressTick = Math.max(1L, now);
                 state.rightChargeSpent = 0.0F;
             }
             case RIGHT_RELEASE -> handleRightRelease(player, state, now);
@@ -459,6 +471,37 @@ public final class LexNinjiaStateManager {
         if (attackerEntity instanceof LivingEntity attacker) {
             handleNoRetaliation(attacker, target, event);
         }
+    }
+
+    public static boolean handleHandGuardAttack(ServerPlayer player, DamageSource source) {
+        RuntimeState state = RUNTIME.get(player.getUUID());
+        long now = SkillCooldownHelper.now(player);
+        if (state == null || state.shieldUntil <= now || !player.isUsingItem()
+                || !isHandGuardShield(player.getUseItem())) {
+            return false;
+        }
+        Entity attackerEntity = source.getEntity();
+        if (!(attackerEntity instanceof LivingEntity attacker)
+                || !(attacker.getMainHandItem().getItem() instanceof AxeItem)) {
+            return false;
+        }
+        Vec3 sourcePosition = source.getSourcePosition();
+        if (sourcePosition == null) {
+            return false;
+        }
+        Vec3 sourceToPlayer = sourcePosition.vectorTo(player.position()).normalize();
+        Vec3 horizontalIncoming = new Vec3(sourceToPlayer.x, 0.0D, sourceToPlayer.z);
+        if (horizontalIncoming.lengthSqr() < 0.0001D
+                || horizontalIncoming.normalize().dot(player.getViewVector(1.0F)) >= 0.0D) {
+            return false;
+        }
+        player.getCooldowns().removeCooldown(Items.SHIELD);
+        return true;
+    }
+
+    public static boolean shouldPreventHandGuardToss(ServerPlayer player, ItemStack stack) {
+        RuntimeState state = RUNTIME.get(player.getUUID());
+        return state != null && state.shieldUntil > SkillCooldownHelper.now(player) && isHandGuardShield(stack);
     }
 
     public static void handleFoodFinished(LivingEntity entity, ItemStack stack) {
@@ -905,7 +948,10 @@ public final class LexNinjiaStateManager {
         if (state.noRetaliationUntil > 0L && state.noRetaliationUntil <= now) {
             state.noRetaliationUntil = 0L;
         }
-        if (state.shieldUntil > 0L && state.shieldUntil <= now) {
+        if (state.shieldUntil > now) {
+            enforceHandGuardShield(player);
+            player.getCooldowns().removeCooldown(Items.SHIELD);
+        } else if (state.shieldUntil > 0L) {
             restoreShield(player, state);
         }
         tickWallBlocks(player.serverLevel(), state, now);
@@ -949,10 +995,46 @@ public final class LexNinjiaStateManager {
 
     private static void handleRightRelease(ServerPlayer player, RuntimeState state, long now) {
         state.prepared = matchPrepared(player, state, now).orElse(null);
+        state.rightPressTick = 0L;
         if (state.prepared != null && state.prepared.releaseTrigger() == LexNinjiaReleaseTrigger.RIGHT_RELEASE) {
+            boolean releasingSpinIon = state.prepared == LexNinjiaArt.SPIN_ION_HAND;
             releasePrepared(player, state, state.prepared, null, now);
+            if (!releasingSpinIon) {
+                state.rightChargeSpent = 0.0F;
+            }
+        } else {
+            state.rightChargeSpent = 0.0F;
         }
         player.getAttribute(Attributes.MOVEMENT_SPEED).removeModifier(SPIN_SLOW_UUID);
+    }
+
+    private static void tickSpinIonCharge(ServerPlayer player, RuntimeState state, long now) {
+        if (state.rightPressTick <= 0L || state.prepared != LexNinjiaArt.SPIN_ION_HAND) {
+            return;
+        }
+        float remainingUsefulCharge = maxUsefulSpinIonCharge() - state.rightChargeSpent;
+        float available = leicra(player);
+        if (remainingUsefulCharge > 0.0F && available > 0.0F) {
+            float requested = maxLeicra(player) * SPIN_ION_CHARGE_FRACTION_PER_SECOND / 20.0F;
+            if (!Float.isFinite(requested) || requested <= 0.0F) {
+                requested = Math.min(available, remainingUsefulCharge);
+            }
+            float spent = Math.min(Math.min(requested, available), remainingUsefulCharge);
+            if (spent > 0.0F) {
+                setLeicra(player, available - spent);
+                state.rightChargeSpent += spent;
+            }
+        }
+        if (now % SPIN_ION_FEEDBACK_INTERVAL_TICKS == 0L) {
+            float distance = spinIonRange(state.rightChargeSpent);
+            player.displayClientMessage(Component.translatable(
+                    "message.dealt_force_skills.lex_ninjia.spin_ion_charging",
+                    Math.round(state.rightChargeSpent * 10.0F) / 10.0F,
+                    Math.round(distance * 10.0F) / 10.0F), true);
+            float progress = Mth.clamp(state.rightChargeSpent / maxUsefulSpinIonCharge(), 0.0F, 1.0F);
+            RangedSoundHelper.playFollowingPlayer(player, SoundEvents.EXPERIENCE_ORB_PICKUP,
+                    SoundSource.PLAYERS, 0.35F, 0.7F + progress * 0.8F, 24.0D);
+        }
     }
 
     private static void addInput(ServerPlayer player, RuntimeState state, LexNinjiaComboInput input, long now) {
@@ -1631,8 +1713,9 @@ public final class LexNinjiaStateManager {
 
     private static void shadowSmoke(ServerPlayer player) {
         ServerLevel level = player.serverLevel();
-        level.sendParticles(ModParticles.D_WOLF_LARGE_SMOKE.get(),
-                player.getX(), player.getY() + 1.0D, player.getZ(), 8, 4.0D, 1.5D, 4.0D, 0.03D);
+        VisualSmokeCloudEntity smoke = new VisualSmokeCloudEntity(ModEntities.VISUAL_SMOKE_CLOUD.get(), level);
+        smoke.setPos(player.getX(), player.getY(), player.getZ());
+        level.addFreshEntity(smoke);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class,
                 player.getBoundingBox().inflate(6.0D), entity -> entity != player && entity.isAlive())) {
             if (!canApplyControl(player, target)) {
@@ -1670,13 +1753,27 @@ public final class LexNinjiaStateManager {
     }
 
     private static void releaseSpinIon(ServerPlayer player, RuntimeState state) {
-        long held = Math.max(0L, SkillCooldownHelper.now(player) - state.rightPressTick);
-        float spent = Math.max(0.0F, state.rightChargeSpent + held * maxLeicra(player) * 0.05F / 20.0F);
-        float distance = 4.0F + spent / 10.0F * 0.5F;
-        float width = 2.0F + spent / 100.0F;
+        float spent = Float.isFinite(state.rightChargeSpent)
+                ? Mth.clamp(state.rightChargeSpent, 0.0F, maxUsefulSpinIonCharge())
+                : 0.0F;
+        state.rightPressTick = 0L;
+        state.rightChargeSpent = 0.0F;
+        float distance = spinIonRange(spent);
+        float width = SPIN_ION_BASE_WIDTH + spent * SPIN_ION_WIDTH_PER_LEICRA;
         strikeFrontArea(player, distance, width, 2.0D, 6.0F + spent * 0.4F);
         Vec3 dash = player.getLookAngle().normalize().scale(Math.min(2.5D, distance * 0.1D));
         player.push(dash.x, 0.1D, dash.z);
+        RangedSoundHelper.playFollowingPlayer(player, SoundEvents.PLAYER_ATTACK_SWEEP,
+                SoundSource.PLAYERS, 1.0F, 0.8F, 32.0D);
+    }
+
+    private static float spinIonRange(float spent) {
+        return (float) Math.min(MAX_FRONT_AREA_QUERY_RANGE,
+                SPIN_ION_BASE_RANGE + Math.max(0.0F, spent) * SPIN_ION_RANGE_PER_LEICRA);
+    }
+
+    private static float maxUsefulSpinIonCharge() {
+        return (float) ((MAX_FRONT_AREA_QUERY_RANGE - SPIN_ION_BASE_RANGE) / SPIN_ION_RANGE_PER_LEICRA);
     }
 
     private static void pullLookTarget(ServerPlayer player) {
@@ -1723,14 +1820,69 @@ public final class LexNinjiaStateManager {
     private static void equipTemporaryShield(ServerPlayer player, RuntimeState state, long now) {
         if (state.shieldUntil > now) {
             state.shieldUntil = now + SHIELD_GUARD_DURATION_TICKS;
+            enforceHandGuardShield(player);
             return;
         }
-        state.savedOffhand = player.getOffhandItem().copy();
+        moveToInventoryOrDrop(player, player.getOffhandItem());
+        player.setItemInHand(InteractionHand.OFF_HAND, createHandGuardShield());
+        player.getCooldowns().removeCooldown(Items.SHIELD);
+        state.shieldUntil = now + SHIELD_GUARD_DURATION_TICKS;
+    }
+
+    private static ItemStack createHandGuardShield() {
         ItemStack shield = new ItemStack(Items.SHIELD);
         shield.setHoverName(Component.translatable("item.dealt_force_skills.lex_ninjia_guard_shield"));
         shield.getOrCreateTag().putBoolean("Unbreakable", true);
-        player.setItemInHand(InteractionHand.OFF_HAND, shield);
-        state.shieldUntil = now + SHIELD_GUARD_DURATION_TICKS;
+        shield.getOrCreateTag().putBoolean(HAND_GUARD_SHIELD_TAG, true);
+        return shield;
+    }
+
+    private static boolean isHandGuardShield(ItemStack stack) {
+        return !stack.isEmpty() && stack.is(Items.SHIELD) && stack.hasTag()
+                && stack.getTag().getBoolean(HAND_GUARD_SHIELD_TAG);
+    }
+
+    private static void enforceHandGuardShield(ServerPlayer player) {
+        ItemStack current = player.getOffhandItem();
+        if (isHandGuardShield(current)) {
+            removeHandGuardShieldsFromInventory(player);
+            return;
+        }
+        moveToInventoryOrDrop(player, current);
+        ItemStack bound = takeHandGuardShieldFromInventory(player);
+        player.setItemInHand(InteractionHand.OFF_HAND, bound.isEmpty() ? createHandGuardShield() : bound);
+    }
+
+    private static ItemStack takeHandGuardShieldFromInventory(ServerPlayer player) {
+        for (int slot = 0; slot < player.getInventory().items.size(); slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (!isHandGuardShield(stack)) {
+                continue;
+            }
+            player.getInventory().setItem(slot, ItemStack.EMPTY);
+            player.getInventory().setChanged();
+            return stack.copy();
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private static void removeHandGuardShieldsFromInventory(ServerPlayer player) {
+        for (int slot = 0; slot < player.getInventory().items.size(); slot++) {
+            if (isHandGuardShield(player.getInventory().getItem(slot))) {
+                player.getInventory().setItem(slot, ItemStack.EMPTY);
+            }
+        }
+        player.getInventory().setChanged();
+    }
+
+    private static void moveToInventoryOrDrop(ServerPlayer player, ItemStack stack) {
+        ItemStack remaining = stack.copy();
+        player.setItemInHand(InteractionHand.OFF_HAND, ItemStack.EMPTY);
+        player.getInventory().add(remaining);
+        if (!remaining.isEmpty()) {
+            player.level().addFreshEntity(new ItemEntity(
+                    player.level(), player.getX(), player.getY(), player.getZ(), remaining));
+        }
     }
 
     private static void restoreShield(ServerPlayer player, RuntimeState state) {
@@ -1738,13 +1890,10 @@ public final class LexNinjiaStateManager {
             return;
         }
         ItemStack current = player.getOffhandItem();
-        ItemStack saved = state.savedOffhand == null ? ItemStack.EMPTY : state.savedOffhand.copy();
-        if (current.is(Items.SHIELD) && current.hasCustomHoverName()) {
-            player.setItemInHand(InteractionHand.OFF_HAND, saved);
-        } else if (!saved.isEmpty()) {
-            giveOrDrop(player, saved);
+        if (isHandGuardShield(current)) {
+            player.setItemInHand(InteractionHand.OFF_HAND, ItemStack.EMPTY);
         }
-        state.savedOffhand = ItemStack.EMPTY;
+        removeHandGuardShieldsFromInventory(player);
         state.shieldUntil = 0L;
     }
 
@@ -2003,6 +2152,12 @@ public final class LexNinjiaStateManager {
     }
 
     private static void strikeFrontArea(ServerPlayer player, double range, double halfWidth, double height, float damage) {
+        range = boundedFrontAreaDimension(range);
+        halfWidth = boundedFrontAreaDimension(halfWidth);
+        height = boundedFrontAreaDimension(height);
+        if (range <= 0.0D || halfWidth <= 0.0D || height <= 0.0D) {
+            return;
+        }
         Vec3 eye = player.getEyePosition();
         Vec3 look = new Vec3(player.getLookAngle().x, 0.0D, player.getLookAngle().z);
         if (look.lengthSqr() < 0.0001D) {
@@ -2010,7 +2165,8 @@ public final class LexNinjiaStateManager {
         }
         look = look.normalize();
         Vec3 right = new Vec3(-look.z, 0.0D, look.x);
-        AABB box = player.getBoundingBox().inflate(range, height, range);
+        double horizontalQueryRange = Math.max(range, halfWidth);
+        AABB box = player.getBoundingBox().inflate(horizontalQueryRange, height, horizontalQueryRange);
         for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, box,
                 entity -> entity != player && entity.isAlive())) {
             Vec3 delta = target.getBoundingBox().getCenter().subtract(eye);
@@ -2020,6 +2176,10 @@ public final class LexNinjiaStateManager {
                 hurtTrue(player, target, damage);
             }
         }
+    }
+
+    private static double boundedFrontAreaDimension(double value) {
+        return Double.isFinite(value) ? Mth.clamp(value, 0.0D, MAX_FRONT_AREA_QUERY_RANGE) : 0.0D;
     }
 
     private static Optional<LivingEntity> nearestLookTarget(ServerPlayer player, double range, double minimumDot) {
@@ -2338,7 +2498,6 @@ public final class LexNinjiaStateManager {
         private long noRetaliationUntil;
         private long snakePoisonUntil;
         private long shieldUntil;
-        private ItemStack savedOffhand = ItemStack.EMPTY;
         private long tenMeterReleaseTick;
         private Vec3 tenMeterOrigin = Vec3.ZERO;
         private boolean hamFriendPact;
@@ -2412,7 +2571,6 @@ public final class LexNinjiaStateManager {
             harmonyStacks = 0;
             deathFlameOverflow = 0.0F;
             shieldUntil = 0L;
-            savedOffhand = ItemStack.EMPTY;
             handshakeTarget = null;
             lastDamager = null;
             lastMeleeTarget = null;

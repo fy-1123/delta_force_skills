@@ -105,6 +105,13 @@ public final class InjuryManager {
     }
 
     public static void tick(ServerPlayer player) {
+        if (!ModGameRules.areWoundsEnabled(player)) {
+            clearAll(player);
+            return;
+        }
+        if (player.tickCount % 20 == 0) {
+            repairDisplayFlags(player);
+        }
         boolean suppressed = isSuppressed(player);
         if (!suppressed && hasLegFracture(player)) {
             player.setSprinting(false);
@@ -127,15 +134,17 @@ public final class InjuryManager {
         return applyForced(player, type);
     }
 
-    /**
-     * Apply injury ignoring the {@code dealtwound} gamerule (bosses / scripted sources).
-     */
     public static boolean applyForced(ServerPlayer player, Type type) {
-        if (player == null || type == null) {
+        if (player == null || type == null || !ModGameRules.areWoundsEnabled(player)) {
             return false;
         }
         MobEffect effect = effect(type).get();
-        if (player.hasEffect(effect)) {
+        MobEffectInstance current = player.getEffect(effect);
+        if (current != null) {
+            if (!current.isVisible() || !current.showIcon()) {
+                replaceWithVisible(player, current);
+                return true;
+            }
             return false;
         }
         return player.addEffect(new MobEffectInstance(effect, INFINITE_DURATION, 0, false, true, true));
@@ -169,6 +178,10 @@ public final class InjuryManager {
     }
 
     public static void copyInjuries(LivingEntity original, LivingEntity replacement) {
+        if (replacement instanceof net.minecraft.world.entity.player.Player player
+                && !ModGameRules.areWoundsEnabled(player)) {
+            return;
+        }
         for (Type type : Type.values()) {
             MobEffect effect = effect(type).get();
             if (original.hasEffect(effect)) {
@@ -309,6 +322,35 @@ public final class InjuryManager {
         int count = 0;
         for (Type type : Type.values()) if (isWound(type) && has(entity, type)) count++;
         return count;
+    }
+
+    private static void repairDisplayFlags(ServerPlayer player) {
+        for (Type type : Type.values()) {
+            MobEffectInstance current = player.getEffect(effect(type).get());
+            if (current != null && (!current.isVisible() || !current.showIcon())) {
+                replaceWithVisible(player, current);
+            }
+        }
+    }
+
+    private static void replaceWithVisible(ServerPlayer player, MobEffectInstance current) {
+        MobEffect effect = current.getEffect();
+        MobEffectInstance visible = new MobEffectInstance(effect, current.getDuration(), current.getAmplifier(),
+                current.isAmbient(), true, true);
+        player.removeEffect(effect);
+        player.addEffect(visible);
+    }
+
+    public static void clearAll(ServerPlayer player) {
+        CompoundTag persistent = player.getPersistentData();
+        if (!persistent.contains(DATA_ROOT, Tag.TAG_COMPOUND)
+                && player.getActiveEffects().stream().noneMatch(instance -> isInjury(instance.getEffect()))) {
+            return;
+        }
+        for (Type type : Type.values()) {
+            player.removeEffect(effect(type).get());
+        }
+        persistent.remove(DATA_ROOT);
     }
 
     private static boolean hasLegFracture(LivingEntity entity) {

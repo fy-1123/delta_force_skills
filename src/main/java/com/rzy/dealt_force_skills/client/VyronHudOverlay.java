@@ -1,7 +1,9 @@
 package com.rzy.dealt_force_skills.client;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.vyron.VyronTool;
+import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientVyronHudState;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -10,7 +12,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -24,12 +25,14 @@ public final class VyronHudOverlay {
 
     @SubscribeEvent
     public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        if (!VanillaGuiOverlay.HOTBAR.id().equals(event.getOverlay().id())) {
+        if (!SkillHudRenderCompat.shouldRender(event)) {
             return;
         }
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.options.hideGui || !ClientVyronHudState.shouldDisplay()) {
+        boolean nativeDisplay = ClientVyronHudState.shouldDisplay();
+        boolean inherited = ClientCommanderState.inherits(ModCharacters.VYRON_ID);
+        if (minecraft.player == null || minecraft.options.hideGui || !nativeDisplay && !inherited) {
             return;
         }
 
@@ -40,6 +43,10 @@ public final class VyronHudOverlay {
 
         if (ClientVyronHudState.dashTicks() > 0) {
             renderDashEdgeBlur(graphics);
+        }
+
+        if (!nativeDisplay) {
+            return;
         }
 
         drawSlot(graphics, font, x, y, 0xFFFFD052, KeybindRegister.CORE_SKILL,

@@ -9,6 +9,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.Comparator;
+import java.util.List;
+
 public final class SinevaGrappleTargeting {
     private static volatile double MAX_DISTANCE_SQR = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("MAX_DISTANCE_SQR", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("summons.grapplehookentity.max_distance_sqr", 961.0));
     private static final double LOCK_CONE_TAN = Math.tan(Math.toRadians(4.5D));
@@ -59,6 +62,42 @@ public final class SinevaGrappleTargeting {
             }
         }
         return best;
+    }
+
+    public static List<LivingEntity> findTargets(Level level, LivingEntity owner) {
+        if (level == null || owner == null || !owner.isAlive()) {
+            return List.of();
+        }
+        Vec3 look = owner.getLookAngle();
+        if (look.lengthSqr() < 1.0E-6D) {
+            return List.of();
+        }
+        look = look.normalize();
+        double range = Math.sqrt(Math.max(1.0D, MAX_DISTANCE_SQR));
+        Vec3 eye = owner.getEyePosition();
+        AABB searchBox = owner.getBoundingBox().expandTowards(look.scale(range)).inflate(SEARCH_PADDING);
+        Vec3 normalizedLook = look;
+        return level.getEntitiesOfClass(LivingEntity.class, searchBox,
+                        entity -> entity != owner && TargetingUtil.isTargetableLiving(entity))
+                .stream()
+                .filter(target -> isInsideLockCone(level, owner, eye, normalizedLook, range, target))
+                .sorted(Comparator.comparingDouble(owner::distanceToSqr))
+                .toList();
+    }
+
+    private static boolean isInsideLockCone(Level level, LivingEntity owner, Vec3 eye, Vec3 look,
+                                            double range, LivingEntity target) {
+        Vec3 center = target.getBoundingBox().getCenter();
+        Vec3 toTarget = center.subtract(eye);
+        double along = toTarget.dot(look);
+        if (along <= 0.35D || along > range) {
+            return false;
+        }
+        Vec3 closestOnCrosshair = eye.add(look.scale(along));
+        double allowedRadius = Math.max(MIN_LOCK_RADIUS,
+                along * LOCK_CONE_TAN + target.getBbWidth() * 0.5D + TARGET_RADIUS_PADDING);
+        return closestOnCrosshair.distanceToSqr(center) <= allowedRadius * allowedRadius
+                && hasLineOfSight(level, owner, eye, center);
     }
 
     private static boolean hasLineOfSight(Level level, LivingEntity owner, Vec3 start, Vec3 end) {

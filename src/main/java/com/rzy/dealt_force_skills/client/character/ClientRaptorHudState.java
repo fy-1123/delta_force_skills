@@ -132,7 +132,8 @@ public final class ClientRaptorHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != RaptorTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.RAPTOR_ID))
+                && equippedTool != RaptorTool.NONE;
     }
 
     public static int falconCooldownTicks() {

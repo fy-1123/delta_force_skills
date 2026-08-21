@@ -89,7 +89,8 @@ public final class ClientTempestHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != TempestTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.TEMPEST_ID))
+                && equippedTool != TempestTool.NONE;
     }
 
     public static boolean actionLocked() {

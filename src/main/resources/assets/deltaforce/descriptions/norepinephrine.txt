@@ -1,0 +1,2 @@
+.tag("#deltaforce:df_age_3")
+120 秒体力容量增加：每秒恢复 5% ParCool 体力。

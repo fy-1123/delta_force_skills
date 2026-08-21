@@ -1,0 +1,9 @@
+﻿{
+	"parent": "minecraft:item/generated",
+	"textures": {
+		"layer0": "deltaforce:item/high_speed_disk_array_i"
+	},
+	"overrides": [
+		{"predicate": {"custom_model_data": 1}, "model": "deltaforce:item/high_speed_disk_array_ground"}
+	]
+}

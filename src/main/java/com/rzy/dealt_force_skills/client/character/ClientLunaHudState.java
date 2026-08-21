@@ -113,7 +113,8 @@ public final class ClientLunaHudState {
     }
 
     public static boolean hasEquippedTool() {
-        return shouldRender() && equippedTool != LunaTool.NONE;
+        return (shouldRender() || ClientCommanderState.inherits(ModCharacters.LUNA_ID))
+                && equippedTool != LunaTool.NONE;
     }
 
     public static int shockCharges() {

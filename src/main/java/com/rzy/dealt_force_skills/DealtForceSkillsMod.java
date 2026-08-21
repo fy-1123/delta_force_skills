@@ -1,15 +1,21 @@
 package com.rzy.dealt_force_skills;
 
 import com.rzy.dealt_force_skills.config.DealtBossesConfig;
+import com.rzy.dealt_force_skills.config.DealtBaseConfig;
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.config.DealtForcePlayerConfig;
 import com.rzy.dealt_force_skills.config.DealtForceShopConfig;
 import com.rzy.dealt_force_skills.config.DealtShopSetConfig;
 import com.rzy.dealt_force_skills.config.GamblerArenaConfig;
+import com.rzy.dealt_force_skills.config.DealtItemsHavocConfig;
+import com.rzy.dealt_force_skills.compat.RarityCoreCompat;
+import com.rzy.dealt_force_skills.compat.TamarindLootConfig;
 import com.rzy.dealt_force_skills.character.CharacterBranchPackManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.electronics.ElectronicInterferenceManager;
 import com.rzy.dealt_force_skills.entity.BeaconBossEntity;
+import com.rzy.dealt_force_skills.entity.AsaraTrooperEntity;
+import com.rzy.dealt_force_skills.entity.AcceleratedTroopsEntity;
 import com.rzy.dealt_force_skills.entity.NoxDecoyEntity;
 import com.rzy.dealt_force_skills.entity.SaeedGuardEntity;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -24,9 +30,11 @@ import com.rzy.dealt_force_skills.registry.ModItems;
 import com.rzy.dealt_force_skills.registry.ModLootModifiers;
 import com.rzy.dealt_force_skills.registry.ModParticles;
 import com.rzy.dealt_force_skills.registry.ModSounds;
+import com.rzy.dealt_force_skills.registry.ModRecipeSerializers;
 import com.rzy.dealt_force_skills.shop.DfsShopCatalog;
 import com.rzy.dealt_force_skills.shop.GhrothArmoryCatalog;
 import com.rzy.dealt_force_skills.shop.UndeadShopEntry;
+import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -43,11 +51,14 @@ public class DealtForceSkillsMod {
 
     public DealtForceSkillsMod(IEventBus modBus) {
         DealtForceConfig.bootstrap();
+        DealtBaseConfig.bootstrap();
         DealtBossesConfig.bootstrap();
         DealtForcePlayerConfig.bootstrap();
         DealtForceShopConfig.bootstrap();
         DealtShopSetConfig.bootstrap();
         GamblerArenaConfig.bootstrap();
+        DealtItemsHavocConfig.bootstrap();
+        TamarindLootConfig.bootstrap();
         CharacterBranchPackManager.bootstrapDefaults();
         CharacterBranchPackManager.reload();
 
@@ -60,12 +71,14 @@ public class DealtForceSkillsMod {
         ModEffects.EFFECTS.register(modBus);
         ModEntities.ENTITIES.register(modBus);
         ModParticles.PARTICLES.register(modBus);
+        ModRecipeSerializers.RECIPE_SERIALIZERS.register(modBus);
         ModGameRules.register();
 
         modBus.addListener(NetworkHandler::onCommonSetup);
         modBus.addListener(this::onCommonSetup);
         modBus.addListener(this::registerEntityAttributes);
         DealtForceConfig.flush();
+        DealtBaseConfig.flush();
         DealtBossesConfig.flush();
         DealtForcePlayerConfig.flush();
         DealtForceShopConfig.flush();
@@ -84,7 +97,10 @@ public class DealtForceSkillsMod {
             DfsShopCatalog.entries();
             GhrothArmoryCatalog.entries();
             UndeadShopEntry.values();
+            SpecialOperationsBaseManager.populateConfigDefaults();
+            RarityCoreCompat.registerRarities();
             DealtForceConfig.finishInitialPopulation();
+            DealtBaseConfig.flush();
             DealtBossesConfig.finishInitialPopulation();
             DealtForcePlayerConfig.finishInitialPopulation();
             DealtForceShopConfig.finishInitialPopulation();
@@ -96,6 +112,14 @@ public class DealtForceSkillsMod {
     private void registerEntityAttributes(EntityAttributeCreationEvent event) {
         event.put(ModEntities.NOX_DECOY.get(), NoxDecoyEntity.createAttributes().build());
         event.put(ModEntities.SAEED_GUARD.get(), SaeedGuardEntity.createAttributes().build());
+        event.put(ModEntities.ASARA_FLAMETHROWER.get(), AsaraTrooperEntity.createAttributes().build());
+        event.put(ModEntities.ASARA_MACHINE_GUNNER.get(), AsaraTrooperEntity.createAttributes().build());
+        event.put(ModEntities.ASARA_SHIELD_TROOPER.get(), AsaraTrooperEntity.createAttributes().build());
+        event.put(ModEntities.ASARA_ROCKET_TROOPER.get(), AsaraTrooperEntity.createAttributes().build());
+        event.put(ModEntities.ASARA_SNIPER.get(), AsaraTrooperEntity.createAttributes().build());
+        event.put(ModEntities.ASARA_SENTRY_SNIPER.get(), AsaraTrooperEntity.createAttributes().build());
+        event.put(ModEntities.ASARA_GUARD_SOLDIER.get(), AsaraTrooperEntity.createAttributes().build());
+        event.put(ModEntities.ACCELERATED_TROOPS.get(), AcceleratedTroopsEntity.createAttributes().build());
         event.put(ModEntities.BEACON_BOSS.get(), BeaconBossEntity.createAttributes().build());
     }
 }

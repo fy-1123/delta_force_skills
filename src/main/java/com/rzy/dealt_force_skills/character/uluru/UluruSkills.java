@@ -122,6 +122,7 @@ public final class UluruSkills {
                 }
             }
         }
+        UluruStateManager.registerProtectedCover(owner, rootPos);
 
         level.playSound(null, rootPos, ModSounds.QUICK_COVER_DEPLOY.get(), SoundSource.BLOCKS, 1.0f, 1.0f);
         return true;

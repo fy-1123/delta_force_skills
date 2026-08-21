@@ -1,6 +1,8 @@
 package com.rzy.dealt_force_skills.entity;
 
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.shepherd.ShepherdStateManager;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModSounds;
@@ -259,6 +261,10 @@ public class ShepherdSonicTrapEntity extends Entity implements ItemSupplier, Blo
             }
             RangedSoundHelper.playTrapSoundThrottled(level, target.position(), ModSounds.SHEPHERD_SONIC_SHOCK_HIT.get(),
                     0.58f, 1.0f + (target.getRandom().nextFloat() - 0.5f) * 0.12f, 8, 5.0D);
+        }
+        if (ownerPlayer != null
+                && CommanderStateManager.hasBranchUpgrade(ownerPlayer, CommanderBranchUpgrade.SHEPHERD_TRAP_AIRCRAFT)) {
+            ShepherdDroneEntity.pulseAt(level, position(), owner, 80);
         }
         discardAndRelease(level);
     }

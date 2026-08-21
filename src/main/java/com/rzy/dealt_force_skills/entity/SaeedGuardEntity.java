@@ -59,6 +59,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
@@ -149,6 +150,63 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
         super(type, level);
         xpReward = 0;
         setPersistenceRequired();
+    }
+
+    protected boolean isStandaloneTrooper() {
+        return false;
+    }
+
+    protected boolean shouldUseAutomaticGuardSkills() {
+        return true;
+    }
+
+    protected boolean canStandaloneTarget(LivingEntity target) {
+        return target instanceof Player player && TargetingUtil.isTargetablePlayer(player);
+    }
+
+    protected boolean retainStandaloneTarget(LivingEntity target) {
+        return false;
+    }
+
+    protected double standaloneTargetRange() {
+        return guardType().targetRange();
+    }
+
+    protected double standaloneAttackRange() {
+        return guardType().attackRange();
+    }
+
+    protected double standaloneTargetPriority(LivingEntity target) {
+        return distanceToSqr(target);
+    }
+
+    protected int adjustStandaloneShotCooldown(int ticks) {
+        return ticks;
+    }
+
+    protected boolean canStandaloneShoot(ServerLevel level, LivingEntity target) {
+        return true;
+    }
+
+    protected void onStandaloneShotFired() {
+    }
+
+    protected boolean shouldPlayStandaloneAttackVoice() {
+        return true;
+    }
+
+    protected final void configureStandalone(SaeedGuardType type) {
+        entityData.set(DATA_TYPE, type.ordinal());
+        entityData.set(DATA_OWNER, Optional.empty());
+        entityData.set(DATA_TEMPORARY, false);
+        setItemSlot(EquipmentSlot.MAINHAND, SaeedTaczEquipment.mainHand(type));
+        setItemSlot(EquipmentSlot.OFFHAND, SaeedTaczEquipment.offHand(type));
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            setDropChance(slot, 0.0F);
+        }
+        applyStandaloneAttributes(type);
+        setHealth(getMaxHealth());
+        setCustomNameVisible(false);
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -299,10 +357,11 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
                 tickBreakTask(level, player);
             }
         });
-        if (owner.isPresent()) {
-            ServerPlayer player = owner.get();
+        if (owner.isPresent() || isStandaloneTrooper()) {
+            ServerPlayer player = owner.orElse(null);
             LivingEntity target = getTarget();
-            boolean usedAutoSkill = target != null && tryAutoGuardSkill(level, player, target);
+            boolean usedAutoSkill = target != null && shouldUseAutomaticGuardSkills()
+                    && tryAutoGuardSkill(level, player, target);
             if (isFireStreamActive(now)) {
                 tickFireStream(level, player);
             } else if (!usedAutoSkill && target != null) {
@@ -323,6 +382,9 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
     @Override
     public boolean hurt(DamageSource source, float amount) {
         if (SaeedStateManager.shouldCancelTeamDamage(this, source)) {
+            return false;
+        }
+        if (!isStandaloneTrooper() && AsaraTrooperEntity.sourceIsAsara(source)) {
             return false;
         }
         if (isFireeyeDetonating()) {
@@ -353,13 +415,23 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
     }
 
     @Override
+    public boolean isAlliedTo(Entity entity) {
+        if (entity instanceof AsaraTrooperEntity
+                && (!isStandaloneTrooper() || this instanceof AsaraTrooperEntity)) {
+            return true;
+        }
+        return super.isAlliedTo(entity);
+    }
+
+    @Override
     public void knockback(double strength, double x, double z) {
         // Saeed guards are braced heavy units and ignore ordinary hit knockback.
     }
 
     @Override
     public void die(DamageSource source) {
-        if (!level().isClientSide && !getPersistentData().getBoolean(REMOVING_BY_MANAGER)) {
+        if (!level().isClientSide && !isStandaloneTrooper()
+                && !getPersistentData().getBoolean(REMOVING_BY_MANAGER)) {
             SaeedStateManager.handleGuardRemoved(this, SaeedStateManager.Refund.KILLED);
         }
         super.die(source);
@@ -367,7 +439,22 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
 
     @Override
     protected void dropAllDeathLoot(DamageSource source) {
-        // Saeed's guard equipment is dedicated combat gear and must never be lootable.
+        if (isStandaloneTrooper() && mobLootEnabled()) {
+            dropStandaloneDeathLoot();
+        }
+        // Saeed's recruited guard equipment is dedicated combat gear and must never be lootable.
+    }
+
+    protected void dropStandaloneDeathLoot() {
+    }
+
+    protected final boolean mobLootEnabled() {
+        return level().getGameRules().getBoolean(GameRules.RULE_DOMOBLOOT);
+    }
+
+    @Override
+    protected boolean shouldDespawnInPeaceful() {
+        return true;
     }
 
     @Override
@@ -620,14 +707,17 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
             if (target == this
                     || target.distanceToSqr(center) > FIREEYE_DETONATE_RADIUS * FIREEYE_DETONATE_RADIUS
-                    || isSaeedTeamMember(target)) {
+                    || isSaeedTeamMember(target)
+                    || this instanceof AsaraTrooperEntity && AsaraTrooperEntity.isAsaraAlly(target)) {
                 continue;
             }
             target.invulnerableTime = 0;
             SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, damageOwner),
                     damageOwner, FIREEYE_DETONATE_DAMAGE);
         }
-        if (!getPersistentData().getBoolean(REMOVING_BY_MANAGER)) {
+        if (isStandaloneTrooper() && mobLootEnabled()) {
+            dropStandaloneDeathLoot();
+        } else if (!getPersistentData().getBoolean(REMOVING_BY_MANAGER)) {
             getPersistentData().putBoolean(REMOVING_BY_MANAGER, true);
             SaeedStateManager.handleGuardRemoved(this, SaeedStateManager.Refund.KILLED);
         }
@@ -642,6 +732,11 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
     }
 
     private void serverMaintenance(ServerLevel level, Optional<ServerPlayer> owner) {
+        if (isStandaloneTrooper()) {
+            applyStandaloneAttributes(guardType());
+            refreshTarget(null, null);
+            return;
+        }
         if (owner.isEmpty() || !SaeedStateManager.isSaeed(owner.get())) {
             withdraw(SaeedStateManager.Refund.NORMAL);
             return;
@@ -743,6 +838,20 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
     }
 
     private void refreshTarget(ServerPlayer owner, Vec3 commandPoint) {
+        if (owner == null) {
+            LivingEntity current = getTarget();
+            if (current != null && retainStandaloneTarget(current)) {
+                return;
+            }
+            double range = standaloneTargetRange();
+            AABB box = getBoundingBox().inflate(range);
+            LivingEntity nearest = level().getEntitiesOfClass(LivingEntity.class, box, target -> canTarget(null, target))
+                    .stream()
+                    .min(Comparator.comparingDouble(this::standaloneTargetPriority))
+                    .orElse(null);
+            setTarget(nearest);
+            return;
+        }
         if (commandPoint != null) {
             double range = Math.max(guardType().targetRange(), COMMAND_POINT_TARGET_RANGE);
             AABB box = new AABB(commandPoint, commandPoint).inflate(range);
@@ -777,6 +886,15 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
         if (!target.isAlive() || target == owner || target == this) {
             return false;
         }
+        if (this instanceof AsaraTrooperEntity && AsaraTrooperEntity.isAsaraAlly(target)) {
+            return false;
+        }
+        if (owner != null && target instanceof AsaraTrooperEntity) {
+            return false;
+        }
+        if (owner == null) {
+            return canStandaloneTarget(target);
+        }
         if (target instanceof SaeedGuardEntity guard
                 && entityData.get(DATA_OWNER).isPresent()
                 && guard.isOwnedBy(entityData.get(DATA_OWNER).get())) {
@@ -804,7 +922,7 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
             setTarget(null);
             return;
         }
-        double range = guardType().attackRange();
+        double range = owner == null ? standaloneAttackRange() : guardType().attackRange();
         if (distanceToSqr(target) > range * range) {
             if (isSharpEagleSentryActive(level.getGameTime())) {
                 setTarget(null);
@@ -843,7 +961,7 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
             return false;
         }
         SaeedGuardType type = guardType();
-        double range = type.attackRange();
+        double range = isStandaloneTrooper() ? standaloneAttackRange() : type.attackRange();
         if (getEyePosition().distanceToSqr(aimPoint) > range * range) {
             return false;
         }
@@ -853,13 +971,21 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
         if (target == null && !hasLineOfSightTo(aimPoint)) {
             return false;
         }
+        if (isStandaloneTrooper() && !canStandaloneShoot(level, target)) {
+            return false;
+        }
 
         facePoint(aimPoint);
         AimAngles angles = aimAngles(aimPoint);
         if (SaeedTaczGunBridge.shoot(this, type, angles.pitch(), angles.yaw())) {
             swing(InteractionHand.MAIN_HAND);
             setPrimaryAttackCooldownAfterShot(level, type);
-            playAttackVoice(level, guardSkillSound(type), commanded ? 0.66F : 0.48F);
+            if (isStandaloneTrooper()) {
+                onStandaloneShotFired();
+            }
+            if (!isStandaloneTrooper() || shouldPlayStandaloneAttackVoice()) {
+                playAttackVoice(level, guardSkillSound(type), commanded ? 0.66F : 0.48F);
+            }
             if (target != null && !target.isAlive()) {
                 playGuardKillSound(level, type);
             }
@@ -883,6 +1009,18 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
                 : fallbackPrimaryAttackIntervalTicks(type);
         if (isWeaponSkillActive() && (type == SaeedGuardType.IRON_RAIN || type == SaeedGuardType.THUNDER)) {
             ticks = Math.max(1, ticks / 3);
+        }
+        if (isStandaloneTrooper() && (type == SaeedGuardType.HAKIM || type == SaeedGuardType.SHARP_EAGLE)) {
+            ticks = Math.max(100, ticks);
+        }
+        if (isStandaloneTrooper()) {
+            ticks = Math.max(1, ticks * 2);
+        }
+        if (this instanceof AsaraTrooperEntity trooper && trooper.role() == AsaraTrooperRole.GUARD_SOLDIER) {
+            ticks = Math.max(1, (int) Math.ceil(ticks * 1.5D));
+        }
+        if (isStandaloneTrooper()) {
+            ticks = Math.max(1, adjustStandaloneShotCooldown(ticks));
         }
         getPersistentData().putLong(PRIMARY_ATTACK_COOLDOWN_UNTIL, level.getGameTime() + ticks);
     }
@@ -921,6 +1059,9 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
             return 0;
         }
         long capped = Math.min(Integer.MAX_VALUE, baseTicks);
+        if (owner == null) {
+            return (int) capped;
+        }
         return SkillCooldownHelper.ticks(owner, (int) capped);
     }
 
@@ -1002,6 +1143,15 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
         }
         SaeedGuardType type = guardType();
         long now = level.getGameTime();
+        if (isStandaloneTrooper() && type == SaeedGuardType.FIREEYE) {
+            double range = fireStreamRange(type);
+            if (isFireStreamActive(now)
+                    || distanceToSqr(target) > range * range
+                    || !hasLineOfSight(target)) {
+                return false;
+            }
+            return startFireStream(level, null, target, target.getEyePosition(), false);
+        }
         if (type == SaeedGuardType.HAKIM) {
             if (storedCharges(ROCKET_CHARGES, ROCKET_RECHARGE_AT, ROCKET_MAX_CHARGES,
                     scaledCooldownTicks(owner, ROCKET_RECHARGE_TICKS), now) < 2
@@ -1208,6 +1358,7 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
         faceDirection(direction);
         double range = fireStreamRange(type);
         if (damageTick) {
+            LivingEntity damageOwner = owner == null ? this : owner;
             float damage = type == SaeedGuardType.KARIM ? 10.0F : 3.0F;
             if (isCoreBoosted()) {
                 damage *= 1.25F;
@@ -1224,13 +1375,23 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
                 if (!hasLineOfSightTo(center)) {
                     continue;
                 }
+                if (isStandaloneTrooper() && type == SaeedGuardType.FIREEYE) {
+                    damage = target.getMaxHealth() * 0.05F;
+                }
                 target.invulnerableTime = 0;
                 target.setSecondsOnFire(type == SaeedGuardType.KARIM ? 8 : 5);
-                if (SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, owner), owner, damage)) {
+                Vec3 motionBeforeFireDamage = isAsaraFlamethrower() && target instanceof Player
+                        ? target.getDeltaMovement()
+                        : null;
+                if (SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, damageOwner), damageOwner, damage)) {
                     burningTargets++;
                 }
+                if (motionBeforeFireDamage != null) {
+                    target.setDeltaMovement(motionBeforeFireDamage);
+                    target.hurtMarked = true;
+                }
             }
-            if (burningTargets > 0) {
+            if (burningTargets > 0 && owner != null) {
                 DfsAchievements.recordSaeedFireTargets(owner, burningTargets);
             }
             if (tickCount % 20 == 0) {
@@ -1250,6 +1411,11 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
 
     private double fireStreamRange(SaeedGuardType type) {
         return type.usesFireStream() ? type.skillRange() * 3.0D : type.skillRange();
+    }
+
+    private boolean isAsaraFlamethrower() {
+        return this instanceof AsaraTrooperEntity trooper
+                && trooper.role() == AsaraTrooperRole.FLAMETHROWER;
     }
 
     private boolean isFireStreamActive(long now) {
@@ -1350,7 +1516,11 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
                 scaledCooldownTicks(owner, ROCKET_RECHARGE_TICKS), now)) {
             return false;
         }
-        getPersistentData().putLong(ROCKET_RELOAD_UNTIL, now + scaledCooldownTicks(owner, HAKIM_ROCKET_RELOAD_TICKS));
+        int reloadTicks = scaledCooldownTicks(owner, HAKIM_ROCKET_RELOAD_TICKS);
+        if (isStandaloneTrooper()) {
+            reloadTicks = Math.max(100, reloadTicks);
+        }
+        getPersistentData().putLong(ROCKET_RELOAD_UNTIL, now + reloadTicks);
         facePoint(aimPoint);
         Vec3 muzzle = muzzlePosition(aimPoint);
         SaeedHakimMissileEntity missile = new SaeedHakimMissileEntity(
@@ -1613,6 +1783,38 @@ public class SaeedGuardEntity extends PathfinderMob implements IGunOperator {
         }
         if (getAttribute(Attributes.KNOCKBACK_RESISTANCE) != null) {
             getAttribute(Attributes.KNOCKBACK_RESISTANCE).setBaseValue(knockbackResistance);
+        }
+        if (getHealth() > getMaxHealth()) {
+            setHealth(getMaxHealth());
+        }
+    }
+
+    protected double standaloneAttributeMultiplier() {
+        return 1.0D;
+    }
+
+    protected void applyStandaloneAttributes(SaeedGuardType type) {
+        double multiplier = standaloneAttributeMultiplier();
+        if (getAttribute(Attributes.MAX_HEALTH) != null) {
+            getAttribute(Attributes.MAX_HEALTH).setBaseValue(100.0D * multiplier);
+        }
+        if (getAttribute(Attributes.ARMOR) != null) {
+            getAttribute(Attributes.ARMOR).setBaseValue(20.0D * multiplier);
+        }
+        if (getAttribute(Attributes.ARMOR_TOUGHNESS) != null) {
+            getAttribute(Attributes.ARMOR_TOUGHNESS).setBaseValue(8.0D * multiplier);
+        }
+        if (getAttribute(Attributes.ATTACK_DAMAGE) != null) {
+            getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(type.attackDamage() * multiplier);
+        }
+        if (getAttribute(Attributes.MOVEMENT_SPEED) != null) {
+            getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(type.speed());
+        }
+        if (getAttribute(Attributes.FOLLOW_RANGE) != null) {
+            getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(Math.max(35.0D, type.targetRange() + 6.0D));
+        }
+        if (getAttribute(Attributes.KNOCKBACK_RESISTANCE) != null) {
+            getAttribute(Attributes.KNOCKBACK_RESISTANCE).setBaseValue(1.0D);
         }
         if (getHealth() > getMaxHealth()) {
             setHealth(getMaxHealth());

@@ -3,6 +3,7 @@ package com.rzy.dealt_force_skills.character.morse;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.entity.MorseSonarDetectorEntity;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_MorseMarkers;
@@ -79,7 +80,9 @@ public final class MorseStateManager {
 
     public static boolean isMorse(Player player) {
         Optional<String> selected = CharacterSelectionManager.getSelectedCharacterId(player);
-        return selected.isPresent() && ModCharacters.MORSE_ID.equals(selected.get());
+        return selected.isPresent() && ModCharacters.MORSE_ID.equals(selected.get())
+                || com.rzy.dealt_force_skills.character.commander.CommanderStateManager
+                .inheritsRuntimeSource(player, ModCharacters.MORSE_ID);
     }
 
     public static void initializeIfNeeded(ServerPlayer player) {
@@ -91,9 +94,9 @@ public final class MorseStateManager {
             return;
         }
         tag.putBoolean(INITIALIZED, true);
-        tag.putInt(SHOCK_CHARGES, SHOCK_MAX_CHARGES);
+        tag.putInt(SHOCK_CHARGES, shockCapacity(player));
         tag.putLong(SHOCK_NEXT_RECHARGE, 0L);
-        tag.putInt(FLASH_CHARGES, FLASH_MAX_CHARGES);
+        tag.putInt(FLASH_CHARGES, flashCapacity(player));
         tag.putLong(FLASH_NEXT_RECHARGE, 0L);
         tag.putLong(SONAR_COOLDOWN_UNTIL, 0L);
         tag.putInt(EQUIPPED_TOOL, MorseTool.NONE.ordinal());
@@ -118,8 +121,8 @@ public final class MorseStateManager {
         }
         initializeIfNeeded(player);
         long now = SkillCooldownHelper.now(player);
-        recharge(player, now, SHOCK_CHARGES, SHOCK_NEXT_RECHARGE, SHOCK_MAX_CHARGES, SHOCK_RECHARGE_TICKS);
-        recharge(player, now, FLASH_CHARGES, FLASH_NEXT_RECHARGE, FLASH_MAX_CHARGES, FLASH_RECHARGE_TICKS);
+        recharge(player, now, SHOCK_CHARGES, SHOCK_NEXT_RECHARGE, shockCapacity(player), SHOCK_RECHARGE_TICKS);
+        recharge(player, now, FLASH_CHARGES, FLASH_NEXT_RECHARGE, flashCapacity(player), FLASH_RECHARGE_TICKS);
         tickSonarDeploy(player, now);
         clearExpiredSonarHud(player, now);
     }
@@ -203,11 +206,11 @@ public final class MorseStateManager {
     }
 
     public static boolean consumeShockCharge(ServerPlayer player) {
-        return consumeCharge(player, SHOCK_CHARGES, SHOCK_NEXT_RECHARGE, SHOCK_MAX_CHARGES, SHOCK_RECHARGE_TICKS);
+        return consumeCharge(player, SHOCK_CHARGES, SHOCK_NEXT_RECHARGE, shockCapacity(player), SHOCK_RECHARGE_TICKS);
     }
 
     public static boolean consumeFlashCharge(ServerPlayer player) {
-        return consumeCharge(player, FLASH_CHARGES, FLASH_NEXT_RECHARGE, FLASH_MAX_CHARGES, FLASH_RECHARGE_TICKS);
+        return consumeCharge(player, FLASH_CHARGES, FLASH_NEXT_RECHARGE, flashCapacity(player), FLASH_RECHARGE_TICKS);
     }
 
     public static boolean beginSonarDeploy(ServerPlayer player) {
@@ -267,19 +270,19 @@ public final class MorseStateManager {
     }
 
     public static int shockCharges(Player player) {
-        return data(player).getInt(SHOCK_CHARGES);
+        return Math.min(shockCapacity(player), data(player).getInt(SHOCK_CHARGES));
     }
 
     public static int shockRechargeRemainingTicks(Player player) {
-        return shockCharges(player) >= SHOCK_MAX_CHARGES ? 0 : remainingTicks(player, SHOCK_NEXT_RECHARGE);
+        return shockCharges(player) >= shockCapacity(player) ? 0 : remainingTicks(player, SHOCK_NEXT_RECHARGE);
     }
 
     public static int flashCharges(Player player) {
-        return data(player).getInt(FLASH_CHARGES);
+        return Math.min(flashCapacity(player), data(player).getInt(FLASH_CHARGES));
     }
 
     public static int flashRechargeRemainingTicks(Player player) {
-        return flashCharges(player) >= FLASH_MAX_CHARGES ? 0 : remainingTicks(player, FLASH_NEXT_RECHARGE);
+        return flashCharges(player) >= flashCapacity(player) ? 0 : remainingTicks(player, FLASH_NEXT_RECHARGE);
     }
 
     public static int sonarCooldownRemainingTicks(Player player) {
@@ -315,10 +318,10 @@ public final class MorseStateManager {
         CompoundTag tag = data(player);
         NetworkHandler.sendToPlayer(new S2C_SyncMorseState(
                 shockCharges(player),
-                SHOCK_MAX_CHARGES,
+                shockCapacity(player),
                 shockRechargeRemainingTicks(player),
                 flashCharges(player),
-                FLASH_MAX_CHARGES,
+                flashCapacity(player),
                 flashRechargeRemainingTicks(player),
                 sonarCooldownRemainingTicks(player),
                 equippedTool(player).ordinal(),
@@ -434,6 +437,14 @@ public final class MorseStateManager {
 
     private static int remainingTicks(Player player, String key) {
         return SkillCooldownHelper.remainingTicks(player, data(player).getLong(key));
+    }
+
+    private static int shockCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, SHOCK_MAX_CHARGES);
+    }
+
+    private static int flashCapacity(Player player) {
+        return CommanderStateManager.skillCapacity(player, FLASH_MAX_CHARGES);
     }
 
     private static Vec3 noisySoundPosition(ServerLevel level, Vec3 position) {
