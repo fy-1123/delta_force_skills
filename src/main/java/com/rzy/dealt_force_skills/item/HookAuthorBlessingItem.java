@@ -53,9 +53,6 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class HookAuthorBlessingItem extends QualityTooltipItem {
-    private static final int[] RAINBOW_NAME_COLORS = {
-            0xFF5555, 0xFFAA00, 0xFFFF55, 0x55FF55, 0x55FFFF, 0xAA55FF
-    };
     public static final int BUTTON_LEFT = 0;
     public static final int BUTTON_RIGHT = 1;
     public static final int PHASE_HOLD = 0;
@@ -74,17 +71,6 @@ public final class HookAuthorBlessingItem extends QualityTooltipItem {
 
     public HookAuthorBlessingItem(Properties properties) {
         super(properties.stacksTo(1), DfsItemQuality.COLORFUL, "tooltip.dealt_force_skills.hook_author_blessing");
-    }
-
-    @Override
-    public Component getName(ItemStack stack) {
-        net.minecraft.network.chat.MutableComponent name = Component.empty();
-        for (int index = 0; index < RAINBOW_NAME_COLORS.length; index++) {
-            int color = RAINBOW_NAME_COLORS[index];
-            name.append(Component.translatable(getDescriptionId(stack) + ".rainbow." + index)
-                    .withStyle(style -> style.withColor(color)));
-        }
-        return name;
     }
 
     @Override

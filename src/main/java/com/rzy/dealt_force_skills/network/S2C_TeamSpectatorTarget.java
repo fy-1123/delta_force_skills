@@ -1,7 +1,6 @@
 package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
-import com.rzy.dealt_force_skills.client.ClientTeamSpectatorState;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;

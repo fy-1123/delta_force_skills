@@ -8,6 +8,7 @@ import com.rzy.dealt_force_skills.network.C2S_SpecialOperationsBaseAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SpecialOperationsBaseSnapshot;
 import com.rzy.dealt_force_skills.shop.GtiTradingHallManager;
+import mccfk.DeltaForce.java.client.DFClientConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -184,13 +185,14 @@ public class DFGUI_MAIN extends Screen {
     protected void init() {
         super.init();
         // 根据屏幕大小计算缩放后的尺寸和位置
+        DFClientConfig cfg = DFClientConfig.getInstance();
         int preferredTabWidth = (int) (TAB_BASE_WIDTH * UI_SCALE);
         int sideReserve = this.width < 620 ? Math.min(120, Math.max(56, this.width / 5)) : 120;
         int availableTabWidth = Math.max(TAB_COUNT, this.width - sideReserve * 2);
         this.tabWidth = Math.max(1, Math.min(preferredTabWidth, availableTabWidth / TAB_COUNT));
         this.tabHeight = Math.max(18, Math.min((int) (TAB_BASE_HEIGHT * UI_SCALE), this.height / 8));
-        this.tabStartX = Math.max(4, (this.width - this.tabWidth * TAB_COUNT) / 2);
-        this.tabStartY = 6;
+        this.tabStartX = 10 + cfg.getTabXOffset();
+        this.tabStartY = 10 + cfg.getTabYOffset();
         StartGameScreen.requestSnapshot();
         // 恢复仓库标签页时重新请求仓库快照（否则重开界面仓库内容显示为空）
         if (selectedTab == WAREHOUSE_TAB_INDEX) {

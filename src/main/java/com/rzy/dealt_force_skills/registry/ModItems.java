@@ -603,7 +603,7 @@ public class ModItems {
     }
 
     private static Supplier<MobEffect> externalEffect(String namespace, String path) {
-        ResourceLocation id = ResourceLocation.fromNamespaceAndPath(namespace, path);
+        ResourceLocation id = new ResourceLocation(namespace, path);
         return () -> ForgeRegistries.MOB_EFFECTS.getValue(id);
     }
 

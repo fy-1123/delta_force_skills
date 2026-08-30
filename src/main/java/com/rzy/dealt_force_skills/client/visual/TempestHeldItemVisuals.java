@@ -18,7 +18,7 @@ import net.minecraftforge.fml.common.Mod;
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID, value = Dist.CLIENT)
 public final class TempestHeldItemVisuals {
     private static final ResourceLocation WALL_DRILL =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "tempest_wall_drill_stinger");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "tempest_wall_drill_stinger");
 
     private TempestHeldItemVisuals() {
     }

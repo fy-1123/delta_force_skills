@@ -1573,7 +1573,7 @@ public final class DfsAchievements {
             return;
         }
         Advancement exploreNether = player.server.getAdvancements()
-                .getAdvancement(ResourceLocation.fromNamespaceAndPath("minecraft", "nether/explore_nether"));
+                .getAdvancement(new ResourceLocation("minecraft", "nether/explore_nether"));
         if (exploreNether != null && player.getAdvancements().getOrStartProgress(exploreNether).isDone()) {
             award(player, purple(46));
         }
@@ -1706,7 +1706,7 @@ public final class DfsAchievements {
 
     private static Advancement advancement(ServerPlayer player, String path) {
         return player.server.getAdvancements().getAdvancement(
-                ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "delta_force_skills/" + path));
+                new ResourceLocation(DealtForceSkillsMod.MODID, "delta_force_skills/" + path));
     }
 
     private static boolean isDone(ServerPlayer player, String path) {

@@ -10,27 +10,27 @@ authors="RZY"
 description='''感谢您的游玩'''
 
 [[mods]]
-modId="deltaforce"
-version="${mod_version}"
-displayName="Delta Force Integration"
-authors="RZY, MCCFK"
-description='''Integrated operator selection, Havoc Coin storage, and optimized tagged ground items.'''
+modId="${dfmod_id}"
+version="${dfmod_version}"
+displayName="${dfmod_name}"
+authors="${dfmod_authors}"
+description="${dfmod_description}"
 
-[[dependencies.deltaforce]]
+[[dependencies.${dfmod_id}]]
 modId="forge"
 mandatory=true
 versionRange="[47,)"
 ordering="NONE"
 side="BOTH"
 
-[[dependencies.deltaforce]]
+[[dependencies.${dfmod_id}]]
 modId="minecraft"
 mandatory=true
 versionRange="[1.20.1,1.20.2)"
 ordering="NONE"
 side="BOTH"
 
-[[dependencies.deltaforce]]
+[[dependencies.${dfmod_id}]]
 modId="${mod_id}"
 mandatory=true
 versionRange="[${mod_version},)"

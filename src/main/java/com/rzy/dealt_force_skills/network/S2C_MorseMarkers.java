@@ -2,7 +2,6 @@ package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.character.morse.MorseMarkerType;
 import com.rzy.dealt_force_skills.character.morse.MorseWorldMarker;
-import com.rzy.dealt_force_skills.client.character.ClientMorseHudState;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;

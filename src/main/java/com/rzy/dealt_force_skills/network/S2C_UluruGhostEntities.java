@@ -1,6 +1,5 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.UluruGhostEntityManager;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;

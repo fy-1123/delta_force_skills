@@ -1,11 +1,8 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.screen.SpecialOperationsBaseScreen;
 import com.rzy.dealt_force_skills.config.DealtItemsHavocConfig;
 import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
 import io.netty.handler.codec.DecoderException;
-import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -160,14 +157,8 @@ public record S2C_SpecialOperationsBaseSnapshot(
     }
 
     public static void handle(S2C_SpecialOperationsBaseSnapshot msg, Supplier<NetworkEvent.Context> ctx) {
-        ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
-            Minecraft minecraft = Minecraft.getInstance();
-            if (minecraft.screen instanceof DFGUI_MAIN main) {
-                main.showGtiBase(msg);
-            } else {
-                SpecialOperationsBaseScreen.accept(msg);
-            }
-        }));
+        ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
+                () -> () -> ClientPacketHandlers.openSpecialOperationsBase(msg)));
         ctx.get().setPacketHandled(true);
     }
 

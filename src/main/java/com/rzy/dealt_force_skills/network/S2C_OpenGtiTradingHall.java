@@ -1,10 +1,7 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.screen.GtiTradingHallScreen;
 import com.rzy.dealt_force_skills.shop.GtiTradingHallManager;
 import io.netty.handler.codec.DecoderException;
-import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -43,14 +40,8 @@ public record S2C_OpenGtiTradingHall(long coins, List<GtiTradingHallManager.Entr
         return new S2C_OpenGtiTradingHall(coins, entries);
     }
     public static void handle(S2C_OpenGtiTradingHall msg, Supplier<NetworkEvent.Context> ctx) {
-        ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
-            Minecraft minecraft = Minecraft.getInstance();
-            if (minecraft.screen instanceof DFGUI_MAIN main) {
-                main.showGtiMarket(msg.coins, msg.entries);
-            } else {
-                GtiTradingHallScreen.open(msg.coins, msg.entries);
-            }
-        }));
+        ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
+                () -> () -> ClientPacketHandlers.openGtiTradingHall(msg.coins, msg.entries)));
         ctx.get().setPacketHandled(true);
     }
 }

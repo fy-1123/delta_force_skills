@@ -236,7 +236,6 @@ public final class UndeadStateManager {
         if (profession(player) == next) {
             return;
         }
-        clearProfessionToggles(player, tag);
         tag.putInt(PROFESSION, next.ordinal());
         DfsAchievements.recordUndeadLowHealthSwitch(player, next);
         tag.putLong(DISORIENTED_UNTIL, SkillCooldownHelper.now(player) + 2L * 20L);
@@ -823,6 +822,9 @@ public final class UndeadStateManager {
     }
 
     private static void tickKnight(ServerPlayer player, CompoundTag tag, long now) {
+        if (profession(player) != UndeadProfession.KNIGHT) {
+            return;
+        }
         if (now >= tag.getLong(KNIGHT_SHIELD_UNTIL)) {
             tag.putFloat(KNIGHT_SHIELD, 0.0F);
         } else if (tag.getFloat(KNIGHT_SHIELD) > 0.0F && player.tickCount % 10 == 0) {
@@ -885,7 +887,6 @@ public final class UndeadStateManager {
 
     private static void tickWarrior(ServerPlayer player, CompoundTag tag, long now) {
         if (profession(player) != UndeadProfession.WARRIOR) {
-            tag.putBoolean(WARRIOR_MIGHT, false);
             return;
         }
         if (tag.getBoolean(WARRIOR_MIGHT) && !drainContinuousEnergy(player, 5.0F / 20.0F)) {
@@ -911,8 +912,6 @@ public final class UndeadStateManager {
 
     private static void tickExplorer(ServerPlayer player, CompoundTag tag, long now) {
         if (profession(player) != UndeadProfession.EXPLORER) {
-            tag.putLong(EXPLORER_MEDITATING_UNTIL, 0L);
-            tag.putLong(EXPLORER_SPACE_UNTIL, 0L);
             return;
         }
         if (now < tag.getLong(EXPLORER_MEDITATING_UNTIL)) {
@@ -947,9 +946,6 @@ public final class UndeadStateManager {
 
     private static void tickRogue(ServerPlayer player, CompoundTag tag, long now) {
         if (profession(player) != UndeadProfession.ROGUE) {
-            tag.putLong(ROGUE_INVISIBLE_UNTIL, 0L);
-            tag.putLong(ROGUE_INVULNERABLE_UNTIL, 0L);
-            tag.putLong(ROGUE_SPEED_UNTIL, 0L);
             return;
         }
         if (now < tag.getLong(ROGUE_INVISIBLE_UNTIL) && player.tickCount % 10 == 0) {
@@ -995,7 +991,6 @@ public final class UndeadStateManager {
 
     private static void tickHunter(ServerPlayer player, CompoundTag tag, long now) {
         if (profession(player) != UndeadProfession.HUNTER) {
-            tag.putBoolean(HUNTER_SCATTER, false);
             clearHunterMovementTracking(tag);
             clearHunterSpeed(player);
             clearHunterScatterSlow(player);

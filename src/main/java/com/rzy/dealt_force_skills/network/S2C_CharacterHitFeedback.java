@@ -1,7 +1,5 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.CharacterHitFeedbackOverlay;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
@@ -30,12 +28,7 @@ public class S2C_CharacterHitFeedback {
     public static void handle(S2C_CharacterHitFeedback msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(
                 Dist.CLIENT,
-                () -> () -> {
-                    if (Minecraft.getInstance().level != null
-                            && Minecraft.getInstance().level.getEntity(msg.hurtEntityId) != null) {
-                        CharacterHitFeedbackOverlay.markHit(msg.amount);
-                    }
-                }
+                () -> () -> ClientPacketHandlers.characterHitFeedback(msg.hurtEntityId, msg.amount)
         ));
         ctx.get().setPacketHandled(true);
     }

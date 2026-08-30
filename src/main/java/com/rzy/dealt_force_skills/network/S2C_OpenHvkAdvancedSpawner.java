@@ -1,7 +1,6 @@
 package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.block.HvkAdvancedSpawnerBlockEntity;
-import com.rzy.dealt_force_skills.client.screen.HvkAdvancedSpawnerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;

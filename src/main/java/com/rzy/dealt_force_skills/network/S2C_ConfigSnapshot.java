@@ -1,6 +1,5 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.screen.DealtForceConfigScreen;
 import com.rzy.dealt_force_skills.config.ConfigEntryData;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;

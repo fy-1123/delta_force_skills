@@ -1,12 +1,15 @@
 package mccfk.DeltaForce.java.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.client.screen.GtiTradingHallScreen;
 import com.rzy.dealt_force_skills.client.screen.SpecialOperationsBaseScreen;
 import mccfk.DeltaForce.java.DeltaForce;
+import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import mccfk.DeltaForce.java.client.screen.Operator;
 import mccfk.DeltaForce.java.client.screen.WarehousePanel;
 import mccfk.DeltaForce.java.client.renderer.MarkerRenderer;
+import mccfk.DeltaForce.java.compat.SubLevelProjectionHelper;
 import mccfk.DeltaForce.java.entity.GroundItemEntity;
 import mccfk.DeltaForce.java.network.C2S_CreateMarker;
 import mccfk.DeltaForce.java.network.ClientMarkerStorage;
@@ -30,19 +33,46 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.Optional;
 
+/**
+ * 标点客户端事件处理
+ * 管理鼠标中键标点、U键主界面、标点渲染、登出清理等
+ */
 @Mod.EventBusSubscriber(modid = DeltaForce.MODID, value = Dist.CLIENT)
 public final class MarkerClientEvents {
     private MarkerClientEvents() {
     }
 
+    /** U键按下状态追踪（用于检测按键首次按下） */
+    private static boolean uKeyWasDown = false;
+
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         ClientMarkerStorage.cleanExpired();
+
+        // 鼠标中键创建标点
         while (DeltaForceClient.MARKER_KEY.consumeClick()) createMarkerFromView();
+
+        // U键打开三角洲主界面（需 /df main t 开启，不注册为KeyMapping）
+        if (DeltaForce.isDFMainEnabled()) {
+            Minecraft mc = Minecraft.getInstance();
+            long window = mc.getWindow().getWindow();
+            boolean uDown = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_U);
+            if (uDown && !uKeyWasDown) {
+                if (mc.screen instanceof DFGUI_MAIN) {
+                    mc.setScreen(null);
+                } else {
+                    mc.setScreen(new DFGUI_MAIN());
+                }
+            }
+            uKeyWasDown = uDown;
+        } else {
+            uKeyWasDown = false;
+        }
     }
 
     @SubscribeEvent
@@ -79,7 +109,9 @@ public final class MarkerClientEvents {
                 minecraft.player.getBoundingBox().expandTowards(look.scale(distance)).inflate(1.0D),
                 entity -> !entity.isSpectator() && entity.isPickable(), distance * distance);
         HitResult blockHit = minecraft.player.pick(distance, 0.0F, false);
-        HitResult hit = nearer(eye, entityHit, blockHit);
+
+        // 取两者中更近的结果，但掉落物（ItemEntity/GroundItemEntity）优先
+        HitResult hit = resolveHitResult(eye, entityHit, blockHit);
         if (hit == null || hit.getType() == HitResult.Type.MISS) {
             return Optional.empty();
         }
@@ -90,24 +122,45 @@ public final class MarkerClientEvents {
         if (hit instanceof EntityHitResult entityResult) {
             Vec3 position = entityResult.getEntity().position();
             entityId = entityResult.getEntity().getId();
-            marker = new Marker(minecraft.player.getUUID(), BlockPos.containing(position), MarkerType.ENTITY, now,
-                    Optional.of(entityResult.getEntity().getType()), Optional.empty(), Optional.of(position));
+            // 若实体在Sable子世界中，将坐标投影到主世界空间
+            Vec3 globalPos = SubLevelProjectionHelper.projectToGlobal(minecraft.level, position);
+            marker = new Marker(minecraft.player.getUUID(), BlockPos.containing(globalPos), MarkerType.ENTITY, now,
+                    Optional.of(entityResult.getEntity().getType()), Optional.empty(), Optional.of(globalPos));
         } else if (hit instanceof BlockHitResult blockResult) {
             BlockPos position = blockResult.getBlockPos();
             BlockEntity blockEntity = minecraft.level.getBlockEntity(position);
+            // 后备：若主世界查找失败，尝试通过SubLevel直接获取BlockEntity
+            if (blockEntity == null) {
+                blockEntity = SubLevelProjectionHelper.getBlockEntityFromSubLevel(minecraft.level, position);
+            }
+            // 将坐标投影到主世界全局空间（若不在子世界则为无操作）
+            BlockPos worldPos = SubLevelProjectionHelper.projectToGlobal(minecraft.level, position);
+            Vec3 worldLocation = SubLevelProjectionHelper.projectToGlobal(minecraft.level, blockResult.getLocation());
             boolean container = isContainer(blockEntity);
-            marker = new Marker(minecraft.player.getUUID(), position, container ? MarkerType.CONTAINER : MarkerType.POSITION,
-                    now, Optional.empty(), container ? Optional.of(position) : Optional.empty(),
-                    Optional.of(blockResult.getLocation()));
+            // 注意：容器标点将plotgrid原始坐标存入containerPos，精确世界命中点存入precisePosition
+            marker = new Marker(minecraft.player.getUUID(), worldPos,
+                    container ? MarkerType.CONTAINER : MarkerType.POSITION, now,
+                    Optional.empty(), container ? Optional.of(position) : Optional.empty(),
+                    Optional.of(worldLocation));
         } else {
             return Optional.empty();
         }
         return Optional.of(new ViewMarker(marker, entityId));
     }
 
-    private static HitResult nearer(Vec3 eye, EntityHitResult entityHit, HitResult blockHit) {
+    /**
+     * 解析射线命中结果：取更近的一方，但掉落物始终优先
+     */
+    private static HitResult resolveHitResult(Vec3 eye, EntityHitResult entityHit, HitResult blockHit) {
         if (entityHit == null) return blockHit;
         if (blockHit == null || blockHit.getType() == HitResult.Type.MISS) return entityHit;
+
+        // 掉落物优先：ItemEntity 或 GroundItemEntity 始终优先于方块命中
+        if (entityHit.getEntity() instanceof ItemEntity ||
+                entityHit.getEntity() instanceof GroundItemEntity) {
+            return entityHit;
+        }
+
         return entityHit.getLocation().distanceToSqr(eye) <= blockHit.getLocation().distanceToSqr(eye)
                 ? entityHit : blockHit;
     }

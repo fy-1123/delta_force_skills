@@ -50,11 +50,11 @@ import org.joml.Matrix4f;
 public final class SinevaPlaceholderVisuals {
     private static final ItemStack BLADE_WIRE_PLACEHOLDER = new ItemStack(Items.COBWEB);
     private static final ResourceLocation BLADE_WIRE_MODEL =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "sineva_blade_wire_core");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "sineva_blade_wire_core");
     private static final ResourceLocation GRAPPLE_GUN_MODEL =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "sineva_grapple_gun");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "sineva_grapple_gun");
     private static final ResourceLocation RIOT_SHIELD_MODEL =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "sineva_riot_shield");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "sineva_riot_shield");
     private static final String GRAPPLE_GUN_KEY = "sineva_grapple_gun";
     private static final int OUTER_R = 10;
     private static final int OUTER_G = 12;

@@ -3,8 +3,6 @@ package com.rzy.dealt_force_skills.network;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.team.DealtTeamManager;
 import io.netty.handler.codec.DecoderException;
-import mccfk.DeltaForce.java.client.screen.StartGameScreen;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
@@ -136,7 +134,7 @@ public record S2C_StartPageSnapshot(
 
     public static void handle(S2C_StartPageSnapshot msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
-                () -> () -> StartGameScreen.acceptSnapshot(msg)));
+                () -> () -> ClientPacketHandlers.acceptStartPageSnapshot(msg)));
         ctx.get().setPacketHandled(true);
     }
 

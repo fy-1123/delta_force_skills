@@ -61,6 +61,7 @@ public final class ToxikStateManager {
     private static volatile double ADRENALINE_FIRE_RATE_PER_LEVEL = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("ADRENALINE_FIRE_RATE_PER_LEVEL", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue(
       "characters.toxik.toxik_state_manager.adrenaline_fire_rate_per_level", 0.05
    ));
+    private static final int MAX_ADRENALINE_EFFECT_LEVEL = 100;
     private static volatile double FIREFLY_MIN_ALIGNMENT = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("FIREFLY_MIN_ALIGNMENT", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("characters.toxik.toxik_state_manager.firefly_min_alignment", 0.18));
     private static volatile double FIREFLY_MAX_OFF_AXIS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("FIREFLY_MAX_OFF_AXIS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("characters.toxik.toxik_state_manager.firefly_max_off_axis", 18.0));
     private static volatile int FIREFLY_FAN_HORIZONTAL_SAMPLES = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("FIREFLY_FAN_HORIZONTAL_SAMPLES", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue(
@@ -188,12 +189,16 @@ public final class ToxikStateManager {
     }
 
     public static double adrenalineMultiplier(int amplifier) {
-        return 1.0D + ADRENALINE_SPEED_PER_LEVEL * (amplifier + 1);
+        return 1.0D + ADRENALINE_SPEED_PER_LEVEL * effectiveAdrenalineLevel(amplifier);
     }
 
     /** +5% TACZ fire rate per adrenaline level (amplifier 0 => 1.05). */
     public static double adrenalineFireRateMultiplier(int amplifier) {
-        return 1.0D + ADRENALINE_FIRE_RATE_PER_LEVEL * (amplifier + 1);
+        return 1.0D + ADRENALINE_FIRE_RATE_PER_LEVEL * effectiveAdrenalineLevel(amplifier);
+    }
+
+    private static int effectiveAdrenalineLevel(int amplifier) {
+        return Math.min(MAX_ADRENALINE_EFFECT_LEVEL - 1, Math.max(0, amplifier)) + 1;
     }
 
     public static double adrenalineSpeedMultiplier(LivingEntity entity) {

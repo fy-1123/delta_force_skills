@@ -1,6 +1,5 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.screen.GhrothArmoryScreen;
 import com.rzy.dealt_force_skills.shop.GhrothArmoryCatalog;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.item.ItemStack;

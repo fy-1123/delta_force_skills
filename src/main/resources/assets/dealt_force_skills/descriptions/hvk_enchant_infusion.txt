@@ -1,0 +1,2 @@
+.tag("#deltaforce:df_age_6")
+HVK高级附魔灌注机，用于物品附魔和神化词条应用。

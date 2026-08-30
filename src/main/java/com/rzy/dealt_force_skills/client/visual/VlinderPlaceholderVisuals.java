@@ -55,6 +55,6 @@ public final class VlinderPlaceholderVisuals {
     }
 
     private static ResourceLocation model(String path) {
-        return ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, path);
+        return new ResourceLocation(DealtForceSkillsMod.MODID, path);
     }
 }

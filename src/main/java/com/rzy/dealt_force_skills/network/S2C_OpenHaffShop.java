@@ -1,6 +1,5 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.screen.HaffShopScreen;
 import com.rzy.dealt_force_skills.item.DfsItemQuality;
 import com.rzy.dealt_force_skills.shop.DfsShopCatalog;
 import net.minecraft.network.FriendlyByteBuf;

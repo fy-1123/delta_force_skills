@@ -47,6 +47,6 @@ public final class CharacterSkinTextures {
     }
 
     private static ResourceLocation skin(String name) {
-        return ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, ROOT + name + ".png");
+        return new ResourceLocation(DealtForceSkillsMod.MODID, ROOT + name + ".png");
     }
 }

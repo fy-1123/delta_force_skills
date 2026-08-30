@@ -28,7 +28,7 @@ public class GroundItemEvents {
      */
     public static final TagKey<Item> GROUND_ITEM_TAG = TagKey.create(
         Registries.ITEM,
-        ResourceLocation.fromNamespaceAndPath(DeltaForce.MODID, "df_item_e")
+        new ResourceLocation(DeltaForce.MODID, "df_item_e")
     );
 
     /**
@@ -36,7 +36,7 @@ public class GroundItemEvents {
      */
     public static final TagKey<Item> DF_ITEM_TAG = TagKey.create(
         Registries.ITEM,
-        ResourceLocation.fromNamespaceAndPath(DeltaForce.MODID, "df_item")
+        new ResourceLocation(DeltaForce.MODID, "df_item")
     );
 
     /**

@@ -25,7 +25,7 @@ import java.util.Set;
 
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID, value = Dist.CLIENT)
 public final class OE2CombatStimulantVisuals {
-    private static final ResourceLocation MODEL = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation MODEL = new ResourceLocation(
             DealtForceSkillsMod.MODID, "oe2_combat_stimulant");
     private static final Set<String> HIDDEN_FIRST_PERSON_GROUPS = Set.of("thirdperson_hand", "camera");
     private static final Set<String> HIDDEN_THIRD_PERSON_GROUPS = Set.of(

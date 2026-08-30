@@ -1,0 +1,2 @@
+.tag("#deltaforce:df_age_1")
+由原版木板压制成的基础原材料。

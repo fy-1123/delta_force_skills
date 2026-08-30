@@ -178,6 +178,11 @@ tasks.named('processResources', ProcessResources).configure {
             loader_version_range: loader_version_range,
             mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
             mod_authors: mod_authors, mod_description: mod_description,
+            dfmod_id: dfmod_id,
+            dfmod_name: dfmod_name,
+            dfmod_version: dfmod_version,
+            dfmod_authors: dfmod_authors,
+            dfmod_description: dfmod_description
     ]
     inputs.properties replaceProperties
 

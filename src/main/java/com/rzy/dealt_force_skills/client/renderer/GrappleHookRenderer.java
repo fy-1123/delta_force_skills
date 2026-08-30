@@ -14,9 +14,9 @@ import net.minecraft.world.phys.Vec3;
 
 public final class GrappleHookRenderer extends EntityRenderer<GrappleHookEntity> {
     private static final ResourceLocation HOOK =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "grapple_hook");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "grapple_hook");
     private static final ResourceLocation ROPE =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "sineva_grapple_rope");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "sineva_grapple_rope");
 
     private final ThrownItemRenderer<GrappleHookEntity> fallback;
 

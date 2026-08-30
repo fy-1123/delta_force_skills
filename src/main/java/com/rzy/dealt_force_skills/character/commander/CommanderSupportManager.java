@@ -31,6 +31,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -359,7 +360,7 @@ public final class CommanderSupportManager {
             long now = now(owner);
             if (CommanderStateManager.quickReviveUntil(owner) > now
                     && (owner == target || owner.distanceToSqr(target) <= 15.0D * 15.0D)) {
-                restorePlayer(target, null, 20);
+                restorePlayer(target, null, 20, owner);
                 return true;
             }
             var data = owner.getPersistentData();
@@ -379,7 +380,7 @@ public final class CommanderSupportManager {
                 data.remove("CommanderBeaconDimension");
                 data.remove("CommanderBeaconUses");
             }
-            restorePlayer(target, beacon, 60);
+            restorePlayer(target, beacon, 60, owner);
             return true;
         }
         return false;
@@ -425,8 +426,10 @@ public final class CommanderSupportManager {
         target.getPersistentData().putLong(MARK_UNTIL, now(owner) + 600 * 20L);
         target.getPersistentData().putInt(MARK_STACKS, 0);
         target.getPersistentData().putUUID(MARK_OWNER, owner.getUUID());
-        target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 600 * 20, 0, false, true, true));
-        target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 600 * 20, 2, false, true, true));
+        addSupportEffect(owner, target,
+                new MobEffectInstance(MobEffects.GLOWING, 600 * 20, 0, false, true, true));
+        addSupportEffect(owner, target,
+                new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 600 * 20, 2, false, true, true));
         return true;
     }
 
@@ -457,7 +460,8 @@ public final class CommanderSupportManager {
         int start = level.random.nextInt(targets.size());
         for (int i = 0; i < 18; i++) {
             LivingEntity target = targets.get((start + i) % targets.size());
-            target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 140, 0, false, true, true));
+            addSupportEffect(owner, target,
+                    new MobEffectInstance(MobEffects.GLOWING, 140, 0, false, true, true));
             IMPACTS.add(new Impact(owner.getUUID(), level.dimension().location(), target.position(),
                     now(owner) + 30L, ImpactType.ARTILLERY));
         }
@@ -499,12 +503,16 @@ public final class CommanderSupportManager {
             bolt.moveTo(strikePos.getX() + 0.5D, strikePos.getY(), strikePos.getZ() + 0.5D);
             bolt.setVisualOnly(true);
             level.addFreshEntity(bolt);
-            target.addEffect(new MobEffectInstance(ModEffects.NOX_DELAYED_WOUND.get(), 10 * 20, 0));
-            target.addEffect(new MobEffectInstance(ModEffects.CORROSION.get(), 10 * 20, 0));
-            target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 10 * 20, 1));
-            target.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 10 * 20, 1));
-            target.hurt(level.damageSources().lightningBolt(), 16.0F);
-            target.hurt(level.damageSources().onFire(), 16.0F);
+            addSupportEffect(owner, target,
+                    new MobEffectInstance(ModEffects.NOX_DELAYED_WOUND.get(), 10 * 20, 0));
+            addSupportEffect(owner, target,
+                    new MobEffectInstance(ModEffects.CORROSION.get(), 10 * 20, 0));
+            addSupportEffect(owner, target,
+                    new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 10 * 20, 1));
+            addSupportEffect(owner, target,
+                    new MobEffectInstance(MobEffects.WEAKNESS, 10 * 20, 1));
+            target.hurt(SkillDamageHelper.source(level, DamageTypes.LIGHTNING_BOLT, owner, owner), 16.0F);
+            target.hurt(SkillDamageHelper.source(level, DamageTypes.ON_FIRE, owner, owner), 16.0F);
         }
         sendParticlesLongDistance(level, center, 512.0D,
                 net.minecraft.core.particles.ParticleTypes.ELECTRIC_SPARK,
@@ -516,7 +524,7 @@ public final class CommanderSupportManager {
         for (ServerPlayer member : team) {
             if (member.distanceToSqr(owner) > 4.0D * 4.0D && member != owner) continue;
             teleport(member, target);
-            grantFullInvisibility(member, 10 * 20);
+            grantFullInvisibility(member, 10 * 20, owner);
             applyMedical(member);
             CommanderStateManager.setMedicalSupportUntil(member, now(owner) + 120L * 20L);
         }
@@ -723,10 +731,10 @@ public final class CommanderSupportManager {
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class,
                 new AABB(center, center).inflate(radius), entity -> TargetingUtil.isHostileLivingFor(owner, entity))) {
             SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, owner, owner), owner, damage);
-            if (target.isAlive() && !TrainingTargetCompat.recordsDamageWithoutDying(target)) target.kill();
+            forceSupportKill(owner, target);
         }
         if (nuclear) {
-            RADIATION.add(new RadiationZone(level.dimension().location(), center, 256.0D,
+            RADIATION.add(new RadiationZone(owner.getUUID(), level.dimension().location(), center, 256.0D,
                     now(owner) + RADIATION_DURATION_TICKS));
         }
     }
@@ -770,7 +778,8 @@ public final class CommanderSupportManager {
         }
     }
 
-    private static void restorePlayer(ServerPlayer player, BlockPos teleportTarget, int invisibilityTicks) {
+    private static void restorePlayer(ServerPlayer player, BlockPos teleportTarget, int invisibilityTicks,
+                                      ServerPlayer source) {
         if (teleportTarget != null) {
             BlockPos safe = findPlace(player.serverLevel(), teleportTarget);
             player.teleportTo(player.serverLevel(), safe.getX() + 0.5D, safe.getY(), safe.getZ() + 0.5D,
@@ -785,17 +794,22 @@ public final class CommanderSupportManager {
         for (ItemStack stack : player.getInventory().armor) {
             if (stack.isDamageableItem()) stack.setDamageValue(0);
         }
-        grantFullInvisibility(player, invisibilityTicks);
+        grantFullInvisibility(player, invisibilityTicks, source);
     }
 
-    private static void grantFullInvisibility(ServerPlayer player, int ticks) {
+    private static void grantFullInvisibility(ServerPlayer player, int ticks, ServerPlayer source) {
         int duration = Math.max(1, ticks);
         CompoundTag data = player.getPersistentData();
         data.putLong(FULL_INVISIBILITY_UNTIL,
                 Math.max(data.getLong(FULL_INVISIBILITY_UNTIL), now(player) + duration));
         data.putBoolean(FULL_INVISIBILITY_RUNTIME, true);
-        player.addEffect(new MobEffectInstance(ModEffects.UNDEAD_TRUE_INVISIBILITY.get(),
-                duration, 0, false, false, false));
+        MobEffectInstance effect = new MobEffectInstance(ModEffects.UNDEAD_TRUE_INVISIBILITY.get(),
+                duration, 0, false, false, false);
+        if (source == null) {
+            player.addEffect(effect);
+        } else {
+            player.addEffect(effect, source);
+        }
         player.setInvisible(true);
         clearMobTargets(player);
     }
@@ -966,7 +980,8 @@ public final class CommanderSupportManager {
                     || !owner.getUUID().equals(target.getPersistentData().getUUID(MARK_OWNER))) {
                 continue;
             }
-            target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 40, 0, false, true, true));
+            addSupportEffect(owner, target,
+                    new MobEffectInstance(MobEffects.GLOWING, 40, 0, false, true, true));
             owner.serverLevel().sendParticles(net.minecraft.core.particles.ParticleTypes.ENCHANT,
                     target.getX(), target.getY() + target.getBbHeight() + 0.3D, target.getZ(),
                     6, 0.35D, 0.2D, 0.35D, 0.02D);
@@ -1013,7 +1028,8 @@ public final class CommanderSupportManager {
             for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class,
                     new AABB(zone.center(), zone.center()).inflate(radius),
                     entity -> TargetingUtil.isHostileLivingFor(owner, entity))) {
-                target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 40, 0, false, true, true));
+                addSupportEffect(owner, target,
+                        new MobEffectInstance(MobEffects.GLOWING, 40, 0, false, true, true));
             }
         }
     }
@@ -1131,23 +1147,54 @@ public final class CommanderSupportManager {
             }
             ServerLevel level = server.getLevel(ResourceKey.create(Registries.DIMENSION, zone.dimension()));
             if (level == null) continue;
+            ServerPlayer owner = zone.ownerId() == null ? null
+                    : server.getPlayerList().getPlayer(zone.ownerId());
             if (now % 20L == 0L) {
                 sendRing(level, zone.center(), zone.radius(),
                         net.minecraft.core.particles.ParticleTypes.SOUL_FIRE_FLAME, 64);
             }
             for (ServerPlayer player : level.players()) {
                 if (zone.contains(player.position())) {
-                    player.addEffect(new MobEffectInstance(MobEffects.WITHER, 40, 9, false, true, true));
-                    player.addEffect(new MobEffectInstance(MobEffects.HUNGER, 40, 254, false, true, true));
+                    MobEffectInstance wither = new MobEffectInstance(MobEffects.WITHER, 40, 9,
+                            false, true, true);
+                    MobEffectInstance hunger = new MobEffectInstance(MobEffects.HUNGER, 40, 254,
+                            false, true, true);
+                    if (owner == null) {
+                        player.addEffect(wither);
+                        player.addEffect(hunger);
+                    } else {
+                        addSupportEffect(owner, player, wither);
+                        addSupportEffect(owner, player, hunger);
+                    }
                 }
             }
             for (Mob mob : level.getEntitiesOfClass(Mob.class,
                     new AABB(zone.center(), zone.center()).inflate(zone.radius()), Mob::isAlive)) {
                 if (!TrainingTargetCompat.recordsDamageWithoutDying(mob)) {
-                    mob.kill();
+                    if (owner == null) {
+                        mob.kill();
+                    } else {
+                        forceSupportKill(owner, mob);
+                    }
                 }
             }
         }
+    }
+
+    private static void addSupportEffect(ServerPlayer owner, LivingEntity target, MobEffectInstance effect) {
+        target.addEffect(effect, owner);
+    }
+
+    private static void forceSupportKill(ServerPlayer owner, LivingEntity target) {
+        if (!target.isAlive() || TrainingTargetCompat.recordsDamageWithoutDying(target)) {
+            return;
+        }
+        if (!(target.level() instanceof ServerLevel targetLevel)) {
+            return;
+        }
+        target.invulnerableTime = 0;
+        target.hurt(SkillDamageHelper.source(targetLevel, DamageTypes.PLAYER_ATTACK, owner, owner),
+                Float.MAX_VALUE);
     }
 
     private enum ZoneType { ARTILLERY, LIGHTNING }
@@ -1184,7 +1231,8 @@ public final class CommanderSupportManager {
     private record Impact(UUID ownerId, ResourceLocation dimension, Vec3 position, long at, ImpactType type) {
     }
 
-    private record RadiationZone(ResourceLocation dimension, Vec3 center, double radius, long endsAt) {
+    private record RadiationZone(UUID ownerId, ResourceLocation dimension, Vec3 center,
+                                 double radius, long endsAt) {
         boolean contains(Vec3 position) {
             return center.distanceToSqr(position) <= radius * radius;
         }
@@ -1246,7 +1294,8 @@ public final class CommanderSupportManager {
                     if (endsAt <= now) {
                         continue;
                     }
-                    RADIATION.add(new RadiationZone(dimension,
+                    UUID ownerId = entry.hasUUID("Owner") ? entry.getUUID("Owner") : null;
+                    RADIATION.add(new RadiationZone(ownerId, dimension,
                             new Vec3(entry.getDouble("X"), entry.getDouble("Y"), entry.getDouble("Z")),
                             entry.getDouble("Radius"), endsAt));
                 }
@@ -1299,6 +1348,9 @@ public final class CommanderSupportManager {
             ListTag radiation = new ListTag();
             for (RadiationZone zone : RADIATION) {
                 CompoundTag entry = new CompoundTag();
+                if (zone.ownerId() != null) {
+                    entry.putUUID("Owner", zone.ownerId());
+                }
                 entry.putString("Dimension", zone.dimension().toString());
                 entry.putDouble("X", zone.center().x);
                 entry.putDouble("Y", zone.center().y);

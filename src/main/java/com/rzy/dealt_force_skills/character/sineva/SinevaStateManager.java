@@ -157,11 +157,15 @@ public final class SinevaStateManager {
         if (attr != null && attr.getModifier(BOMB_SUIT_SLOW_UUID) != null) {
             attr.removeModifier(BOMB_SUIT_SLOW_UUID);
         }
+        var stepHeight = player.getAttribute(ForgeMod.STEP_HEIGHT_ADDITION.get());
+        if (stepHeight != null && stepHeight.getModifier(BOMB_SUIT_STEP_HEIGHT_UUID) != null) {
+            stepHeight.removeModifier(BOMB_SUIT_STEP_HEIGHT_UUID);
+        }
     }
 
     public static void tick(ServerPlayer player) {
         boolean activeSource = isSineva(player);
-        updateBombSuitStepHeight(player, activeSource && isBombSuitActive(player));
+        reconcileStepHeight(player);
         if (!activeSource) {
             return;
         }
@@ -307,16 +311,18 @@ public final class SinevaStateManager {
         return Math.max(0.0D, BOMB_SUIT_STEP_HEIGHT_BONUS);
     }
 
-    public static void updateBombSuitStepHeight(Player player, boolean active) {
+    public static void reconcileStepHeight(Player player) {
+        updateBombSuitStepHeight(player, isBombSuitActive(player), CommanderStateManager.isCommander(player));
+    }
+
+    public static void updateBombSuitStepHeight(Player player, boolean active, boolean commander) {
         var attr = player.getAttribute(ForgeMod.STEP_HEIGHT_ADDITION.get());
         if (attr == null) {
             return;
         }
-        if (CommanderStateManager.isCommander(player)) {
-            active = false;
-        }
         AttributeModifier existing = attr.getModifier(BOMB_SUIT_STEP_HEIGHT_UUID);
-        double bonus = bombSuitStepHeightBonus();
+        double bonus = Math.max(0.0D, bombSuitStepHeightBonus()
+                - (commander ? CommanderStateManager.stepHeightBonus() : 0.0D));
         if (active && bonus > 0.0D) {
             if (existing == null || Math.abs(existing.getAmount() - bonus) > 0.0001D) {
                 if (existing != null) {

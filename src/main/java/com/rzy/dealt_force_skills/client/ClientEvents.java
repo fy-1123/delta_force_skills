@@ -17,6 +17,7 @@ import com.rzy.dealt_force_skills.client.character.ClientCorpsHudState;
 import com.rzy.dealt_force_skills.client.character.ClientDWolfHudState;
 import com.rzy.dealt_force_skills.client.character.ClientDepartmentHudState;
 import com.rzy.dealt_force_skills.client.character.ClientGamblerHudState;
+import com.rzy.dealt_force_skills.client.character.ClientGamblerTargetingState;
 import com.rzy.dealt_force_skills.client.character.ClientGizmoHudState;
 import com.rzy.dealt_force_skills.client.character.ClientHackclawHudState;
 import com.rzy.dealt_force_skills.client.character.ClientHackclawCoreVisualState;
@@ -95,14 +96,17 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterParticleProvidersEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.player.ItemTooltipEvent;
@@ -119,6 +123,8 @@ public class ClientEvents {
     private static volatile int SHEPHERD_CORE_LONG_HOLD_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SHEPHERD_CORE_LONG_HOLD_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("client.client_events.shepherd_core_long_hold_ticks", 15));
     private static int coreKeyHeldTicks = 0;
     private static boolean coreKeyWasDown = false;
+    /** Keeps stale pseudo-tool handlers from swallowing vanilla screens after local death. */
+    private static boolean localDeathInputOverride;
     private static int suppressHurtAnimationTicks;
     private static boolean forcedCharacterSpinActive;
     private static float forcedCharacterSpinYaw;
@@ -147,12 +153,13 @@ public class ClientEvents {
         SinevaStateManager.updateBombSuitStepHeight(mc.player,
                 (ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(
                         com.rzy.dealt_force_skills.character.ModCharacters.SINEVA_ID))
-                        && ClientSinevaHudState.bombSuitActive());
+                        && ClientSinevaHudState.bombSuitActive(), ClientCommanderState.shouldRender());
         accelerateTaczAdrenalineClient(mc.player);
         TaczSpeedMultipliers multipliers = taczSpeedMultipliers(mc.player);
+        boolean shockBlocked = superbWarfareShockBlocked(mc.player);
         SuperbWarfareCompat.applyClientWeaponModifiers(mc.player,
                 multipliers.fireRate(), multipliers.aim(), multipliers.aimPenalty(),
-                ClientCommanderVehicleState.isCommanderVehicle(mc.player.getVehicle()));
+                ClientCommanderVehicleState.isCommanderVehicle(mc.player.getVehicle()), shockBlocked);
         delayTaczMorseShockClient(mc.player);
     }
 
@@ -207,6 +214,15 @@ public class ClientEvents {
         player.hurtTime = 0;
         player.hurtDuration = 0;
         suppressHurtAnimationTicks--;
+    }
+
+    private static boolean superbWarfareShockBlocked(LocalPlayer player) {
+        MobEffectInstance sonic = player.getEffect(ModEffects.SONIC_SHOCK.get());
+        if (sonic != null && Math.floorMod(player.tickCount, sonic.getAmplifier() >= 1 ? 4 : 2) != 0) {
+            return true;
+        }
+        MobEffectInstance morse = player.getEffect(ModEffects.MORSE_STRONG_SHOCK.get());
+        return morse != null && Math.floorMod(player.tickCount, morse.getAmplifier() >= 1 ? 4 : 2) != 0;
     }
 
     private static void accelerateTaczAdrenalineClient(net.minecraft.client.player.LocalPlayer player) {
@@ -335,6 +351,18 @@ public class ClientEvents {
     }
 
     private record TaczSpeedMultipliers(double fireRate, double reload, double aim, double bolt, double aimPenalty) {
+        private TaczSpeedMultipliers {
+            fireRate = validMultiplier(fireRate);
+            reload = validMultiplier(reload);
+            aim = validMultiplier(aim);
+            bolt = validMultiplier(bolt);
+            aimPenalty = validMultiplier(aimPenalty);
+        }
+
+        private static double validMultiplier(double value) {
+            return Double.isFinite(value) && value >= 1.0D ? value : 1.0D;
+        }
+
         boolean hasChange() {
             return fireRate > 1.0001D || reload > 1.0001D || aim > 1.0001D || bolt > 1.0001D || aimPenalty > 1.0001D;
         }
@@ -452,6 +480,7 @@ public class ClientEvents {
         if (e.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) {
+            localDeathInputOverride = true;
             forcedCharacterSpinActive = false;
             ClientToolReleaseAction.reset();
             ClientCharacterSelectionState.resetSession();
@@ -460,6 +489,12 @@ public class ClientEvents {
             DWolfSlideVisuals.reset();
             return;
         }
+        localDeathInputOverride = !mc.player.isAlive();
+        if (localDeathInputOverride) {
+            resetGameplayInputAfterDeath(mc);
+            return;
+        }
+        localDeathInputOverride = false;
         if (mc.player.isSpectator()) {
             forcedCharacterSpinActive = false;
             ClientToolReleaseAction.reset();
@@ -625,6 +660,59 @@ public class ClientEvents {
         }
     }
 
+    /**
+     * Pseudo-tools are normally allowed to own gameplay input, but never while the
+     * local player is dead. Keep their transient camera/control state from ticking
+     * and drain custom mappings so the death/title screens receive vanilla input.
+     */
+    private static void resetGameplayInputAfterDeath(Minecraft minecraft) {
+        ClientToolReleaseAction.reset();
+        ClientGamblerTargetingState.clearAll();
+        UluruMissileController.stop(false);
+        RaptorFalconController.stop(false);
+        SaeedGuardViewController.stop(false);
+        resetCoreSkillKey();
+        drainKey(KeybindRegister.CHARACTER_SELECT);
+        drainKey(KeybindRegister.ACTIVE_SKILL_1);
+        drainKey(KeybindRegister.ACTIVE_SKILL_2);
+        drainKey(KeybindRegister.CORE_SKILL);
+    }
+
+    private static boolean localDeathInputIsOverridden() {
+        Minecraft minecraft = Minecraft.getInstance();
+        return localDeathInputOverride
+                || (minecraft.player != null && !minecraft.player.isAlive());
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void restoreVanillaInputAfterDeath(InputEvent.MouseButton.Pre event) {
+        if (localDeathInputIsOverridden()) {
+            event.setCanceled(false);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void restoreVanillaInputAfterDeath(InputEvent.MouseScrollingEvent event) {
+        if (localDeathInputIsOverridden()) {
+            event.setCanceled(false);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void restoreVanillaInputAfterDeath(InputEvent.InteractionKeyMappingTriggered event) {
+        if (localDeathInputIsOverridden()) {
+            event.setCanceled(false);
+            event.setSwingHand(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void restoreVanillaScreenAfterDeath(ScreenEvent.Opening event) {
+        if (localDeathInputIsOverridden()) {
+            event.setCanceled(false);
+        }
+    }
+
     private static void tickForcedCharacterSpin(LocalPlayer player) {
         float degrees = 0.0F;
         if (ClientDepartmentHudState.shouldRender()) {
@@ -666,11 +754,12 @@ public class ClientEvents {
         if (chestProfile == null || !chestProfile.id().equals("heavy_assault_vest")) {
             return;
         }
-        if (!isTaczGunStack(player.getMainHandItem()) || !isTaczClientAiming(player)) {
+        if (!isClientScopedWeapon(player)) {
             return;
         }
         LivingEntity target = nearestMask1LockTarget(player);
         if (target != null) {
+            SuperbWarfareCompat.applyClientScopedTargetLock(player, target);
             aimLocalPlayerAt(player, target.getEyePosition());
         }
     }
@@ -681,13 +770,19 @@ public class ClientEvents {
                 || !ModCharacters.GHROTH_ID.equals(ClientCharacterSelectionState.selectedCharacterId())) {
             return;
         }
-        if (!isTaczGunStack(player.getMainHandItem()) || !isTaczClientAiming(player)) {
+        if (!isClientScopedWeapon(player)) {
             return;
         }
         LivingEntity target = player.isShiftKeyDown() ? nearestGhrothPlayerTarget(player) : nearestGhrothNonPlayerTarget(player);
         if (target != null) {
+            SuperbWarfareCompat.applyClientScopedTargetLock(player, target);
             aimLocalPlayerAt(player, target.getEyePosition());
         }
+    }
+
+    private static boolean isClientScopedWeapon(LocalPlayer player) {
+        return (isTaczGunStack(player.getMainHandItem()) && isTaczClientAiming(player))
+                || SuperbWarfareCompat.isClientAiming(player);
     }
 
     private static LivingEntity nearestMask1LockTarget(LocalPlayer player) {
@@ -1194,6 +1289,6 @@ public class ClientEvents {
     }
 
     private static ResourceLocation model(String path) {
-        return ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, path);
+        return new ResourceLocation(DealtForceSkillsMod.MODID, path);
     }
 }

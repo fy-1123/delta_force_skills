@@ -269,6 +269,11 @@ public class StingerSmokeCloudEntity extends Entity implements ItemSupplier, Smo
         return isEnhanced() && !isDroneSource();
     }
 
+    @Override
+    public boolean shouldRenderSmokeModel() {
+        return !isHiveSmoke();
+    }
+
     private void extendStrongSmokeIfNeeded(ServerLevel level) {
         if (strongSmokeExtended || !isHiveSmoke() || ownerId == null
                 || !(level.getEntity(ownerId) instanceof ServerPlayer owner)

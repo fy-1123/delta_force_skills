@@ -578,7 +578,7 @@ public class ModSounds {
 
     private static RegistryObject<SoundEvent> reg(String id) {
         return SOUNDS.register(id, () -> SoundEvent.createVariableRangeEvent(
-                ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, id)));
+                new ResourceLocation(DealtForceSkillsMod.MODID, id)));
     }
 
     private static List<RegistryObject<SoundEvent>> registerIndexed(String prefix, int count) {
@@ -589,7 +589,7 @@ public class ModSounds {
 
     private static RegistryObject<SoundEvent> regFixed(String id, float range) {
         return SOUNDS.register(id, () -> SoundEvent.createFixedRangeEvent(
-                ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, id), range));
+                new ResourceLocation(DealtForceSkillsMod.MODID, id), range));
     }
 
     private static Map<String, RegistryObject<SoundEvent>> registerLexNinjiaSounds() {

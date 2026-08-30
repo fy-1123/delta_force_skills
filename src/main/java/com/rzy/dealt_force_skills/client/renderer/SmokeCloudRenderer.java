@@ -29,7 +29,7 @@ public final class SmokeCloudRenderer<T extends Entity & SmokeCloudModelState> e
     @Override
     public void render(T entity, float entityYaw, float partialTick, PoseStack poseStack,
                        MultiBufferSource buffer, int packedLight) {
-        if (ClientVisionHooks.isThermalVisionActive()) {
+        if (ClientVisionHooks.isThermalVisionActive() || !entity.shouldRenderSmokeModel()) {
             return;
         }
         float ageTicks = entity.tickCount + partialTick;

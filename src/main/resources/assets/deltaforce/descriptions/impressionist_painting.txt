@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_4")
+.tag("#deltaforce:df_age_6")
 印象派名画——笔触朦胧的色彩盛宴，据说是某位大师流落战区的遗作。

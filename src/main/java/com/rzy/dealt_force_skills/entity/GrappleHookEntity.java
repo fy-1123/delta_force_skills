@@ -36,7 +36,7 @@ import net.minecraftforge.network.NetworkHooks;
  *
  * <p>你本地编译报错的根因是 {@code ThrownItemProjectile} 在你的映射环境里解析失败，
  * 导致继承链断掉并引发大量连锁错误。这里改为继承更基础的 {@link Projectile}，
- * 并实现 {@link ItemSupplier} 以继续沿用 {@link net.minecraft.client.renderer.entity.ThrownItemRenderer}。
+ * 并实现 {@link ItemSupplier} 以继续沿用投掷物渲染器的物品来源接口。
  */
 public class GrappleHookEntity extends Projectile implements ItemSupplier {
     private static final EntityDataAccessor<Integer> OWNER_ENTITY_ID =

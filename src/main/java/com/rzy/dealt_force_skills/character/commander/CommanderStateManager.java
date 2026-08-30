@@ -72,6 +72,10 @@ public final class CommanderStateManager {
                 .orElse(false);
     }
 
+    public static double stepHeightBonus() {
+        return STEP_HEIGHT_BONUS;
+    }
+
     public static void initializeIfNeeded(ServerPlayer player) {
         if (!isCommander(player)) {
             return;
@@ -579,6 +583,9 @@ public final class CommanderStateManager {
             return;
         }
         applyOutgoingDamageEffects(attacker, target);
+        if (!target.isAlive()) {
+            return;
+        }
         int gene = geneLevel(attacker);
         if (gene < 15 || TrainingTargetCompat.recordsDamageWithoutDying(target)
                 || !(attacker.level() instanceof ServerLevel level) || scaledAmount <= 0.0F) {
@@ -651,7 +658,12 @@ public final class CommanderStateManager {
             CompoundTag data = target.getPersistentData();
             int insight = data.getInt("CommanderRaptorInsight") + 1 + attacker.getRandom().nextInt(3);
             if (insight >= 1_000) {
-                target.kill();
+                if (target.isAlive() && attacker.level() instanceof ServerLevel level) {
+                    target.invulnerableTime = 0;
+                    target.hurt(SkillDamageHelper.source(level,
+                            net.minecraft.world.damagesource.DamageTypes.PLAYER_ATTACK,
+                            attacker, attacker), Float.MAX_VALUE);
+                }
                 data.remove("CommanderRaptorInsight");
             } else {
                 data.putInt("CommanderRaptorInsight", insight);

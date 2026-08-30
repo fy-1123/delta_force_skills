@@ -1,7 +1,6 @@
 package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.character.raptor.RaptorFootprintMarker;
-import com.rzy.dealt_force_skills.client.character.ClientRaptorHudState;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;

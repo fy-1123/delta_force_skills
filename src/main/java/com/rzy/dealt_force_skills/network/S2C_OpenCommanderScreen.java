@@ -1,7 +1,5 @@
 package com.rzy.dealt_force_skills.network;
 
-import com.rzy.dealt_force_skills.client.screen.CommanderScreen;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
@@ -20,7 +18,7 @@ public record S2C_OpenCommanderScreen(boolean support) {
 
     public static void handle(S2C_OpenCommanderScreen msg, Supplier<NetworkEvent.Context> context) {
         context.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
-                () -> () -> Minecraft.getInstance().setScreen(new CommanderScreen(msg.support))));
+                () -> () -> ClientPacketHandlers.openCommanderScreen(msg.support)));
         context.get().setPacketHandled(true);
     }
 }

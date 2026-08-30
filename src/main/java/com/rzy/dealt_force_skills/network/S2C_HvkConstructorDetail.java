@@ -4,7 +4,6 @@ import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBl
 import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBlockEntity.CraftabilityStatus;
 import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBlockEntity.RecipeDetail;
 import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBlockEntity.RecipeTreeLine;
-import com.rzy.dealt_force_skills.client.screen.HvkConstructorScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
@@ -33,7 +32,7 @@ public class S2C_HvkConstructorDetail {
     public S2C_HvkConstructorDetail(BlockPos pos, int requestId, RecipeDetail detail) {
         this.pos = pos;
         this.requestId = Math.max(0, requestId);
-        this.detail = detail == null ? RecipeDetail.empty(ResourceLocation.fromNamespaceAndPath("minecraft", "air")) : detail;
+        this.detail = detail == null ? RecipeDetail.empty(new ResourceLocation("minecraft", "air")) : detail;
     }
 
     public static void encode(S2C_HvkConstructorDetail msg, FriendlyByteBuf buf) {
@@ -117,7 +116,7 @@ public class S2C_HvkConstructorDetail {
         try {
             return ResourceLocation.parse(value);
         } catch (RuntimeException ex) {
-            return ResourceLocation.fromNamespaceAndPath("minecraft", "air");
+            return new ResourceLocation("minecraft", "air");
         }
     }
 

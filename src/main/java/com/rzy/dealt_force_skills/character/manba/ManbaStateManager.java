@@ -176,7 +176,7 @@ public final class ManbaStateManager {
     private static boolean opportunityLootTableFieldChecked;
     private static Field opportunityLootTableField;
     private static final ResourceLocation DUEL_BGM_SOUND_FILE =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "manba/duel_bgm");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "manba/duel_bgm");
 
     private ManbaStateManager() {
     }

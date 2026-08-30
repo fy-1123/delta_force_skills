@@ -54,13 +54,15 @@ public final class RarityCoreCompat {
 
     static int rarityCoreLevel(DfsItemQuality quality) {
         return switch (quality) {
+            case GRAY -> 0;
             case WHITE -> 1;
             case GREEN -> 2;
             case BLUE -> 3;
             case PURPLE -> 4;
             case GOLD -> 5;
             case RED -> 6;
-            case COLORFUL -> 7;
+            case RED_7 -> 7;
+            case COLORFUL -> 8;
         };
     }
 }

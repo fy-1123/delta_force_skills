@@ -44,24 +44,18 @@ public class DeltaForceItems {
             () -> qualityItem(DfsItemQuality.RED));
 
     // 5级(金色)
-    public static final RegistryObject<Item> DESIGN_BLUEPRINT = ITEMS.register("design_blueprint",
-            () -> qualityItem(DfsItemQuality.GOLD));
-
     public static final RegistryObject<Item> GOLD_COIN = ITEMS.register("gold_coin",
             () -> qualityItem(DfsItemQuality.GOLD));
 
-    // 4级(紫色)
+    // 6级(红色)
     public static final RegistryObject<Item> IMPRESSIONIST_PAINTING = ITEMS.register("impressionist_painting",
-            () -> qualityItem(DfsItemQuality.PURPLE));
+            () -> qualityItem(DfsItemQuality.RED));
 
     public static final RegistryObject<Item> ASARA_CLASSIFIED_DOCS = ITEMS.register("asara_classified_docs",
             () -> qualityItem(DfsItemQuality.PURPLE));
 
     // 3级(蓝色)
     public static final RegistryObject<Item> SUGAR_TRIANGLE = ITEMS.register("sugar_triangle",
-            () -> qualityItem(DfsItemQuality.BLUE));
-
-    public static final RegistryObject<Item> DANCING_GIRL = ITEMS.register("dancing_girl",
             () -> qualityItem(DfsItemQuality.BLUE));
 
     public static final RegistryObject<Item> SILVER_COIN = ITEMS.register("silver_coin",

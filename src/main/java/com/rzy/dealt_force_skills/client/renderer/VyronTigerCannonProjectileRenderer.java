@@ -13,7 +13,7 @@ import net.minecraft.world.phys.Vec3;
 
 public final class VyronTigerCannonProjectileRenderer extends EntityRenderer<VyronTigerCannonEntity> {
     public static final ResourceLocation MODEL =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "vyron_tiger_cannon_projectile");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "vyron_tiger_cannon_projectile");
 
     private final ThrownItemRenderer<VyronTigerCannonEntity> fallback;
 

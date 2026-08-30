@@ -22,7 +22,7 @@ public class C2S_HvkConstructorDetail {
 
     public C2S_HvkConstructorDetail(BlockPos pos, ResourceLocation recipeId, int requestId) {
         this.pos = pos;
-        this.recipeId = recipeId == null ? ResourceLocation.fromNamespaceAndPath("minecraft", "air") : recipeId;
+        this.recipeId = recipeId == null ? new ResourceLocation("minecraft", "air") : recipeId;
         this.requestId = Math.max(0, requestId);
     }
 
@@ -56,7 +56,7 @@ public class C2S_HvkConstructorDetail {
         try {
             return ResourceLocation.parse(value);
         } catch (RuntimeException ex) {
-            return ResourceLocation.fromNamespaceAndPath("minecraft", "air");
+            return new ResourceLocation("minecraft", "air");
         }
     }
 }

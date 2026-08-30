@@ -46,7 +46,18 @@ public final class GamblerInputHandler {
             ClientGamblerTargetingState.clearAll();
             return;
         }
+        if (minecraft.screen != null) {
+            ClientGamblerTargetingState.clearPending();
+            resetSelection();
+            resetActive1();
+            resetTargetUse();
+            return;
+        }
         ClientGamblerTargetingState.tick(minecraft);
+        if (ClientGamblerTargetingState.hasPendingTargetPower() && anyCharacterKeyDown()) {
+            ClientGamblerTargetingState.clearPending();
+            resetTargetUse();
+        }
         if (handlePowerTargeting(minecraft)) {
             resetSelection();
             resetActive1();
@@ -54,6 +65,13 @@ public final class GamblerInputHandler {
         }
         handleSelectionKey(minecraft);
         handleActive1Key(minecraft);
+    }
+
+    private static boolean anyCharacterKeyDown() {
+        return (KeybindRegister.CHARACTER_SELECT != null && KeybindRegister.CHARACTER_SELECT.isDown())
+                || (KeybindRegister.ACTIVE_SKILL_1 != null && KeybindRegister.ACTIVE_SKILL_1.isDown())
+                || (KeybindRegister.ACTIVE_SKILL_2 != null && KeybindRegister.ACTIVE_SKILL_2.isDown())
+                || (KeybindRegister.CORE_SKILL != null && KeybindRegister.CORE_SKILL.isDown());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -153,6 +171,7 @@ public final class GamblerInputHandler {
             return true;
         }
         if (targetUseWasDown) {
+            ClientGamblerTargetingState.clearPending();
             resetTargetUse();
         }
         return true;

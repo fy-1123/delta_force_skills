@@ -10,9 +10,9 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 public final class AcceleratedTroopsEquipment {
     private static final ResourceLocation TACZ_GUN_ITEM =
-            ResourceLocation.fromNamespaceAndPath("tacz", "modern_kinetic_gun");
+            new ResourceLocation("tacz", "modern_kinetic_gun");
     private static final ResourceLocation TACZ_AMMO_BOX_ITEM =
-            ResourceLocation.fromNamespaceAndPath("tacz", "ammo_box");
+            new ResourceLocation("tacz", "ammo_box");
     private static final String M4A1_SNBT =
             "{Count:1b,id:\"tacz:modern_kinetic_gun\",tag:{AttachmentEXTENDED_MAG:{Count:1b,id:\"tacz:attachment\",tag:{AttachmentId:\"tacz:ammo_mod_i\"}},AttachmentGRIP:{Count:1b,id:\"tacz:attachment\",tag:{AttachmentId:\"tacz:grip_vertical_ranger\"}},AttachmentLASER:{Count:1b,id:\"tacz:attachment\",tag:{AttachmentId:\"tacz:laser_lopro\"}},AttachmentMUZZLE:{Count:1b,id:\"tacz:attachment\",tag:{AttachmentId:\"tacz:muzzle_brake_cyclone_d2\"}},AttachmentSCOPE:{Count:1b,id:\"tacz:attachment\",tag:{AttachmentId:\"tacz:sight_coyote\"}},AttachmentSTOCK:{Count:1b,id:\"tacz:attachment\",tag:{AttachmentId:\"tacz:stock_carbon_bone_c5\"}},GunCurrentAmmoCount:60,GunFireMode:\"AUTO\",GunId:\"tacz:m4a1\",HasBulletInBarrel:1b}}";
     private static final String AMMO_BOX_SNBT =

@@ -59,13 +59,19 @@ public class DfsEquipmentItem extends ArmorItem {
 
     @Override
     public Component getName(ItemStack stack) {
-        return Component.translatable(getDescriptionId(stack)).withStyle(style -> style.withColor(quality.color()));
+        Component name = Component.translatable(getDescriptionId(stack));
+        return quality == DfsItemQuality.COLORFUL
+                ? DfsItemQuality.rainbowText(name)
+                : name.copy().withStyle(style -> style.withColor(quality.color()));
     }
 
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
-        tooltip.add(Component.translatable("tooltip.dealt_force_skills.quality",
-                Component.translatable("quality.dealt_force_skills." + quality.key())).withStyle(ChatFormatting.GRAY));
+        Component qualityLine = Component.translatable("tooltip.dealt_force_skills.quality",
+                Component.translatable("quality.dealt_force_skills." + quality.key()));
+        tooltip.add(quality == DfsItemQuality.COLORFUL
+                ? DfsItemQuality.rainbowText(qualityLine)
+                : qualityLine.copy().withStyle(ChatFormatting.GRAY));
         if (stack.isDamageableItem() && stack.isDamaged()) {
             tooltip.add(Component.translatable("tooltip.dealt_force_skills.durability",
                     displayedDurability(stack), stack.getMaxDamage()).withStyle(ChatFormatting.GRAY));
@@ -416,24 +422,28 @@ public class DfsEquipmentItem extends ArmorItem {
 
     public static double qualityProtectionRatio(DfsItemQuality quality) {
         return switch (quality) {
+            case GRAY -> 0.10D;
             case WHITE -> 0.20D;
             case GREEN -> 0.30D;
             case BLUE -> 0.50D;
             case PURPLE -> 0.70D;
             case GOLD -> 0.90D;
             case RED -> 0.96D;
+            case RED_7 -> 0.96D;
             case COLORFUL -> 0.96D;
         };
     }
 
     public static int qualityDurabilityCost(DfsItemQuality quality) {
         return switch (quality) {
+            case GRAY -> 10;
             case WHITE -> 10;
             case GREEN -> 9;
             case BLUE -> 8;
             case PURPLE -> 7;
             case GOLD -> 6;
             case RED -> 5;
+            case RED_7 -> 5;
             case COLORFUL -> 5;
         };
     }

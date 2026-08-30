@@ -2,7 +2,6 @@ package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.character.vlinder.VlinderMarkerType;
 import com.rzy.dealt_force_skills.character.vlinder.VlinderWorldMarker;
-import com.rzy.dealt_force_skills.client.character.ClientVlinderHudState;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;

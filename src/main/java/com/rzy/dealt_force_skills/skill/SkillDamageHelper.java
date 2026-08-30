@@ -61,7 +61,7 @@ public final class SkillDamageHelper {
     }
 
     private static ResourceKey<DamageType> key(String id) {
-        return ResourceKey.create(Registries.DAMAGE_TYPE, ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, id));
+        return ResourceKey.create(Registries.DAMAGE_TYPE, new ResourceLocation(DealtForceSkillsMod.MODID, id));
     }
 
     public static float scale(LivingEntity source, float amount) {

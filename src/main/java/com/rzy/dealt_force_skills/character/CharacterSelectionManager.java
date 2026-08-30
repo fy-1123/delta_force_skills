@@ -58,7 +58,10 @@ public final class CharacterSelectionManager {
     }
 
     private static String canonicalCharacterId(String id) {
-        return ModCharacters.LEGACY_CORPS_ID.equals(id) ? ModCharacters.CORPS_ID : id;
+        if (ModCharacters.LEGACY_CORPS_ID.equals(id)) {
+            return ModCharacters.CORPS_ID;
+        }
+        return ModCharacters.LEGACY_COMMANDER_ID.equals(id) ? ModCharacters.COMMANDER_ID : id;
     }
 
     public static boolean hasCharacterReselection(Player player) {

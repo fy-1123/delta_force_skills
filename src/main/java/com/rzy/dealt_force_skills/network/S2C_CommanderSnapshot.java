@@ -5,7 +5,6 @@ import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.character.commander.CommanderSupport;
 import com.rzy.dealt_force_skills.character.commander.CommanderUpgrade;
-import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.api.distmarker.Dist;

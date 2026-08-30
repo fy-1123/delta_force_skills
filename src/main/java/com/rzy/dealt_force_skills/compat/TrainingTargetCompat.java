@@ -6,7 +6,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 public final class TrainingTargetCompat {
     private static final ResourceLocation DUMMMMMMY_TARGET =
-            ResourceLocation.fromNamespaceAndPath("dummmmmmy", "target_dummy");
+            new ResourceLocation("dummmmmmy", "target_dummy");
 
     private TrainingTargetCompat() {
     }

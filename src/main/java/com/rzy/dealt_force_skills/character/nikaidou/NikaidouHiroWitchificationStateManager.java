@@ -155,9 +155,9 @@ public final class NikaidouHiroWitchificationStateManager {
     private static final UUID SPEED_UUID = UUID.fromString("d693f4a0-8b74-4a60-8dc7-11e60a10b9c8");
     private static final DustParticleOptions CORE_DUST = new DustParticleOptions(new Vector3f(0.95F, 0.18F, 0.78F), 1.45F);
     private static final DustParticleOptions REMNANT_DUST = new DustParticleOptions(new Vector3f(0.78F, 0.05F, 0.11F), 1.7F);
-    private static final ResourceLocation REMNANT_SOUND_FILE = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation REMNANT_SOUND_FILE = new ResourceLocation(
             DealtForceSkillsMod.MODID, "nikaidou_hiro_witchification/remnant_enter");
-    private static final ResourceLocation FINAL_SOUND_FILE = ResourceLocation.fromNamespaceAndPath(
+    private static final ResourceLocation FINAL_SOUND_FILE = new ResourceLocation(
             DealtForceSkillsMod.MODID, "nikaidou_hiro_witchification/final_enter");
 
     private NikaidouHiroWitchificationStateManager() {

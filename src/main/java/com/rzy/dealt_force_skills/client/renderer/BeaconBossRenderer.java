@@ -14,7 +14,7 @@ import net.minecraft.resources.ResourceLocation;
  */
 public class BeaconBossRenderer extends LivingEntityRenderer<BeaconBossEntity, BeaconBossModel> {
     public static final ResourceLocation SKIN =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "textures/entity/beacon_boss/skin.png");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "textures/entity/beacon_boss/skin.png");
 
     public BeaconBossRenderer(EntityRendererProvider.Context context) {
         super(context, new BeaconBossModel(context.bakeLayer(BeaconBossModel.LAYER_LOCATION)), 0.5F);

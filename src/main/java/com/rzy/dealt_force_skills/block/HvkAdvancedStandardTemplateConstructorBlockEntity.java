@@ -1318,7 +1318,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         if (Boolean.TRUE.equals(itemCraft)) {
             return ItemStack.EMPTY;
         }
-        Item item = ForgeRegistries.ITEMS.getValue(ResourceLocation.fromNamespaceAndPath("touhou_little_maid", "entity_placeholder"));
+        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation("touhou_little_maid", "entity_placeholder"));
         if (item == null) {
             return ItemStack.EMPTY;
         }
@@ -2743,7 +2743,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                                int queuedCrafts, int queuedCompleted, int craftTicks, int craftIntervalTicks,
                                boolean truncated, String truncationReason, CraftabilityStatus status) {
         public RecipeDetail {
-            id = id == null ? ResourceLocation.fromNamespaceAndPath("minecraft", "air") : id;
+            id = id == null ? new ResourceLocation("minecraft", "air") : id;
             tree = tree == null ? List.of() : List.copyOf(tree);
             missing = missing == null ? List.of() : List.copyOf(missing);
             queuedCrafts = Math.max(0, queuedCrafts);

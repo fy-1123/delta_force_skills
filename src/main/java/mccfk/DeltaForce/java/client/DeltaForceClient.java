@@ -1,5 +1,6 @@
 package mccfk.DeltaForce.java.client;
 
+import com.rzy.dealt_force_skills.item.DfsItemQuality;
 import mccfk.DeltaForce.java.DeltaForce;
 import mccfk.DeltaForce.java.client.overlay.GroundItemOverlay;
 import mccfk.DeltaForce.java.client.overlay.ItemDescriptionLoader;
@@ -43,7 +44,10 @@ public final class DeltaForceClient {
     @SubscribeEvent
     public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener((ResourceManagerReloadListener) resourceManager ->
-                ItemDescriptionLoader.clearCache());
+        {
+            ItemDescriptionLoader.clearCache();
+            DfsItemQuality.clearTagQualityOverrides();
+        });
     }
 
 }

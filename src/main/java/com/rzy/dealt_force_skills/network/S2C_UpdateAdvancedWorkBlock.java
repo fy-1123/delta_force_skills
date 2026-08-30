@@ -1,7 +1,6 @@
 package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.block.AdvancedWorkBlockData;
-import com.rzy.dealt_force_skills.client.screen.AdvancedWorkBlockScreen;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;

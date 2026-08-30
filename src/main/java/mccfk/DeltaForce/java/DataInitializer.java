@@ -2,6 +2,7 @@ package mccfk.DeltaForce.java;
 
 import mccfk.DeltaForce.java.Eeconomy.EeconomyManager;
 import mccfk.DeltaForce.java.Eeconomy.CurrencyType;
+import mccfk.DeltaForce.java.data.DfWarehouseManager;
 import mccfk.DeltaForce.java.data.PlayerCharacterStore;
 
 import java.io.IOException;
@@ -49,6 +50,9 @@ public class DataInitializer {
 
         // 无论复制还是已存在，都从文件加载经济配置
         loadEeconomyConfig(dataFolder);
+
+        // 初始化 DF 仓库目录（世界/.MCCFK_ALL_MODDATA/deltaforce/仓库）
+        DfWarehouseManager.init(worldSavePath);
     }
 
     private static void loadEeconomyConfig(Path dataFolder) {

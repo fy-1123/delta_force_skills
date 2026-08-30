@@ -7,6 +7,7 @@
   "minVersion": "0.8",
   "mixins": [
     "LivingEntityUseItemAccessor",
+    "apotheosis.ItemAffixesMixin",
     "pmmo.CoreObjectModifierMapMixin",
     "tacz.AbstractGunItemMixin",
     "tacz.AttachmentDataUtilsMixin"
@@ -16,7 +17,8 @@
     "client.HookAuthorChargeSoundPitchMixin",
     "client.HvkClimbableMixin",
     "client.MinecraftSpectatorOutlineMixin",
-    "client.PlayerRendererSkinMixin"
+    "client.PlayerRendererSkinMixin",
+    "client.ScreenBackgroundBlurMixin"
   ],
   "injectors": {
     "defaultRequire": 1

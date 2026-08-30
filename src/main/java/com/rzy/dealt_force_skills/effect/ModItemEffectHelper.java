@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 public final class ModItemEffectHelper {
+    private static final int MAX_SPEED_EFFECT_LEVEL = 100;
     private static final String ROOT_TAG = DealtForceSkillsMod.MODID + ".item_effects";
     private static final String SUPPRESSED_EFFECTS = "SuppressedHarmfulEffects";
     private static final String ATTRIBUTE_SUPPRESSED_EFFECTS = "AttributeSuppressedHarmfulEffects";
@@ -304,7 +305,8 @@ public final class ModItemEffectHelper {
         if (instance == null || shouldSuppressHarmfulImpact(entity, effect)) {
             return 1.0D;
         }
-        return 1.0D + perLevelBonus * (instance.getAmplifier() + 1);
+        int level = Math.min(MAX_SPEED_EFFECT_LEVEL - 1, Math.max(0, instance.getAmplifier())) + 1;
+        return 1.0D + perLevelBonus * level;
     }
 
     public static void handleLivingDeath(LivingEntity entity, net.minecraft.world.damagesource.DamageSource source) {

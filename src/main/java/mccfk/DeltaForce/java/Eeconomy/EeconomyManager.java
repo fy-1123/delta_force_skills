@@ -296,4 +296,37 @@ public class EeconomyManager {
         return false;
     }
 
+    // ========== 静态快捷方法（%havoc_coin% / %delta_coin%，供其他位置或模组调用）==========
+
+    private static boolean hasPlayerData(String playerName) {
+        for (CurrencyType type : CurrencyType.values()) {
+            Path dir = getInstance().getCurrencyDir(type);
+            if (dir != null && Files.exists(dir.resolve(playerName + ".json"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 获取哈夫币数量（默认当前玩家）
+     */
+    /**
+     * 获取指定玩家哈夫币数量
+     */
+    public static net.minecraft.network.chat.Component getHavocCoin(String playerName) {
+        if (!hasPlayerData(playerName)) return net.minecraft.network.chat.Component.translatable("deltaforce.economy.invalid_player");
+        return net.minecraft.network.chat.Component.literal(String.valueOf(getInstance().getBalance(playerName, CurrencyType.HAVOC_COIN)));
+    }
+
+    /**
+     * 获取三角币（三角洲）数量（默认当前玩家）
+     */
+    /**
+     * 获取指定玩家三角币（三角洲）数量
+     */
+    public static net.minecraft.network.chat.Component getDeltaCoin(String playerName) {
+        if (!hasPlayerData(playerName)) return net.minecraft.network.chat.Component.translatable("deltaforce.economy.invalid_player");
+        return net.minecraft.network.chat.Component.literal(String.valueOf(getInstance().getBalance(playerName, CurrencyType.DELTA_COIN)));
+    }
 }

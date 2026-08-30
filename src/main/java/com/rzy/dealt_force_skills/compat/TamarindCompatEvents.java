@@ -273,7 +273,7 @@ public final class TamarindCompatEvents {
             case "@dfs_repairs" -> addDfsRepairs(result, special);
             case "@tamarind_room_cards" -> {
                 CreativeModeTab tab = BuiltInRegistries.CREATIVE_MODE_TAB.get(
-                        ResourceLocation.fromNamespaceAndPath("tamarind", "fangka"));
+                        new ResourceLocation("tamarind", "fangka"));
                 if (tab != null) addStacks(result, tab.getDisplayItems(), null, special);
             }
             default -> {

@@ -45,7 +45,7 @@ public final class AcceleratedTroopsEntity extends SaeedGuardEntity implements S
     private static final EntityDataAccessor<Boolean> DATA_SHIELD_ACTIVE =
             SynchedEntityData.defineId(AcceleratedTroopsEntity.class, EntityDataSerializers.BOOLEAN);
     private static final TagKey<DamageType> TACZ_BULLETS = TagKey.create(
-            Registries.DAMAGE_TYPE, ResourceLocation.fromNamespaceAndPath("tacz", "bullets"));
+            Registries.DAMAGE_TYPE, new ResourceLocation("tacz", "bullets"));
     private static final String SQUAD_ID = "AcceleratedTroopsSquad";
     private static final String SHIELD = "AcceleratedTroopsShield";
     private static final String SHIELD_RECOVER_AT = "AcceleratedTroopsShieldRecoverAt";

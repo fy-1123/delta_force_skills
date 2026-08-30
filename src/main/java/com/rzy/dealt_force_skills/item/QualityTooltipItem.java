@@ -25,13 +25,19 @@ public class QualityTooltipItem extends Item {
 
     @Override
     public Component getName(ItemStack stack) {
-        return Component.translatable(getDescriptionId(stack)).withStyle(style -> style.withColor(quality.color()));
+        Component name = Component.translatable(getDescriptionId(stack));
+        return quality == DfsItemQuality.COLORFUL
+                ? DfsItemQuality.rainbowText(name)
+                : name.copy().withStyle(style -> style.withColor(quality.color()));
     }
 
     @Override
     public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
-        tooltip.add(Component.translatable("tooltip.dealt_force_skills.quality",
-                Component.translatable("quality.dealt_force_skills." + quality.key())).withStyle(ChatFormatting.GRAY));
+        Component qualityLine = Component.translatable("tooltip.dealt_force_skills.quality",
+                Component.translatable("quality.dealt_force_skills." + quality.key()));
+        tooltip.add(quality == DfsItemQuality.COLORFUL
+                ? DfsItemQuality.rainbowText(qualityLine)
+                : qualityLine.copy().withStyle(ChatFormatting.GRAY));
         if (stack.isDamageableItem() && stack.isDamaged()) {
             tooltip.add(Component.translatable("tooltip.dealt_force_skills.durability",
                     stack.getMaxDamage() - stack.getDamageValue(), stack.getMaxDamage()).withStyle(ChatFormatting.GRAY));

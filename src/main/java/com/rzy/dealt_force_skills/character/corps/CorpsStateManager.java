@@ -56,7 +56,7 @@ import java.util.function.Function;
 public final class CorpsStateManager {
     public static final ResourceKey<Level> ALLEY_MAZE_LEVEL = ResourceKey.create(
             Registries.DIMENSION,
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "corps_alley_maze"));
+            new ResourceLocation(DealtForceSkillsMod.MODID, "corps_alley_maze"));
 
     private static final String ROOT_TAG = DealtForceSkillsMod.MODID + ".corps";
     private static final String INITIALIZED = "Initialized";
@@ -94,7 +94,7 @@ public final class CorpsStateManager {
     private static final int ARENA_VOID_CLEAR_MIN_Y = 0;
     private static final int ARENA_VOID_CLEAR_MAX_Y = ARENA_Y + 48;
     private static final ResourceLocation DUEL_MUSIC_FILE =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "corps/duel_music");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "corps/duel_music");
 
     private static final Map<UUID, DuelRuntime> ACTIVE_DUELS = new HashMap<>();
     private static final Map<UUID, UUID> TARGET_TO_OWNER = new HashMap<>();

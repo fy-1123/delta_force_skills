@@ -6,7 +6,6 @@ import com.rzy.dealt_force_skills.character.CharacterDefinition;
 import com.rzy.dealt_force_skills.character.CharacterRole;
 import com.rzy.dealt_force_skills.character.SkillDefinition;
 import com.rzy.dealt_force_skills.character.SkillSlot;
-import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;

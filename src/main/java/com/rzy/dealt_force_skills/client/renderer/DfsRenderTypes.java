@@ -4,6 +4,8 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.RenderType;
 
+import java.util.OptionalDouble;
+
 public final class DfsRenderTypes extends RenderType {
     private static final RenderType UNTEXTURED_QUADS = RenderType.create(
             "dfs_untextured_quads",
@@ -33,6 +35,23 @@ public final class DfsRenderTypes extends RenderType {
                     .setCullState(NO_CULL)
                     .createCompositeState(false)
     );
+    private static final RenderType XRAY_LINES = RenderType.create(
+            "dfs_xray_lines",
+            DefaultVertexFormat.POSITION_COLOR_NORMAL,
+            VertexFormat.Mode.LINES,
+            RenderType.TRANSIENT_BUFFER_SIZE,
+            false,
+            false,
+            RenderType.CompositeState.builder()
+                    .setShaderState(RenderType.RENDERTYPE_LINES_SHADER)
+                    .setLineState(new RenderType.LineStateShard(OptionalDouble.empty()))
+                    .setLayeringState(RenderType.VIEW_OFFSET_Z_LAYERING)
+                    .setTransparencyState(RenderType.TRANSLUCENT_TRANSPARENCY)
+                    .setDepthTestState(RenderType.NO_DEPTH_TEST)
+                    .setWriteMaskState(RenderType.COLOR_WRITE)
+                    .setCullState(RenderType.NO_CULL)
+                    .createCompositeState(false)
+    );
 
     private DfsRenderTypes(String name, VertexFormat format, VertexFormat.Mode mode, int bufferSize,
                            boolean affectsCrumbling, boolean sortOnUpload,
@@ -46,5 +65,9 @@ public final class DfsRenderTypes extends RenderType {
 
     public static RenderType equipmentSolidQuads() {
         return EQUIPMENT_SOLID_QUADS;
+    }
+
+    public static RenderType xrayLines() {
+        return XRAY_LINES;
     }
 }

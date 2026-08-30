@@ -1,5 +1,6 @@
 package mccfk.DeltaForce.java.client.overlay;
 
+import com.rzy.dealt_force_skills.item.DfsItemQuality;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -17,7 +18,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 物品介绍加载器 - 从descriptions文件夹读取txt文件
+ * 物品介绍加载器 - 从物品自身模组命名空间的descriptions文件夹读取txt文件
  * 文件格式:
  * 第一行: .tag("#deltaforce:df_age_X") (可选,设置标签)
  * 后续行: 介绍文本(支持\n等转义字符)
@@ -29,21 +30,6 @@ public class ItemDescriptionLoader {
     private static final Map<ResourceLocation, Integer> tagCache = new HashMap<>();
     private static final Set<ResourceLocation> missingCache = new HashSet<>();
     private static final Set<ResourceLocation> failedCache = new HashSet<>();
-
-    /**
-     * friend 模组（dealt_force_skills）酒 → 我们的酒名映射。
-     * 原 friend 酒的 id 与我们的酒 id 不一致时映射到我们的酒名，
-     * 使 friend 酒在掉落物 HUD 上读取 deltaforce:descriptions/<我们的酒名>.txt 显示我们的介绍。
-     * 同名酒（tulip/mountain_rain/highball/wild_rose/sky_island/heartbeat）无需映射。
-     */
-    private static final Map<String, String> WINE_ALIAS = Map.of(
-            "dealt_force_skills:reis_dance", "leisurely_dance",
-            "dealt_force_skills:asara_style", "asara_charm",
-            "dealt_force_skills:starlight_glitter", "twinkling_starlight",
-            "dealt_force_skills:long_goodbye", "long_farewell",
-            "dealt_force_skills:guanshan_nanyue", "mountain_crossing",
-            "dealt_force_skills:mist_morning", "misty_morning"
-    );
 
     /**
      * 获取物品的介绍文本
@@ -71,12 +57,37 @@ public class ItemDescriptionLoader {
             descriptionCache.put(itemId, content.description);
             if (content.tagAge != null) {
                 tagCache.put(itemId, content.tagAge);
+                DfsItemQuality.applyTagQualityOverride(itemId, content.tagAge);
             }
             return content.description;
         }
 
         missingCache.add(itemId);
         return null;
+    }
+
+    /**
+     * 检查物品是否有描述文件（不加载内容）
+     */
+    public static synchronized boolean hasDescriptionFile(ItemStack itemStack) {
+        if (itemStack.isEmpty()) {
+            return false;
+        }
+
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(itemStack.getItem());
+        if (itemId == null) {
+            return false;
+        }
+
+        if (descriptionCache.containsKey(itemId)) {
+            return true;
+        }
+        if (missingCache.contains(itemId)) {
+            return false;
+        }
+
+        getDescription(itemStack);
+        return descriptionCache.containsKey(itemId);
     }
 
     /**
@@ -106,14 +117,11 @@ public class ItemDescriptionLoader {
         try {
             Minecraft mc = Minecraft.getInstance();
 
-            // friend 模组酒：映射到我们的酒名，读取我们的介绍文本
-            String itemName = WINE_ALIAS.getOrDefault(itemId.toString(), itemId.getPath());
-
-            String resourcePath = "descriptions/" + itemName + ".txt";
+            String resourcePath = "descriptions/" + itemId.getPath() + ".txt";
 
             var resourceManager = mc.getResourceManager();
             var resourceOpt = resourceManager.getResource(
-                ResourceLocation.fromNamespaceAndPath("deltaforce", resourcePath)
+                new ResourceLocation(itemId.getNamespace(), resourcePath)
             );
 
             if (resourceOpt.isPresent()) {
@@ -129,6 +137,9 @@ public class ItemDescriptionLoader {
                     while ((line = reader.readLine()) != null) {
                         if (firstLine) {
                             firstLine = false;
+                            if (line.startsWith("\uFEFF")) {
+                                line = line.substring(1);
+                            }
                             if (line.startsWith(".tag(")) {
                                 tagAge = parseTagAge(line);
                                 continue;

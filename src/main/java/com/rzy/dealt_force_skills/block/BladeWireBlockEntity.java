@@ -30,7 +30,7 @@ import java.util.UUID;
 public class BladeWireBlockEntity extends BlockEntity {
     private static volatile int MAX_CORE_HEALTH = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("MAX_CORE_HEALTH", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("deployables.bladewireblockentity.max_core_health", 120));
     private static volatile int STEP_SOUND_COOLDOWN_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("STEP_SOUND_COOLDOWN_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("deployables.blade_wire_block_entity.step_sound_cooldown_ticks", 24));
-    private static volatile int LIFETIME_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BLADE_WIRE_LIFETIME_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("deployables.blade_wire_block_entity.lifetime_ticks", 3_600));
+    private static volatile int LIFETIME_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("LIFETIME_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("deployables.blade_wire_block_entity.lifetime_ticks", 3_600));
     private static final String STEP_SOUND_NEXT_TICK = "DealtForceSinevaWireStepSoundNextTick";
     private static final String OWNER = "Owner";
     private static final String CORE_POS = "CorePos";

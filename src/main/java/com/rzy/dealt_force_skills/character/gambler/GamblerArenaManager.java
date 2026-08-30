@@ -69,7 +69,7 @@ import java.util.UUID;
 public final class GamblerArenaManager {
     public static final ResourceKey<Level> ARENA_LEVEL = ResourceKey.create(
             Registries.DIMENSION,
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "gambler_arena"));
+            new ResourceLocation(DealtForceSkillsMod.MODID, "gambler_arena"));
 
     private static final int ARENA_Y = 80;
     private static final int ARENA_RADIUS = 30;

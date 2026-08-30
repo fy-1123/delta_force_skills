@@ -119,6 +119,30 @@ public final class DfWarehouseManager {
         root(player).put(WAREHOUSE_TAG, result);
     }
 
+    /**
+     * 从仓库指定槽位提取符合条件物品，用于自动化提取
+     */
+    public static ItemStack extractMatching(ServerPlayer player, int slot, int count,
+                                            java.util.function.Predicate<ItemStack> predicate) {
+        if (player == null || slot < 0 || count <= 0 || predicate == null) {
+            return ItemStack.EMPTY;
+        }
+        List<ItemStack> warehouse = loadWarehouse(player);
+        if (slot >= warehouse.size()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack stored = warehouse.get(slot);
+        if (stored.isEmpty() || !predicate.test(stored)) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack extracted = stored.split(Math.min(count, stored.getCount()));
+        if (stored.isEmpty()) {
+            warehouse.set(slot, ItemStack.EMPTY);
+        }
+        saveWarehouse(player, warehouse);
+        return extracted;
+    }
+
     private static CompoundTag root(ServerPlayer player) {
         CompoundTag persistent = player.getPersistentData();
         if (!persistent.contains(ROOT_TAG, Tag.TAG_COMPOUND)) {

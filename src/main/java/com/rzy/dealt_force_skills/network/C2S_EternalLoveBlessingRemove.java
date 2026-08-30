@@ -24,7 +24,7 @@ public class C2S_EternalLoveBlessingRemove {
         try {
             id = ResourceLocation.parse(buf.readUtf(512));
         } catch (RuntimeException ignored) {
-            id = ResourceLocation.fromNamespaceAndPath("minecraft", "speed");
+            id = new ResourceLocation("minecraft", "speed");
         }
         return new C2S_EternalLoveBlessingRemove(id);
     }

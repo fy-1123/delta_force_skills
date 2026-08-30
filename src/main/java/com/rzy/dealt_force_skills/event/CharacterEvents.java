@@ -169,6 +169,7 @@ public class CharacterEvents {
         // Commander modifiers before dispatching the currently selected role so
         // a switch/clone cannot leak max-health or step height into that role.
         CommanderStateManager.cleanupIfNotCommander(player);
+        SinevaStateManager.reconcileStepHeight(player);
         RaptorStateManager.recordFootprint(player);
         MorseStateManager.recordObservedPlayerActivity(player);
         NTwoStateManager.tickGlobal(player);

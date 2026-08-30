@@ -76,7 +76,7 @@ public class C2S_HvkConstructorCraft {
         try {
             return ResourceLocation.parse(value);
         } catch (RuntimeException ex) {
-            return ResourceLocation.fromNamespaceAndPath("minecraft", "air");
+            return new ResourceLocation("minecraft", "air");
         }
     }
 }

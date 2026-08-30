@@ -65,6 +65,7 @@ public final class DealtItemsHavocConfig {
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
+        PriceFileLoader.loadAll();
         populate(event.getServer());
     }
 
@@ -141,6 +142,10 @@ public final class DealtItemsHavocConfig {
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
         if (id == null) {
             return 1L;
+        }
+        Long priceFileValue = PriceFileLoader.getHavocPrice(id);
+        if (priceFileValue != null) {
+            return Math.max(1L, priceFileValue);
         }
         Object value = config().get(path(id) + ".price");
         if (value instanceof Number number) {
@@ -289,16 +294,33 @@ public final class DealtItemsHavocConfig {
 
     private static Map<Item, Long> calculateDefaultPrices(MinecraftServer server) {
         Map<Item, Long> prices = new IdentityHashMap<>();
+
+        Map<ResourceLocation, Long> priceFilePrices = PriceFileLoader.getHavocPriceMap();
         for (Item item : ForgeRegistries.ITEMS.getValues()) {
-            prices.put(item, fallbackPrice(new ItemStack(item)));
+            ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
+            if (id != null && priceFilePrices.containsKey(id)) {
+                prices.put(item, Math.max(1L, priceFilePrices.get(id)));
+            }
         }
+
+        for (Item item : ForgeRegistries.ITEMS.getValues()) {
+            if (!prices.containsKey(item)) {
+                prices.put(item, fallbackPrice(new ItemStack(item)));
+            }
+        }
+
         Map<Item, Long> shopPrices = new IdentityHashMap<>();
         for (DfsShopCatalog.Entry entry : DfsShopCatalog.entries()) {
             if (!entry.preview().isEmpty()) {
                 shopPrices.merge(entry.preview().getItem(), (long) entry.price(), Math::min);
             }
         }
-        prices.putAll(shopPrices);
+        for (Map.Entry<Item, Long> shopEntry : shopPrices.entrySet()) {
+            ResourceLocation id = ForgeRegistries.ITEMS.getKey(shopEntry.getKey());
+            if (id == null || !priceFilePrices.containsKey(id)) {
+                prices.put(shopEntry.getKey(), shopEntry.getValue());
+            }
+        }
 
         List<CraftingRecipe> recipes = server.getRecipeManager().getAllRecipesFor(RecipeType.CRAFTING);
         for (int pass = 0; pass < 12; pass++) {
@@ -306,6 +328,10 @@ public final class DealtItemsHavocConfig {
             for (CraftingRecipe recipe : recipes) {
                 ItemStack output = recipe.getResultItem(server.registryAccess());
                 if (output.isEmpty()) {
+                    continue;
+                }
+                ResourceLocation outputId = ForgeRegistries.ITEMS.getKey(output.getItem());
+                if (outputId != null && priceFilePrices.containsKey(outputId)) {
                     continue;
                 }
                 long total = 0L;
@@ -331,6 +357,8 @@ public final class DealtItemsHavocConfig {
             }
             prices = next;
         }
+
+        LOGGER.info("DealtItemsHavocConfig: price file overrides {} items", priceFilePrices.size());
         return prices;
     }
 

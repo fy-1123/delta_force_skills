@@ -12,9 +12,9 @@ import net.minecraft.resources.ResourceLocation;
 
 public final class BladeWireBlockEntityRenderer implements BlockEntityRenderer<BladeWireBlockEntity> {
     private static final ResourceLocation CORE =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "sineva_blade_wire_core");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "sineva_blade_wire_core");
     private static final ResourceLocation WIRE =
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "sineva_perimeter_barbed_wire");
+            new ResourceLocation(DealtForceSkillsMod.MODID, "sineva_perimeter_barbed_wire");
 
     public BladeWireBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
     }

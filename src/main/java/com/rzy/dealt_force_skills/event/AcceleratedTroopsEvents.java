@@ -27,7 +27,7 @@ import net.minecraftforge.fml.common.Mod;
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID)
 public final class AcceleratedTroopsEvents {
     private static final TagKey<DamageType> TACZ_BULLETS = TagKey.create(
-            Registries.DAMAGE_TYPE, ResourceLocation.fromNamespaceAndPath("tacz", "bullets"));
+            Registries.DAMAGE_TYPE, new ResourceLocation("tacz", "bullets"));
 
     private AcceleratedTroopsEvents() {
     }

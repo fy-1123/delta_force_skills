@@ -30,7 +30,7 @@ public final class HvkAdvancedSpawnerBlockEntity extends BlockEntity {
     public static final String SPAWNER_Z = "HvkSpawnerZ";
     public static final String ACTIVITY_RANGE = "HvkSpawnerActivityRange";
 
-    private ResourceLocation entityId = ResourceLocation.fromNamespaceAndPath("minecraft", "zombie");
+    private ResourceLocation entityId = new ResourceLocation("minecraft", "zombie");
     private int spawnInterval = 600;
     private int spawnCount = 1;
     private int livingLimit = 5;
@@ -280,7 +280,7 @@ public final class HvkAdvancedSpawnerBlockEntity extends BlockEntity {
     public void load(CompoundTag tag) {
         super.load(tag);
         ResourceLocation parsed = ResourceLocation.tryParse(tag.getString("EntityId"));
-        entityId = parsed == null ? ResourceLocation.fromNamespaceAndPath("minecraft", "zombie") : parsed;
+        entityId = parsed == null ? new ResourceLocation("minecraft", "zombie") : parsed;
         spawnInterval = Math.max(1, tag.contains("SpawnInterval") ? tag.getInt("SpawnInterval") : 600);
         spawnCount = Math.max(0, tag.contains("SpawnCount") ? tag.getInt("SpawnCount") : 1);
         livingLimit = Math.max(-1, tag.contains("LivingLimit") ? tag.getInt("LivingLimit") : 5);

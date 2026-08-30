@@ -430,7 +430,7 @@ public final class CharacterSkillModelVisuals {
     }
 
     private static ResourceLocation model(String path) {
-        return ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, path);
+        return new ResourceLocation(DealtForceSkillsMod.MODID, path);
     }
 
     private static float adaptiveFiberScale(LivingEntity entity) {

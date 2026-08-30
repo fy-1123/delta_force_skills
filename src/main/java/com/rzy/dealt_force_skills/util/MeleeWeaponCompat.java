@@ -17,7 +17,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 public final class MeleeWeaponCompat {
     public static final TagKey<Item> MELEE_WEAPONS = TagKey.create(
-            Registries.ITEM, ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "melee_weapons"));
+            Registries.ITEM, new ResourceLocation(DealtForceSkillsMod.MODID, "melee_weapons"));
     private static final String[] LES_RAISINS_NAMESPACE_PARTS = {
             "lrtactical", "lesraisins", "raisins", "tactical_equipement", "tactical_equipment", "lrte"
     };

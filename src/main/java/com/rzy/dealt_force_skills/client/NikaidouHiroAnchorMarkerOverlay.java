@@ -4,12 +4,15 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.client.character.ClientNikaidouHiroHudState;
+import com.rzy.dealt_force_skills.client.renderer.DfsRenderTypes;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
@@ -23,7 +26,7 @@ public final class NikaidouHiroAnchorMarkerOverlay {
 
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL
                 || !ClientNikaidouHiroHudState.hasAnchorMarker()) {
             return;
         }
@@ -37,7 +40,7 @@ public final class NikaidouHiroAnchorMarkerOverlay {
             return;
         }
 
-        Camera camera = minecraft.gameRenderer.getMainCamera();
+        Camera camera = event.getCamera();
         Vec3 cameraPos = camera.getPosition();
         Vec3 markerPos = new Vec3(ClientNikaidouHiroHudState.anchorMarkerX(),
                 ClientNikaidouHiroHudState.anchorMarkerY(), ClientNikaidouHiroHudState.anchorMarkerZ());
@@ -46,9 +49,25 @@ public final class NikaidouHiroAnchorMarkerOverlay {
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
 
         RenderSystem.disableDepthTest();
-        renderMarker(poseStack, buffers, minecraft.font, camera, cameraPos, markerPos, distance);
-        buffers.endBatch();
-        RenderSystem.enableDepthTest();
+        try {
+            var lineBuffer = buffers.getBuffer(DfsRenderTypes.xrayLines());
+            AABB markerBox = new AABB(markerPos.x - 0.45D, markerPos.y, markerPos.z - 0.45D,
+                    markerPos.x + 0.45D, markerPos.y + 1.15D, markerPos.z + 0.45D)
+                    .move(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+            LevelRenderer.renderLineBox(poseStack, lineBuffer, markerBox,
+                    1.0F, 0.24F, 0.84F, 0.98F);
+            AABB beaconBox = new AABB(markerPos.x - 0.10D, markerPos.y + 1.15D, markerPos.z - 0.10D,
+                    markerPos.x + 0.10D, markerPos.y + 2.35D, markerPos.z + 0.10D)
+                    .move(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+            LevelRenderer.renderLineBox(poseStack, lineBuffer, beaconBox,
+                    1.0F, 0.72F, 0.96F, 0.88F);
+            buffers.endBatch(DfsRenderTypes.xrayLines());
+
+            renderMarker(poseStack, buffers, minecraft.font, camera, cameraPos, markerPos, distance);
+            buffers.endBatch();
+        } finally {
+            RenderSystem.enableDepthTest();
+        }
     }
 
     private static void renderMarker(PoseStack poseStack, MultiBufferSource.BufferSource buffers, Font font,

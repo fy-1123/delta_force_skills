@@ -1,0 +1,2 @@
+.tag("#deltaforce:df_age_3")
+180 秒 1 级提升体力属性。

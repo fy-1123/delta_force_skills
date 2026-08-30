@@ -2,7 +2,6 @@ package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBlockEntity.RecipeView;
 import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBlockEntity.RecipeSearchResult;
-import com.rzy.dealt_force_skills.client.screen.HvkConstructorScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
@@ -108,7 +107,7 @@ public class S2C_OpenHvkConstructor {
         try {
             return ResourceLocation.parse(value);
         } catch (RuntimeException ex) {
-            return ResourceLocation.fromNamespaceAndPath("minecraft", "air");
+            return new ResourceLocation("minecraft", "air");
         }
     }
 

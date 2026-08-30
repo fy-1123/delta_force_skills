@@ -2,7 +2,6 @@ package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.block.AdvancedWorkBlockData;
 import com.rzy.dealt_force_skills.block.AdvancedWorkBlockData.EntryView;
-import com.rzy.dealt_force_skills.client.screen.AdvancedWorkBlockScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
@@ -100,7 +99,7 @@ public class S2C_OpenAdvancedWorkBlock {
         try {
             return ResourceLocation.parse(value);
         } catch (RuntimeException ignored) {
-            return ResourceLocation.fromNamespaceAndPath("minecraft", "air");
+            return new ResourceLocation("minecraft", "air");
         }
     }
 }

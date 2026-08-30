@@ -3,38 +3,74 @@ package mccfk.DeltaForce.java.client.renderer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import mccfk.DeltaForce.java.entity.GroundItemEntity;
+import mccfk.DeltaForce.java.item.DeltaForceItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.ItemEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 
-public final class GroundItemRenderer extends EntityRenderer<GroundItemEntity> {
+@OnlyIn(Dist.CLIENT)
+public class GroundItemRenderer extends EntityRenderer<GroundItemEntity> {
+    private static final ResourceLocation TEXTURE = new ResourceLocation("textures/item/placeholder.png");
+    private final ItemEntityRenderer itemEntityRenderer;
+
     public GroundItemRenderer(EntityRendererProvider.Context context) {
         super(context);
-        shadowRadius = 0.2F;
+        this.shadowRadius = 0.15F;
+        this.shadowStrength = 0.75F;
+        this.itemEntityRenderer = new ItemEntityRenderer(context);
     }
 
     @Override
-    public void render(GroundItemEntity entity, float yaw, float partialTick, PoseStack poseStack,
-                       MultiBufferSource buffers, int packedLight) {
-        if (!entity.getItem().isEmpty()) {
-            poseStack.pushPose();
-            poseStack.translate(0.0D, 0.12D, 0.0D);
-            poseStack.mulPose(Axis.YP.rotationDegrees((entity.tickCount + partialTick) * 2.0F));
-            poseStack.scale(0.75F, 0.75F, 0.75F);
-            Minecraft.getInstance().getItemRenderer().renderStatic(
-                    entity.getItem(), ItemDisplayContext.GROUND, packedLight, OverlayTexture.NO_OVERLAY,
-                    poseStack, buffers, entity.level(), entity.getId());
+    public void render(GroundItemEntity entity, float entityYaw, float partialTick, PoseStack poseStack,
+                      MultiBufferSource bufferSource, int packedLight) {
+        poseStack.pushPose();
+
+        ItemStack itemStack = entity.getItem();
+        if (itemStack.isEmpty()) {
             poseStack.popPose();
+            return;
         }
-        super.render(entity, yaw, partialTick, poseStack, buffers, packedLight);
+
+        renderItemModel(itemStack, entity, poseStack, bufferSource, packedLight);
+
+        poseStack.popPose();
+
+        super.render(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
+    }
+
+    private void renderItemModel(ItemStack itemStack, GroundItemEntity entity, PoseStack poseStack,
+                                  MultiBufferSource bufferSource, int packedLight) {
+        // 贴地显示：translate 调整位置，mulPose 绕 X 轴旋转 90 度使物品平躺贴地
+        poseStack.translate(0.0D, 0.05D, -0.125D);
+        poseStack.mulPose(Axis.XP.rotationDegrees(90.0F));
+        poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+        float scale = 1.0F;
+        poseStack.scale(scale, scale, scale);
+
+        Minecraft minecraft = Minecraft.getInstance();
+        var itemRenderer = minecraft.getItemRenderer();
+
+        ItemStack renderStack = itemStack;
+        if (DeltaForceItems.isRawMaterial(itemStack)) {
+            renderStack = new ItemStack(DeltaForceItems.TEMP_DF.get());
+        } else if (itemStack.is(DeltaForceItems.HIGH_SPEED_DISK_ARRAY.get())) {
+            renderStack = itemStack.copy();
+            renderStack.getOrCreateTag().putInt("CustomModelData", 1);
+        }
+        itemRenderer.renderStatic(renderStack, ItemDisplayContext.GROUND, packedLight, OverlayTexture.NO_OVERLAY,
+            poseStack, bufferSource, entity.level(), 0);
     }
 
     @Override
     public ResourceLocation getTextureLocation(GroundItemEntity entity) {
-        return ResourceLocation.withDefaultNamespace("textures/atlas/blocks.png");
+        return TEXTURE;
     }
 }

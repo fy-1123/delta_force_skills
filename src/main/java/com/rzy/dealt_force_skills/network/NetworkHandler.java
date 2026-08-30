@@ -8,17 +8,22 @@ import net.minecraft.world.entity.Entity;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.simple.SimpleChannel;
 import mccfk.DeltaForce.java.network.C2S_CreateMarker;
 import mccfk.DeltaForce.java.network.S2C_SyncMarkers;
 import mccfk.DeltaForce.java.network.C2S_DfWarehouseAction;
 import mccfk.DeltaForce.java.network.S2C_DfWarehouseSnapshot;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.function.Supplier;
+
 public class NetworkHandler {
     private static final String PROTOCOL = "68";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            ResourceLocation.fromNamespaceAndPath(DealtForceSkillsMod.MODID, "main"),
+            new ResourceLocation(DealtForceSkillsMod.MODID, "main"),
             () -> PROTOCOL, PROTOCOL::equals, PROTOCOL::equals
     );
 
@@ -79,7 +84,7 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_OpenHvkAdvancedSpawner.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenHvkAdvancedSpawner::encode)
                     .decoder(S2C_OpenHvkAdvancedSpawner::decode)
-                    .consumerMainThread(S2C_OpenHvkAdvancedSpawner::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(C2S_HvkEnchantInfusionAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_HvkEnchantInfusionAction::encode)
@@ -89,7 +94,7 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_OpenHvkEnchantInfusion.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenHvkEnchantInfusion::encode)
                     .decoder(S2C_OpenHvkEnchantInfusion::decode)
-                    .consumerMainThread(S2C_OpenHvkEnchantInfusion::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(C2S_ConfigureHvkAsaraArena.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_ConfigureHvkAsaraArena::encode)
@@ -99,12 +104,12 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_OpenHvkAsaraArena.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenHvkAsaraArena::encode)
                     .decoder(S2C_OpenHvkAsaraArena::decode)
-                    .consumerMainThread(S2C_OpenHvkAsaraArena::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_HvkAsaraArenaStatus.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_HvkAsaraArenaStatus::encode)
                     .decoder(S2C_HvkAsaraArenaStatus::decode)
-                    .consumerMainThread(S2C_HvkAsaraArenaStatus::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(C2S_EternalLoveBlessingCapture.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_EternalLoveBlessingCapture::encode)
@@ -371,415 +376,420 @@ public class NetworkHandler {
                     .decoder(C2S_TeamSpectatorCycle::decode)
                     .consumerMainThread(C2S_TeamSpectatorCycle::handle).add();
 
+            CHANNEL.messageBuilder(C2S_ClearSelectedCharacter.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_ClearSelectedCharacter::encode)
+                    .decoder(C2S_ClearSelectedCharacter::decode)
+                    .consumerMainThread(C2S_ClearSelectedCharacter::handle).add();
+
             CHANNEL.messageBuilder(S2C_TeamSpectatorTarget.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_TeamSpectatorTarget::encode)
                     .decoder(S2C_TeamSpectatorTarget::decode)
-                    .consumerMainThread(S2C_TeamSpectatorTarget::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncSelectedCharacter.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncSelectedCharacter::encode)
                     .decoder(S2C_SyncSelectedCharacter::decode)
-                    .consumerMainThread(S2C_SyncSelectedCharacter::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncCharacterAvailability.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncCharacterAvailability::encode)
                     .decoder(S2C_SyncCharacterAvailability::decode)
-                    .consumerMainThread(S2C_SyncCharacterAvailability::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncPlayerCharacterSkin.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncPlayerCharacterSkin::encode)
                     .decoder(S2C_SyncPlayerCharacterSkin::decode)
-                    .consumerMainThread(S2C_SyncPlayerCharacterSkin::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenCharacterSelection.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenCharacterSelection::encode)
                     .decoder(S2C_OpenCharacterSelection::decode)
-                    .consumerMainThread(S2C_OpenCharacterSelection::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenHaffShop.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenHaffShop::encode)
                     .decoder(S2C_OpenHaffShop::decode)
-                    .consumerMainThread(S2C_OpenHaffShop::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenGhrothArmory.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenGhrothArmory::encode)
                     .decoder(S2C_OpenGhrothArmory::decode)
-                    .consumerMainThread(S2C_OpenGhrothArmory::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenHvkConstructor.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenHvkConstructor::encode)
                     .decoder(S2C_OpenHvkConstructor::decode)
-                    .consumerMainThread(S2C_OpenHvkConstructor::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_HvkConstructorRecipes.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_HvkConstructorRecipes::encode)
                     .decoder(S2C_HvkConstructorRecipes::decode)
-                    .consumerMainThread(S2C_HvkConstructorRecipes::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_HvkConstructorDetail.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_HvkConstructorDetail::encode)
                     .decoder(S2C_HvkConstructorDetail::decode)
-                    .consumerMainThread(S2C_HvkConstructorDetail::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenAdvancedWorkBlock.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenAdvancedWorkBlock::encode)
                     .decoder(S2C_OpenAdvancedWorkBlock::decode)
-                    .consumerMainThread(S2C_OpenAdvancedWorkBlock::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_UpdateAdvancedWorkBlock.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_UpdateAdvancedWorkBlock::encode)
                     .decoder(S2C_UpdateAdvancedWorkBlock::decode)
-                    .consumerMainThread(S2C_UpdateAdvancedWorkBlock::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenEternalLoveBlessing.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenEternalLoveBlessing::encode)
                     .decoder(S2C_OpenEternalLoveBlessing::decode)
-                    .consumerMainThread(S2C_OpenEternalLoveBlessing::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncHaffCoins.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncHaffCoins::encode)
                     .decoder(S2C_SyncHaffCoins::decode)
-                    .consumerMainThread(S2C_SyncHaffCoins::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenLexNinjiaShop.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenLexNinjiaShop::encode)
                     .decoder(S2C_OpenLexNinjiaShop::decode)
-                    .consumerMainThread(S2C_OpenLexNinjiaShop::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenLexNinjiaPresets.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenLexNinjiaPresets::encode)
                     .decoder(S2C_OpenLexNinjiaPresets::decode)
-                    .consumerMainThread(S2C_OpenLexNinjiaPresets::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncLexNinjiaCurrency.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncLexNinjiaCurrency::encode)
                     .decoder(S2C_SyncLexNinjiaCurrency::decode)
-                    .consumerMainThread(S2C_SyncLexNinjiaCurrency::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncLexNinjiaState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncLexNinjiaState::encode)
                     .decoder(S2C_SyncLexNinjiaState::decode)
-                    .consumerMainThread(S2C_SyncLexNinjiaState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncSinevaState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncSinevaState::encode)
                     .decoder(S2C_SyncSinevaState::decode)
-                    .consumerMainThread(S2C_SyncSinevaState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncSinevaRenderState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncSinevaRenderState::encode)
                     .decoder(S2C_SyncSinevaRenderState::decode)
-                    .consumerMainThread(S2C_SyncSinevaRenderState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_CharacterHitFeedback.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_CharacterHitFeedback::encode)
                     .decoder(S2C_CharacterHitFeedback::decode)
-                    .consumerMainThread(S2C_CharacterHitFeedback::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncUluruState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncUluruState::encode)
                     .decoder(S2C_SyncUluruState::decode)
-                    .consumerMainThread(S2C_SyncUluruState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_UluruMissileCamera.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_UluruMissileCamera::encode)
                     .decoder(S2C_UluruMissileCamera::decode)
-                    .consumerMainThread(S2C_UluruMissileCamera::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_UluruGhostEntities.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_UluruGhostEntities::encode)
                     .decoder(S2C_UluruGhostEntities::decode)
-                    .consumerMainThread(S2C_UluruGhostEntities::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncDWolfState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncDWolfState::encode)
                     .decoder(S2C_SyncDWolfState::decode)
-                    .consumerMainThread(S2C_SyncDWolfState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_DWolfStaminaRestore.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_DWolfStaminaRestore::encode)
                     .decoder(S2C_DWolfStaminaRestore::decode)
-                    .consumerMainThread(S2C_DWolfStaminaRestore::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_DWolfSlideAccepted.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_DWolfSlideAccepted::encode)
                     .decoder(S2C_DWolfSlideAccepted::decode)
-                    .consumerMainThread(S2C_DWolfSlideAccepted::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SinevaKnockdown.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SinevaKnockdown::encode)
                     .decoder(S2C_SinevaKnockdown::decode)
-                    .consumerMainThread(S2C_SinevaKnockdown::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncGizmoState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncGizmoState::encode)
                     .decoder(S2C_SyncGizmoState::decode)
-                    .consumerMainThread(S2C_SyncGizmoState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncChamberState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncChamberState::encode)
                     .decoder(S2C_SyncChamberState::decode)
-                    .consumerMainThread(S2C_SyncChamberState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncNTwoState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncNTwoState::encode)
                     .decoder(S2C_SyncNTwoState::decode)
-                    .consumerMainThread(S2C_SyncNTwoState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_NTwoRevealEntities.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_NTwoRevealEntities::encode)
                     .decoder(S2C_NTwoRevealEntities::decode)
-                    .consumerMainThread(S2C_NTwoRevealEntities::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_NTwoFrozenVisualState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_NTwoFrozenVisualState::encode)
                     .decoder(S2C_NTwoFrozenVisualState::decode)
-                    .consumerMainThread(S2C_NTwoFrozenVisualState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_GizmoRevealEntities.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_GizmoRevealEntities::encode)
                     .decoder(S2C_GizmoRevealEntities::decode)
-                    .consumerMainThread(S2C_GizmoRevealEntities::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_TeammatePositionReveal.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_TeammatePositionReveal::encode)
                     .decoder(S2C_TeammatePositionReveal::decode)
-                    .consumerMainThread(S2C_TeammatePositionReveal::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncShepherdState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncShepherdState::encode)
                     .decoder(S2C_SyncShepherdState::decode)
-                    .consumerMainThread(S2C_SyncShepherdState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncLunaState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncLunaState::encode)
                     .decoder(S2C_SyncLunaState::decode)
-                    .consumerMainThread(S2C_SyncLunaState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_LunaRevealEntities.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_LunaRevealEntities::encode)
                     .decoder(S2C_LunaRevealEntities::decode)
-                    .consumerMainThread(S2C_LunaRevealEntities::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_LunaBowVisualState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_LunaBowVisualState::encode)
                     .decoder(S2C_LunaBowVisualState::decode)
-                    .consumerMainThread(S2C_LunaBowVisualState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SkillModelVisual.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SkillModelVisual::encode)
                     .decoder(S2C_SkillModelVisual::decode)
-                    .consumerMainThread(S2C_SkillModelVisual::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncHeldToolVisual.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncHeldToolVisual::encode)
                     .decoder(S2C_SyncHeldToolVisual::decode)
-                    .consumerMainThread(S2C_SyncHeldToolVisual::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncVyronState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncVyronState::encode)
                     .decoder(S2C_SyncVyronState::decode)
-                    .consumerMainThread(S2C_SyncVyronState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncStingerState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncStingerState::encode)
                     .decoder(S2C_SyncStingerState::decode)
-                    .consumerMainThread(S2C_SyncStingerState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncNoxState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncNoxState::encode)
                     .decoder(S2C_SyncNoxState::decode)
-                    .consumerMainThread(S2C_SyncNoxState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncHackclawState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncHackclawState::encode)
                     .decoder(S2C_SyncHackclawState::decode)
-                    .consumerMainThread(S2C_SyncHackclawState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_HackclawPathLines.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_HackclawPathLines::encode)
                     .decoder(S2C_HackclawPathLines::decode)
-                    .consumerMainThread(S2C_HackclawPathLines::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_HackclawCoreVisualState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_HackclawCoreVisualState::encode)
                     .decoder(S2C_HackclawCoreVisualState::decode)
-                    .consumerMainThread(S2C_HackclawCoreVisualState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_NoxRevealPosition.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_NoxRevealPosition::encode)
                     .decoder(S2C_NoxRevealPosition::decode)
-                    .consumerMainThread(S2C_NoxRevealPosition::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncManbaState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncManbaState::encode)
                     .decoder(S2C_SyncManbaState::decode)
-                    .consumerMainThread(S2C_SyncManbaState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncGamblerState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncGamblerState::encode)
                     .decoder(S2C_SyncGamblerState::decode)
-                    .consumerMainThread(S2C_SyncGamblerState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenGamblerDuelInvite.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenGamblerDuelInvite::encode)
                     .decoder(S2C_OpenGamblerDuelInvite::decode)
-                    .consumerMainThread(S2C_OpenGamblerDuelInvite::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_ManbaFlashlightProgress.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_ManbaFlashlightProgress::encode)
                     .decoder(S2C_ManbaFlashlightProgress::decode)
-                    .consumerMainThread(S2C_ManbaFlashlightProgress::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_ManbaDuelView.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_ManbaDuelView::encode)
                     .decoder(S2C_ManbaDuelView::decode)
-                    .consumerMainThread(S2C_ManbaDuelView::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_ManbaFlashlightBeam.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_ManbaFlashlightBeam::encode)
                     .decoder(S2C_ManbaFlashlightBeam::decode)
-                    .consumerMainThread(S2C_ManbaFlashlightBeam::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_ManbaOpportunityMarkers.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_ManbaOpportunityMarkers::encode)
                     .decoder(S2C_ManbaOpportunityMarkers::decode)
-                    .consumerMainThread(S2C_ManbaOpportunityMarkers::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_StingerStimLockStatus.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_StingerStimLockStatus::encode)
                     .decoder(S2C_StingerStimLockStatus::decode)
-                    .consumerMainThread(S2C_StingerStimLockStatus::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncToxikState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncToxikState::encode)
                     .decoder(S2C_SyncToxikState::decode)
-                    .consumerMainThread(S2C_SyncToxikState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncRaptorState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncRaptorState::encode)
                     .decoder(S2C_SyncRaptorState::decode)
-                    .consumerMainThread(S2C_SyncRaptorState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_RaptorFootprints.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_RaptorFootprints::encode)
                     .decoder(S2C_RaptorFootprints::decode)
-                    .consumerMainThread(S2C_RaptorFootprints::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_RaptorRevealEntities.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_RaptorRevealEntities::encode)
                     .decoder(S2C_RaptorRevealEntities::decode)
-                    .consumerMainThread(S2C_RaptorRevealEntities::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_RaptorFalconCamera.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_RaptorFalconCamera::encode)
                     .decoder(S2C_RaptorFalconCamera::decode)
-                    .consumerMainThread(S2C_RaptorFalconCamera::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncMorseState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncMorseState::encode)
                     .decoder(S2C_SyncMorseState::decode)
-                    .consumerMainThread(S2C_SyncMorseState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_MorseMarkers.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_MorseMarkers::encode)
                     .decoder(S2C_MorseMarkers::decode)
-                    .consumerMainThread(S2C_MorseMarkers::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SuppressLocalHurtAnimation.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SuppressLocalHurtAnimation::encode)
                     .decoder(S2C_SuppressLocalHurtAnimation::decode)
-                    .consumerMainThread(S2C_SuppressLocalHurtAnimation::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncVlinderState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncVlinderState::encode)
                     .decoder(S2C_SyncVlinderState::decode)
-                    .consumerMainThread(S2C_SyncVlinderState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncTempestState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncTempestState::encode)
                     .decoder(S2C_SyncTempestState::decode)
-                    .consumerMainThread(S2C_SyncTempestState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncNikaidouHiroState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncNikaidouHiroState::encode)
                     .decoder(S2C_SyncNikaidouHiroState::decode)
-                    .consumerMainThread(S2C_SyncNikaidouHiroState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncCatDadState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncCatDadState::encode)
                     .decoder(S2C_SyncCatDadState::decode)
-                    .consumerMainThread(S2C_SyncCatDadState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncCorpsState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncCorpsState::encode)
                     .decoder(S2C_SyncCorpsState::decode)
-                    .consumerMainThread(S2C_SyncCorpsState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncDepartmentState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncDepartmentState::encode)
                     .decoder(S2C_SyncDepartmentState::decode)
-                    .consumerMainThread(S2C_SyncDepartmentState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncUndeadState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncUndeadState::encode)
                     .decoder(S2C_SyncUndeadState::decode)
-                    .consumerMainThread(S2C_SyncUndeadState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncUndeadSouls.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncUndeadSouls::encode)
                     .decoder(S2C_SyncUndeadSouls::decode)
-                    .consumerMainThread(S2C_SyncUndeadSouls::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenUndeadShop.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenUndeadShop::encode)
                     .decoder(S2C_OpenUndeadShop::decode)
-                    .consumerMainThread(S2C_OpenUndeadShop::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenSaeedRecruitScreen.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenSaeedRecruitScreen::encode)
                     .decoder(S2C_OpenSaeedRecruitScreen::decode)
-                    .consumerMainThread(S2C_OpenSaeedRecruitScreen::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_OpenSaeedMonitorScreen.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenSaeedMonitorScreen::encode)
                     .decoder(S2C_OpenSaeedMonitorScreen::decode)
-                    .consumerMainThread(S2C_OpenSaeedMonitorScreen::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncSaeedState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncSaeedState::encode)
                     .decoder(S2C_SyncSaeedState::decode)
-                    .consumerMainThread(S2C_SyncSaeedState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncGhrothState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncGhrothState::encode)
                     .decoder(S2C_SyncGhrothState::decode)
-                    .consumerMainThread(S2C_SyncGhrothState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncFearStacks.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncFearStacks::encode)
                     .decoder(S2C_SyncFearStacks::decode)
-                    .consumerMainThread(S2C_SyncFearStacks::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_TempestStartRoll.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_TempestStartRoll::encode)
                     .decoder(S2C_TempestStartRoll::decode)
-                    .consumerMainThread(S2C_TempestStartRoll::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncHelmetVision.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncHelmetVision::encode)
                     .decoder(S2C_SyncHelmetVision::decode)
-                    .consumerMainThread(S2C_SyncHelmetVision::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SinevaShieldStaminaConsume.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SinevaShieldStaminaConsume::encode)
                     .decoder(S2C_SinevaShieldStaminaConsume::decode)
-                    .consumerMainThread(S2C_SinevaShieldStaminaConsume::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncGluedPositions.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncGluedPositions::encode)
                     .decoder(S2C_SyncGluedPositions::decode)
-                    .consumerMainThread(S2C_SyncGluedPositions::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(C2S_RequestConfigSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_RequestConfigSnapshot::encode)
@@ -794,17 +804,17 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_ConfigSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_ConfigSnapshot::encode)
                     .decoder(S2C_ConfigSnapshot::decode)
-                    .consumerMainThread(S2C_ConfigSnapshot::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_ConfigApplyResult.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_ConfigApplyResult::encode)
                     .decoder(S2C_ConfigApplyResult::decode)
-                    .consumerMainThread(S2C_ConfigApplyResult::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_SyncModGameRules.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncModGameRules::encode)
                     .decoder(S2C_SyncModGameRules::decode)
-                    .consumerMainThread(S2C_SyncModGameRules::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(C2S_SpecialOperationsBaseAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_SpecialOperationsBaseAction::encode)
@@ -814,29 +824,29 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_SpecialOperationsBaseSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SpecialOperationsBaseSnapshot::encode)
                     .decoder(S2C_SpecialOperationsBaseSnapshot::decode)
-                    .consumerMainThread(S2C_SpecialOperationsBaseSnapshot::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(C2S_GtiSpecialOperationsAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_GtiSpecialOperationsAction::encode).decoder(C2S_GtiSpecialOperationsAction::decode)
                     .consumerMainThread(C2S_GtiSpecialOperationsAction::handle).add();
             CHANNEL.messageBuilder(S2C_OpenGtiSpecialOperations.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenGtiSpecialOperations::encode).decoder(S2C_OpenGtiSpecialOperations::decode)
-                    .consumerMainThread(S2C_OpenGtiSpecialOperations::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
             CHANNEL.messageBuilder(S2C_OpenGtiTradingHall.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenGtiTradingHall::encode).decoder(S2C_OpenGtiTradingHall::decode)
-                    .consumerMainThread(S2C_OpenGtiTradingHall::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
             CHANNEL.messageBuilder(C2S_CreateMarker.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_CreateMarker::encode).decoder(C2S_CreateMarker::decode)
                     .consumerMainThread(C2S_CreateMarker::handle).add();
             CHANNEL.messageBuilder(S2C_SyncMarkers.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_SyncMarkers::encode).decoder(S2C_SyncMarkers::decode)
-                    .consumerMainThread(S2C_SyncMarkers::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
             CHANNEL.messageBuilder(C2S_DfWarehouseAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_DfWarehouseAction::encode).decoder(C2S_DfWarehouseAction::decode)
                     .consumerMainThread(C2S_DfWarehouseAction::handle).add();
             CHANNEL.messageBuilder(S2C_DfWarehouseSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_DfWarehouseSnapshot::encode).decoder(S2C_DfWarehouseSnapshot::decode)
-                    .consumerMainThread(S2C_DfWarehouseSnapshot::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
             CHANNEL.messageBuilder(C2S_OpenOwnShop.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_OpenOwnShop::encode).decoder(C2S_OpenOwnShop::decode)
                     .consumerMainThread(C2S_OpenOwnShop::handle).add();
@@ -845,12 +855,12 @@ public class NetworkHandler {
                     .consumerMainThread(C2S_StartPageAction::handle).add();
             CHANNEL.messageBuilder(S2C_StartPageSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_StartPageSnapshot::encode).decoder(S2C_StartPageSnapshot::decode)
-                    .consumerMainThread(S2C_StartPageSnapshot::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
 
             CHANNEL.messageBuilder(S2C_CommanderSnapshot.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_CommanderSnapshot::encode)
                     .decoder(S2C_CommanderSnapshot::decode)
-                    .consumerMainThread(S2C_CommanderSnapshot::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
             CHANNEL.messageBuilder(C2S_SetCommanderSkill.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_SetCommanderSkill::encode)
                     .decoder(C2S_SetCommanderSkill::decode)
@@ -878,7 +888,7 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_OpenCommanderScreen.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_OpenCommanderScreen::encode)
                     .decoder(S2C_OpenCommanderScreen::decode)
-                    .consumerMainThread(S2C_OpenCommanderScreen::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
             CHANNEL.messageBuilder(C2S_CommanderSupport.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_CommanderSupport::encode)
                     .decoder(C2S_CommanderSupport::decode)
@@ -886,8 +896,46 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_CommanderVehicleState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_CommanderVehicleState::encode)
                     .decoder(S2C_CommanderVehicleState::decode)
-                    .consumerMainThread(S2C_CommanderVehicleState::handle).add();
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
         });
+    }
+
+    /**
+     * Common-side consumer for all server-to-client packets. Keeping the
+     * registration method reference here prevents the common setup path from
+     * linking a packet's client-only handler class on a dedicated server.
+     */
+    public static <T> void handleClientPacket(T message, Supplier<NetworkEvent.Context> contextSupplier) {
+        NetworkEvent.Context context = contextSupplier.get();
+        if (net.minecraftforge.fml.loading.FMLEnvironment.dist != net.minecraftforge.api.distmarker.Dist.CLIENT) {
+            context.setPacketHandled(true);
+            return;
+        }
+        invokeClientHandler(message, contextSupplier);
+    }
+
+    private static void invokeClientHandler(Object message, Object context) {
+        try {
+            Method handler = null;
+            for (Method candidate : message.getClass().getDeclaredMethods()) {
+                Class<?>[] parameters = candidate.getParameterTypes();
+                if (Modifier.isStatic(candidate.getModifiers())
+                        && candidate.getName().equals("handle")
+                        && parameters.length == 2
+                        && parameters[0].isAssignableFrom(message.getClass())
+                        && parameters[1].isAssignableFrom(context.getClass())) {
+                    handler = candidate;
+                    break;
+                }
+            }
+            if (handler == null) {
+                throw new NoSuchMethodException("No client packet handler for " + message.getClass().getName());
+            }
+            handler.invoke(null, message, context);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Failed to invoke client packet handler for "
+                    + message.getClass().getName(), exception);
+        }
     }
 
     public static void sendToServer(Object msg) {

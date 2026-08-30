@@ -18,6 +18,7 @@ import com.rzy.dealt_force_skills.character.dwolf.DWolfSkills;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfStateManager;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfTool;
 import com.rzy.dealt_force_skills.character.gizmo.GizmoStateManager;
+import com.rzy.dealt_force_skills.character.gambler.GamblerStateManager;
 import com.rzy.dealt_force_skills.character.gizmo.GizmoTool;
 import com.rzy.dealt_force_skills.character.ghroth.GhrothStateManager;
 import com.rzy.dealt_force_skills.character.ghroth.GhrothTaczEnhancement;
@@ -673,6 +674,17 @@ public class CommonEvents {
                 NoxStateManager.tryApplyDelayedWound(source, hurtEntity, event.getAmount());
             }
             return;
+        }
+
+        if (player instanceof ServerPlayer serverPlayer && event.getAmount() > 0.0F
+                && GamblerStateManager.isGambler(serverPlayer)) {
+            float adjustedAmount = GamblerStateManager.handleIncomingHurt(
+                    serverPlayer, source, event.getAmount());
+            if (adjustedAmount <= 0.0F) {
+                event.setAmount(0.0F);
+                return;
+            }
+            event.setAmount(adjustedAmount);
         }
 
         if (StingerStateManager.isDowned(player)
@@ -1541,6 +1553,12 @@ public class CommonEvents {
             return;
         }
         if (entity instanceof ServerPlayer protectedPlayer
+                && GamblerStateManager.shouldCancelDeath(protectedPlayer)) {
+            event.setCanceled(true);
+            protectedPlayer.setHealth(Math.max(1.0F, protectedPlayer.getHealth()));
+            return;
+        }
+        if (entity instanceof ServerPlayer protectedPlayer
                 && StingerStateManager.isHiveSmokeActive(protectedPlayer)
                 && !event.getSource().is(SkillDamageHelper.NIKAIDOU_DECAY)) {
             event.setCanceled(true);
@@ -2042,8 +2060,7 @@ public class CommonEvents {
         if (player instanceof ServerPlayer serverPlayer
                 && (UluruLoiteringMissileEntity.isPlayerControlling(serverPlayer)
                 || RaptorFalconDroneEntity.isPlayerControlling(serverPlayer))) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+            cancelPlayerInteract(event);
             return;
         }
 
@@ -2051,34 +2068,29 @@ public class CommonEvents {
                 || VlinderStateManager.isDowned(player)
                 || CatDadStateManager.isDowned(player)
                 || TempestStateManager.isActionLocked(player)) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+            cancelPlayerInteract(event);
             return;
         }
 
         boolean webbedLeftClick = effectApplies(player, ModEffects.WEBBED.get())
                 && event instanceof PlayerInteractEvent.LeftClickBlock;
         if (effectApplies(player, ModEffects.MORSE_STRONG_SHOCK.get()) && shouldMorseShockSkipAction(player)) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+            cancelPlayerInteract(event);
             return;
         }
         if (effectApplies(player, ModEffects.SONIC_SHOCK.get()) && shouldSonicShockSkipAction(player)) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+            cancelPlayerInteract(event);
             return;
         }
         if (effectApplies(player, ModEffects.STUN.get())
                 || effectApplies(player, ModEffects.RAPTOR_ACTION_PAUSE.get())
                 || (effectApplies(player, ModEffects.WEBBED.get()) && !webbedLeftClick)) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+            cancelPlayerInteract(event);
             return;
         }
 
         if (isAnyToolEquipped(player)) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+            cancelPlayerInteract(event);
         }
     }
 
@@ -2269,14 +2281,22 @@ public class CommonEvents {
                 || NikaidouHiroStateManager.isWeaponActive(player)
                 || isAnyToolEquipped(player)
                 || effectApplies(player, ModEffects.STUN.get())
-                || effectApplies(player, ModEffects.RAPTOR_ACTION_PAUSE.get());
+                || effectApplies(player, ModEffects.RAPTOR_ACTION_PAUSE.get())
+                // TaCZ cancels these periodic action windows through its own
+                // events. Apply the same window to Superb Warfare weapons.
+                || (effectApplies(player, ModEffects.SONIC_SHOCK.get())
+                && shouldSonicShockSkipAction(player))
+                || (effectApplies(player, ModEffects.MORSE_STRONG_SHOCK.get())
+                && shouldMorseShockSkipAction(player));
         SuperbWarfareCompat.applyPlayerWeaponModifiers(player,
                 superbWarfareMultipliers.fireRate(), superbWarfareMultipliers.reload(),
                 superbWarfareMultipliers.aim(), superbWarfareMultipliers.aimPenalty(),
                 superbWarfareMultipliers.bolt(), optionalGunDisabled);
         if (player.getVehicle() != null) {
             SuperbWarfareCompat.applyWeaponSpeedModifiers(player.getVehicle(),
-                    superbWarfareMultipliers.fireRate(), superbWarfareMultipliers.reload());
+                    superbWarfareMultipliers.fireRate(), superbWarfareMultipliers.reload(),
+                    superbWarfareMultipliers.aim(), superbWarfareMultipliers.aimPenalty(),
+                    superbWarfareMultipliers.bolt());
             SuperbWarfareCompat.setVehicleWeaponDisabled(player.getVehicle(), optionalGunDisabled);
         }
         if (StingerStateManager.isDowned(player) || VlinderStateManager.isDowned(player) || CatDadStateManager.isDowned(player)) {
@@ -2584,6 +2604,15 @@ public class CommonEvents {
         } catch (ReflectiveOperationException ignored) {
             // TACZ is optional; reflection keeps this mod loadable without a hard dependency.
         }
+    }
+
+    private static boolean cancelPlayerInteract(PlayerInteractEvent event) {
+        if (!event.isCancelable()) {
+            return false;
+        }
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.FAIL);
+        return true;
     }
 
     private static void handleTouhouMaidCoffeePickup(Event event) {
@@ -3228,6 +3257,18 @@ public class CommonEvents {
     }
 
     private record TaczSpeedMultipliers(double fireRate, double reload, double aim, double bolt, double aimPenalty) {
+        private TaczSpeedMultipliers {
+            fireRate = validMultiplier(fireRate);
+            reload = validMultiplier(reload);
+            aim = validMultiplier(aim);
+            bolt = validMultiplier(bolt);
+            aimPenalty = validMultiplier(aimPenalty);
+        }
+
+        private static double validMultiplier(double value) {
+            return Double.isFinite(value) && value >= 1.0D ? value : 1.0D;
+        }
+
         boolean hasChange() {
             return fireRate > 1.0001D || reload > 1.0001D || aim > 1.0001D || bolt > 1.0001D || aimPenalty > 1.0001D;
         }

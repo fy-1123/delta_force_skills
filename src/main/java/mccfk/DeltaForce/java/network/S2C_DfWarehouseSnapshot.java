@@ -1,8 +1,6 @@
 package mccfk.DeltaForce.java.network;
 
 import io.netty.handler.codec.DecoderException;
-import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.NetworkEvent;
@@ -50,11 +48,7 @@ public record S2C_DfWarehouseSnapshot(int page, String container, int pageSlots,
 
     public static void handle(S2C_DfWarehouseSnapshot message, Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
-        context.enqueueWork(() -> {
-            if (Minecraft.getInstance().screen instanceof DFGUI_MAIN main) {
-                main.showWarehouse(message.page, message.container, message.pageSlots, message.warehouse);
-            }
-        });
+        context.enqueueWork(() -> ClientPacketBridge.openWarehouse(message));
         context.setPacketHandled(true);
     }
 }
