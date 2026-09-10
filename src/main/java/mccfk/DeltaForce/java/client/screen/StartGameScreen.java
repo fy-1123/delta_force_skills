@@ -950,7 +950,7 @@ public class StartGameScreen {
 
         // 网络延迟悬浮：下方绘制等宽详情窗口
         if (hovered == 4 && showNetwork && networkX >= 0) {
-            renderNetworkTooltip(guiGraphics, font, networkX, y + TOP_RIGHT_ICON_SIZE);
+            renderNetworkTooltip(guiGraphics, font, networkX, y + TOP_RIGHT_ICON_SIZE, screenWidth);
         }
 
         return hovered;
@@ -1049,7 +1049,7 @@ public class StartGameScreen {
      * @param iconLeft 网络图标左缘X
      * @param topY 网络图标底部Y
      */
-    private static void renderNetworkTooltip(GuiGraphics guiGraphics, Font font, int iconLeft, int topY) {
+    private static void renderNetworkTooltip(GuiGraphics guiGraphics, Font font, int iconLeft, int topY, int screenWidth) {
         Component name = Component.translatable("deltaforce.network.latency");
         String latencyText = getLatencyText();
 
@@ -1070,9 +1070,8 @@ public class StartGameScreen {
         int x = iconLeft;
         int y = topY + 4;
         // 防止窗口超出屏幕右缘
-        int guiWidth = Minecraft.getInstance().getWindow().getGuiScaledWidth();
-        if (x + w > guiWidth) {
-            x = Math.max(guiWidth - w, 0);
+        if (x + w > screenWidth) {
+            x = Math.max(screenWidth - w, 0);
         }
 
         // 背景 + 边框
@@ -1108,8 +1107,24 @@ public class StartGameScreen {
     /**
      * 检测右上角 settings/mail 图标是否被点击（空触发，与底栏按钮一致）
      */
+    public static boolean isSettingsIconClicked(int mouseX, int mouseY, int screenWidth, boolean embedded) {
+        int x = screenWidth - TOP_RIGHT_MARGIN_X - TOP_RIGHT_ICON_SIZE;
+        int y = embedded ? TOP_RIGHT_MARGIN_Y : screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
+        return mouseX >= x && mouseX < x + TOP_RIGHT_ICON_SIZE && mouseY >= y && mouseY < y + TOP_RIGHT_ICON_SIZE;
+    }
+
+    public static void renderSettingsIcon(GuiGraphics graphics, int mouseX, int mouseY, int screenWidth, boolean embedded) {
+        int x = screenWidth - TOP_RIGHT_MARGIN_X - TOP_RIGHT_ICON_SIZE;
+        int y = embedded ? TOP_RIGHT_MARGIN_Y : screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
+        graphics.blit(ICON_SETTINGS, x, y, 0, 0, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE);
+        if (isSettingsIconClicked(mouseX, mouseY, screenWidth, embedded)) {
+            graphics.fill(x, y, x + TOP_RIGHT_ICON_SIZE, y + TOP_RIGHT_ICON_SIZE, 0x80FFFFFF);
+            graphics.renderTooltip(Minecraft.getInstance().font, Component.translatable("screen.deltaforce.settings"), mouseX, mouseY);
+        }
+    }
+
     public static boolean isTopRightIconClicked(int mouseX, int mouseY, int screenWidth, int screenHeight) {
-        int y = TOP_RIGHT_MARGIN_Y;
+        int y = screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
         int rightEdge = screenWidth - TOP_RIGHT_MARGIN_X;
         int settingsX = rightEdge - TOP_RIGHT_ICON_SIZE;
         int mailX = settingsX - TOP_RIGHT_GAP - TOP_RIGHT_ICON_SIZE;
@@ -1212,13 +1227,18 @@ public class StartGameScreen {
      * @param centerY 中心Y坐标
      */
     public static void renderPlayerModel(GuiGraphics guiGraphics, int centerX, int centerY) {
+        renderPlayerModel(guiGraphics, centerX, centerY,
+                Minecraft.getInstance().getWindow().getGuiScaledHeight());
+    }
+
+    /** Renders the player using the caller's virtual canvas height. */
+    public static void renderPlayerModel(GuiGraphics guiGraphics, int centerX, int centerY, int screenHeight) {
         var player = Minecraft.getInstance().player;
         if (player == null) return;
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
         float modelScale = Math.max(36.0F, Math.min(100.0F, (screenHeight - BAR_HEIGHT) * 0.35F));
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(centerX - modelScale * 0.75F, centerY + modelScale * 1.55F, 100.0F);

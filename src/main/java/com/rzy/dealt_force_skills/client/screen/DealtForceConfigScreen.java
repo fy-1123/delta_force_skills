@@ -88,6 +88,8 @@ public class DealtForceConfigScreen extends Screen {
         }
         if (lastChunk || (expectedServerChunks > 0 && chunkIndex + 1 >= expectedServerChunks)) {
             ConfigAccess.applyRuntimeSnapshot(List.copyOf(pendingServerEntries));
+            mccfk.DeltaForce.java.client.screen.SettingsScreen.acceptServerSnapshot(
+                    List.copyOf(pendingServerEntries), pendingCanEdit);
             if (active != null) {
                 active.onServerSnapshot(List.copyOf(pendingServerEntries), pendingCanEdit);
             }
@@ -97,6 +99,7 @@ public class DealtForceConfigScreen extends Screen {
     }
 
     public static void onApplyResult(boolean success, int appliedCount, String code) {
+        mccfk.DeltaForce.java.client.screen.SettingsScreen.acceptApplyResult(success, appliedCount, code);
         if (active == null) {
             return;
         }

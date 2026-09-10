@@ -318,7 +318,7 @@ public class GameModeSelectionScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == InputConstants.KEY_Y || keyCode == InputConstants.KEY_ESCAPE) {
+        if (keyCode == InputConstants.KEY_ESCAPE) {
             openMainScreen();
             return true;
         }

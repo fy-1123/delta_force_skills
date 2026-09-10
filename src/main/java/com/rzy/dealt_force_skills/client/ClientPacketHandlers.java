@@ -18,6 +18,12 @@ public final class ClientPacketHandlers {
     private ClientPacketHandlers() {
     }
 
+    private static net.minecraft.client.gui.screens.Screen effectiveScreen() {
+        var screen = Minecraft.getInstance().screen;
+        return screen instanceof mccfk.DeltaForce.java.client.screen.SettingsScreen settings
+                ? settings.parentScreen() : screen;
+    }
+
     public static void characterHitFeedback(int hurtEntityId, float amount) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level != null && minecraft.level.getEntity(hurtEntityId) != null) {
@@ -31,7 +37,7 @@ public final class ClientPacketHandlers {
 
     public static void openGtiTradingHall(long coins, List<GtiTradingHallManager.Entry> entries) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen instanceof DFGUI_MAIN main) {
+        if (effectiveScreen() instanceof DFGUI_MAIN main) {
             main.showGtiMarket(coins, entries);
         } else {
             GtiTradingHallScreen.open(coins, entries);
@@ -40,7 +46,7 @@ public final class ClientPacketHandlers {
 
     public static void openSpecialOperationsBase(S2C_SpecialOperationsBaseSnapshot snapshot) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen instanceof DFGUI_MAIN main) {
+        if (effectiveScreen() instanceof DFGUI_MAIN main) {
             main.showGtiBase(snapshot);
         } else {
             SpecialOperationsBaseScreen.accept(snapshot);
@@ -52,7 +58,7 @@ public final class ClientPacketHandlers {
     }
 
     public static void openWarehouse(S2C_DfWarehouseSnapshot snapshot) {
-        if (Minecraft.getInstance().screen instanceof DFGUI_MAIN main) {
+        if (effectiveScreen() instanceof DFGUI_MAIN main) {
             main.showWarehouse(snapshot.page(), snapshot.container(), snapshot.pageSlots(), snapshot.warehouse());
         }
     }

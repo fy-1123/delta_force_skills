@@ -4,6 +4,7 @@ import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.SkillSlot;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.vyron.VyronTool;
 import com.rzy.dealt_force_skills.character.vyron.VyronToolAction;
 import com.rzy.dealt_force_skills.character.vyron.VyronStateManager;
@@ -55,6 +56,12 @@ public final class VyronInputHandler {
             resetPendingBombThrow();
             ClientVyronToolAnimationState.reset();
             return;
+        }
+
+        if (active1Owned && ClientVyronHudState.dashTicks() > 0
+                && ClientCommanderState.ownsBranchUpgrade(CommanderBranchUpgrade.VYRON_PROPULSION_MOD)) {
+            Vec3 direction = movementDirection(minecraft);
+            NetworkHandler.sendToServer(new C2S_VyronDash(direction.x, direction.z));
         }
 
         if (active1Owned) {

@@ -89,6 +89,7 @@ public final class CharacterEffectHooks {
         }
         if (ModCharacters.COMMANDER_ID.equals(character.id())) {
             CommanderStateManager.onDeselected(player);
+            DWolfStateManager.removeTransientModifiers(player);
             SinevaStateManager.removeTransientModifiers(player);
         }
         player.removeEffect(ModEffects.CHARACTER_FRAMEWORK.get());

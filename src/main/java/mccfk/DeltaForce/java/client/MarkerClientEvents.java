@@ -62,12 +62,14 @@ public final class MarkerClientEvents {
             Minecraft mc = Minecraft.getInstance();
             long window = mc.getWindow().getWindow();
             boolean uDown = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_U);
-            if (uDown && !uKeyWasDown) {
-                if (mc.screen instanceof DFGUI_MAIN) {
-                    mc.setScreen(null);
-                } else {
-                    mc.setScreen(new DFGUI_MAIN());
-                }
+            if (uDown && !uKeyWasDown && mc.player != null && mc.screen == null) {
+                boolean coreOwnsKey = java.util.stream.Stream.of(
+                        com.rzy.dealt_force_skills.client.KeybindRegister.CHARACTER_SELECT,
+                        com.rzy.dealt_force_skills.client.KeybindRegister.ACTIVE_SKILL_1,
+                        com.rzy.dealt_force_skills.client.KeybindRegister.ACTIVE_SKILL_2,
+                        com.rzy.dealt_force_skills.client.KeybindRegister.CORE_SKILL)
+                        .anyMatch(key -> key != null && key.matches(GLFW.GLFW_KEY_U, 0));
+                if (!coreOwnsKey) mc.setScreen(new DFGUI_MAIN());
             }
             uKeyWasDown = uDown;
         } else {

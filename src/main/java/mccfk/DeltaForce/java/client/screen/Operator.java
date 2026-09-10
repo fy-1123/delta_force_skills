@@ -13,6 +13,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
+import net.minecraft.util.FormattedCharSequence;
+import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -112,6 +114,68 @@ public class Operator {
 
     // 悬浮的角色ID（hover 高亮用）
     private static String hoveredOperatorId = null;
+
+    // === 干员介绍文本 ===
+    private static final Map<String, IntroText> introCache = new HashMap<>();
+    private static boolean detailExpanded = false;
+    private static String lastDetailCharacterId = null;
+
+    // 详情按钮区域（由渲染时计算，供点击检测用）
+    private static int detailBtnX = 0;
+    private static int detailBtnY = 0;
+    private static int detailBtnW = 80;
+    private static int detailBtnH = 20;
+
+    // 介绍文本滚动
+    private static int introScrollOffset = 0;
+    private static int introMaxScroll = 0;
+    private static int introTextPanelX = 0;
+    private static int introTextPanelY = 0;
+    private static int introTextPanelW = 0;
+    private static int introTextPanelH = 0;
+    private static final int INTRO_SCROLL_BAR_W = 4;
+    private static final int INTRO_SCROLL_BAR_COLOR = 0x60AAAAAA;
+    private static final int INTRO_SCROLL_HANDLE_COLOR = 0xAAFFFFFF;
+
+    // 介绍文本面板布局常量
+    private static final int INTRO_PANEL_LEFT_RATIO = 9;  // 左面板占屏幕宽度 9/20
+    private static final int INTRO_PANEL_LEFT_MARGIN_RATIO = 2;  // 左面板距左边缘 = 屏幕宽度 * 2 / 100
+    private static final int INTRO_PANEL_RIGHT_MARGIN_RATIO = 2;  // 右面板距右边缘 = 屏幕宽度 * 2 / 100
+    private static final int INTRO_PANEL_TOP = 40;        // 面板距上边缘（固定值，避开标签栏）
+    private static final int INTRO_PANEL_BOTTOM_MARGIN = 8;
+    private static final int INTRO_PANEL_PADDING = 12;
+    private static final int INTRO_PANEL_BG = 0x401A2422;
+    private static final int INTRO_BTN_BG = 0xFF2A3550;
+    private static final int INTRO_BTN_HOVER = 0xFF3D4F6F;
+
+    /**
+     * 介绍文本数据结构
+     */
+    private record IntroText(String brief, String full) {}
+
+    /**
+     * 不死人子角色介绍数据结构
+     */
+    private record SubIntroText(String fileKey, String name, String brief, String full) {}
+
+    /** 不死人子角色文件名列表 */
+    private static final List<String> UNDEAD_SUB_FILES = List.of(
+            "hunter", "explorer", "scholar", "rogue", "warrior", "knight"
+    );
+
+    /** 不死人子角色介绍缓存 */
+    private static List<SubIntroText> undeadSubIntros = null;
+
+    /** 不死人子角色详情展开状态（fileKey → 是否展开） */
+    private static final Map<String, Boolean> undeadSubDetailExpanded = new HashMap<>();
+
+    /** 不死人子角色详情按钮区域列表（供点击检测） */
+    private static final List<UndeadDetailBtn> undeadDetailBtns = new ArrayList<>();
+
+    private static class UndeadDetailBtn {
+        int x, y, w, h;
+        String fileKey;
+    }
 
     private Operator() {
     }
@@ -503,42 +567,497 @@ public class Operator {
      * 渲染角色预览大图：优先显示待确认（预选）角色，无待确认时显示当前已选角色。
      * 贴图路径：deltaforce:textures/gui/operator_preview/&lt;角色短id&gt;.png
      */
-    public static void renderSelectedPreview(GuiGraphics graphics, int screenWidth, int screenHeight) {
+    public static void renderOperatorDetail(GuiGraphics graphics, int mouseX, int mouseY, int screenWidth, int screenHeight,
+            int offsetX, int offsetY, float uiScale) {
+        detailBtnX = 0;
+        introTextPanelW = 0;
+        introTextPanelH = 0;
+        undeadDetailBtns.clear();
         String characterId = pendingCharacterId != null && !pendingCharacterId.isBlank()
                 ? pendingCharacterId
                 : ClientCharacterSelectionState.selectedCharacterId();
         if (characterId == null || characterId.isBlank()) {
             return;
         }
-        PreviewAsset asset = PREVIEWS.get(characterId);
-        if (asset == null) {
-            return;
+
+        // 检测角色切换，重置详情展开状态和滚动
+        if (!characterId.equals(lastDetailCharacterId)) {
+            lastDetailCharacterId = characterId;
+            detailExpanded = false;
+            introScrollOffset = 0;
+            undeadSubDetailExpanded.clear();
+            undeadDetailBtns.clear();
         }
+
+        // 判断是否为不死人
+        boolean isUndead = characterId.endsWith("/undead");
+
+        PreviewAsset asset = PREVIEWS.get(characterId);
+        if (asset == null) asset = new PreviewAsset(288, 288);
         String path = characterId.substring(characterId.indexOf(':') + 1);
         ResourceLocation texture = new ResourceLocation(
                 "deltaforce", "textures/gui/operator_preview/" + path + ".png");
-        if (Minecraft.getInstance().getResourceManager().getResource(texture).isEmpty()) {
+        boolean hasPreview = Minecraft.getInstance().getResourceManager().getResource(texture).isPresent();
+
+        int barTop = screenHeight - 20 - Operator.BAR_HEIGHT;
+        int previewTop = screenWidth < 640 ? 68 : INTRO_PANEL_TOP;
+        int previewBottom = barTop - INTRO_PANEL_BOTTOM_MARGIN;
+        int maxHeight = Math.max(0, previewBottom - previewTop);
+        if (maxHeight == 0) {
             return;
         }
 
-        int previewTop = 32;
-        int previewBottom = screenHeight - 20 - BAR_HEIGHT - 8;
-        int maxWidth = Math.max(0, Math.min(960, screenWidth - 40));
-        int maxHeight = Math.max(0, previewBottom - previewTop);
-        if (maxWidth == 0 || maxHeight == 0) {
-            return;
-        }
-        float scale = Math.min((float) maxWidth / asset.width(), (float) maxHeight / asset.height());
+        // 左面板宽度（介绍图区域）
+        int leftPanelWidth = screenWidth * INTRO_PANEL_LEFT_RATIO / 20;
+        int leftPanelX = screenWidth * INTRO_PANEL_LEFT_MARGIN_RATIO / 100;
+        int leftPanelRight = leftPanelX + leftPanelWidth;
+
+        // 计算介绍图缩放
+        int leftMaxW = Math.max(0, leftPanelWidth - screenWidth * INTRO_PANEL_LEFT_MARGIN_RATIO / 100);
+        float scale = Math.min((float) leftMaxW / asset.width(), (float) maxHeight / asset.height());
         int drawWidth = Math.max(1, Math.round(asset.width() * scale));
         int drawHeight = Math.max(1, Math.round(asset.height() * scale));
-        int drawX = (screenWidth - drawWidth) / 2;
+        int drawX = leftPanelX + (leftPanelWidth - drawWidth) / 2;
         int drawY = previewTop + (maxHeight - drawHeight) / 2;
+
+        // 绘制介绍图
+        if (hasPreview) {
         graphics.pose().pushPose();
         graphics.pose().translate(drawX, drawY, 0.0F);
         graphics.pose().scale(scale, scale, 1.0F);
         graphics.blit(texture, 0, 0, 0, 0,
                 asset.width(), asset.height(), asset.width(), asset.height());
         graphics.pose().popPose();
+        }
+
+        // 右面板
+        int rightPanelX = leftPanelRight + 16;
+        int rightPanelW = screenWidth - rightPanelX - screenWidth * INTRO_PANEL_RIGHT_MARGIN_RATIO / 100;
+        if (rightPanelW < 100) {
+            return;
+        }
+
+        // 文本面板背景
+        introTextPanelX = rightPanelX;
+        introTextPanelY = previewTop;
+        introTextPanelW = rightPanelW;
+        introTextPanelH = maxHeight;
+        graphics.fill(introTextPanelX, introTextPanelY, introTextPanelX + introTextPanelW, introTextPanelY + introTextPanelH, INTRO_PANEL_BG);
+
+        if (isUndead) {
+            renderUndeadSubIntroPanel(graphics, mouseX, mouseY, offsetX, offsetY, uiScale);
+        } else {
+            renderNormalIntroPanel(graphics, mouseX, mouseY, characterId, offsetX, offsetY, uiScale);
+        }
+    }
+
+    /**
+     * 渲染普通干员介绍面板（右面板）
+     */
+    private static void renderNormalIntroPanel(GuiGraphics graphics, int mouseX, int mouseY,
+            String characterId, int offsetX, int offsetY, float uiScale) {
+        IntroText intro = loadIntroText(characterId);
+        if (intro == null) {
+            return;
+        }
+        String text = detailExpanded ? intro.full() : intro.brief();
+        if (text == null || text.isBlank()) {
+            return;
+        }
+
+        // 文本可用区域
+        int textX = introTextPanelX + INTRO_PANEL_PADDING;
+        int textMaxW = introTextPanelW - INTRO_PANEL_PADDING * 2;
+
+        // 按钮区域（底部）
+        int btnAreaH = detailBtnH + 8;
+        int textMaxH = introTextPanelH - INTRO_PANEL_PADDING * 2 - btnAreaH;
+        if (textMaxH <= 0 || textMaxW <= 0) return;
+
+        // 计算详情按钮位置
+        detailBtnX = introTextPanelX + (introTextPanelW - detailBtnW) / 2;
+        detailBtnY = introTextPanelY + introTextPanelH - INTRO_PANEL_PADDING - detailBtnH;
+
+        // 渲染文本（自动换行+滚动）
+        if (textMaxW > 0 && textMaxH > 0) {
+            var font = Minecraft.getInstance().font;
+            List<FormattedCharSequence> lines = font.split(Component.literal(text), textMaxW);
+            int lineHeight = font.lineHeight + 1;
+            int totalTextH = lines.size() * lineHeight;
+            introMaxScroll = Math.max(0, totalTextH - textMaxH);
+
+            // 滚动边界钳制
+            if (introScrollOffset > introMaxScroll) introScrollOffset = introMaxScroll;
+            if (introScrollOffset < 0) introScrollOffset = 0;
+
+            // 裁剪区域
+            graphics.enableScissor(
+                    offsetX + (int)(introTextPanelX * uiScale),
+                    offsetY + (int)((introTextPanelY + INTRO_PANEL_PADDING) * uiScale),
+                    offsetX + (int)((introTextPanelX + introTextPanelW) * uiScale),
+                    offsetY + (int)((introTextPanelY + INTRO_PANEL_PADDING + textMaxH) * uiScale));
+
+            int textBaseY = textMaxH > 0 ? introTextPanelY + INTRO_PANEL_PADDING - introScrollOffset : introTextPanelY + INTRO_PANEL_PADDING;
+            for (int i = 0; i < lines.size(); i++) {
+                int lineY = textBaseY + i * lineHeight;
+                if (lineY + font.lineHeight < introTextPanelY + INTRO_PANEL_PADDING) continue;
+                if (lineY > introTextPanelY + INTRO_PANEL_PADDING + textMaxH) break;
+                graphics.drawString(font, lines.get(i), textX, lineY, 0xFFD0D0D0, false);
+            }
+
+            graphics.disableScissor();
+
+            // 绘制滚动条
+            if (introMaxScroll > 0) {
+                int scrollBarX = introTextPanelX + introTextPanelW - INTRO_SCROLL_BAR_W - 3;
+                int scrollBarY = introTextPanelY + INTRO_PANEL_PADDING;
+                int scrollBarH = textMaxH;
+                graphics.fill(scrollBarX, scrollBarY, scrollBarX + INTRO_SCROLL_BAR_W, scrollBarY + scrollBarH, INTRO_SCROLL_BAR_COLOR);
+
+                int handleH = Math.max(12, scrollBarH * scrollBarH / (totalTextH + textMaxH));
+                int handleY = scrollBarY + (int)((float) introScrollOffset / introMaxScroll * (scrollBarH - handleH));
+                graphics.fill(scrollBarX, handleY, scrollBarX + INTRO_SCROLL_BAR_W, handleY + handleH, INTRO_SCROLL_HANDLE_COLOR);
+            }
+        }
+
+        // 绘制详情按钮
+        boolean btnHovered = mouseX >= detailBtnX && mouseX < detailBtnX + detailBtnW
+                && mouseY >= detailBtnY && mouseY < detailBtnY + detailBtnH;
+        int btnColor = btnHovered ? INTRO_BTN_HOVER : INTRO_BTN_BG;
+        graphics.fill(detailBtnX, detailBtnY, detailBtnX + detailBtnW, detailBtnY + detailBtnH, btnColor);
+
+        // 按钮文字
+        String btnText = Component.translatable(detailExpanded ? "screen.deltaforce.operator.collapse" : "screen.deltaforce.operator.details").getString();
+        var font = Minecraft.getInstance().font;
+        int btnTextW = font.width(btnText);
+        graphics.drawString(font, btnText,
+                detailBtnX + (detailBtnW - btnTextW) / 2,
+                detailBtnY + (detailBtnH - font.lineHeight) / 2,
+                0xFFFFFFFF, false);
+    }
+
+    /**
+     * 渲染不死人子角色介绍面板（右面板）：多个子角色，每个有名字、介绍和详情按钮
+     */
+    private static void renderUndeadSubIntroPanel(GuiGraphics graphics, int mouseX, int mouseY,
+            int offsetX, int offsetY, float uiScale) {
+        List<SubIntroText> subIntros = loadUndeadSubIntros();
+        if (subIntros.isEmpty()) {
+            return;
+        }
+
+        var font = Minecraft.getInstance().font;
+        int textX = introTextPanelX + INTRO_PANEL_PADDING;
+        int textMaxW = introTextPanelW - INTRO_PANEL_PADDING * 2 - INTRO_SCROLL_BAR_W - 4;
+        int lineHeight = font.lineHeight + 1;
+
+        // 子角色详情按钮尺寸
+        int subBtnW = Math.min(80, textMaxW);
+        int subBtnH = 16;
+        int subBtnMargin = 4;
+
+        // 计算每个子角色条目的高度和总内容高度
+        int nameLineH = lineHeight + 2; // 名字行高
+        int separatorH = 6; // 分隔线高度
+
+        // 先计算总内容高度
+        int totalContentH = 0;
+        int[] entryHeights = new int[subIntros.size()];
+        for (int i = 0; i < subIntros.size(); i++) {
+            SubIntroText sub = subIntros.get(i);
+            boolean expanded = undeadSubDetailExpanded.getOrDefault(sub.fileKey(), false);
+            String text = expanded ? sub.full() : sub.brief();
+            List<FormattedCharSequence> lines = font.split(Component.literal(text), textMaxW);
+            int textH = lines.size() * lineHeight;
+            int entryH = nameLineH + textH + subBtnH + subBtnMargin + separatorH;
+            entryHeights[i] = entryH;
+            totalContentH += entryH;
+        }
+
+        // 滚动范围
+        int visibleH = introTextPanelH - INTRO_PANEL_PADDING * 2;
+        if (visibleH <= 0 || textMaxW <= 0) return;
+        introMaxScroll = Math.max(0, totalContentH - visibleH);
+        if (introScrollOffset > introMaxScroll) introScrollOffset = introMaxScroll;
+        if (introScrollOffset < 0) introScrollOffset = 0;
+
+        // 裁剪区域
+        int scissorTop = offsetY + (int)((introTextPanelY + INTRO_PANEL_PADDING) * uiScale);
+        int scissorBottom = offsetY + (int)((introTextPanelY + INTRO_PANEL_PADDING + visibleH) * uiScale);
+        graphics.enableScissor(
+                offsetX + (int)(introTextPanelX * uiScale),
+                scissorTop,
+                offsetX + (int)((introTextPanelX + introTextPanelW) * uiScale),
+                scissorBottom);
+
+        // 清空之前的按钮区域
+        undeadDetailBtns.clear();
+
+        // 绘制每个子角色条目
+        int currentY = introTextPanelY + INTRO_PANEL_PADDING - introScrollOffset;
+        for (int i = 0; i < subIntros.size(); i++) {
+            SubIntroText sub = subIntros.get(i);
+            boolean expanded = undeadSubDetailExpanded.getOrDefault(sub.fileKey(), false);
+            String text = expanded ? sub.full() : sub.brief();
+            List<FormattedCharSequence> lines = font.split(Component.literal(text), textMaxW);
+            int textH = lines.size() * lineHeight;
+
+            // 如果整个条目都在可见区域上方，跳过
+            if (currentY + entryHeights[i] < introTextPanelY + INTRO_PANEL_PADDING) {
+                currentY += entryHeights[i];
+                continue;
+            }
+            // 如果整个条目都在可见区域下方，停止绘制
+            if (currentY > introTextPanelY + INTRO_PANEL_PADDING + visibleH) {
+                break;
+            }
+
+            // 绘制子角色名字（金色高亮）
+            int nameY = currentY;
+            if (nameY + font.lineHeight >= introTextPanelY + INTRO_PANEL_PADDING
+                    && nameY <= introTextPanelY + INTRO_PANEL_PADDING + visibleH) {
+                graphics.drawString(font, sub.name(), textX, nameY, 0xFFFFD700, false);
+            }
+            currentY += nameLineH;
+
+            // 绘制介绍文本
+            for (int j = 0; j < lines.size(); j++) {
+                int lineY = currentY + j * lineHeight;
+                if (lineY + font.lineHeight < introTextPanelY + INTRO_PANEL_PADDING) continue;
+                if (lineY > introTextPanelY + INTRO_PANEL_PADDING + visibleH) break;
+                graphics.drawString(font, lines.get(j), textX, lineY, 0xFFD0D0D0, false);
+            }
+            currentY += textH;
+
+            // 绘制详情按钮
+            int btnX = introTextPanelX + (introTextPanelW - subBtnW) / 2;
+            int btnY = currentY + subBtnMargin;
+            boolean btnHovered = mouseX >= btnX && mouseX < btnX + subBtnW
+                    && mouseY >= btnY && mouseY < btnY + subBtnH;
+            int btnColor = btnHovered ? INTRO_BTN_HOVER : INTRO_BTN_BG;
+            graphics.fill(btnX, btnY, btnX + subBtnW, btnY + subBtnH, btnColor);
+
+            String btnText = Component.translatable(expanded ? "screen.deltaforce.operator.collapse" : "screen.deltaforce.operator.details").getString();
+            int btnTextW = font.width(btnText);
+            graphics.drawString(font, btnText,
+                    btnX + (subBtnW - btnTextW) / 2,
+                    btnY + (subBtnH - font.lineHeight) / 2,
+                    0xFFFFFFFF, false);
+
+            // 记录按钮区域（用于点击检测）
+            UndeadDetailBtn btn = new UndeadDetailBtn();
+            btn.x = btnX; btn.y = btnY; btn.w = subBtnW; btn.h = subBtnH;
+            btn.fileKey = sub.fileKey();
+            undeadDetailBtns.add(btn);
+
+            currentY += subBtnH + subBtnMargin;
+
+            // 绘制分隔线
+            int sepY = currentY;
+            if (sepY >= introTextPanelY + INTRO_PANEL_PADDING
+                    && sepY <= introTextPanelY + INTRO_PANEL_PADDING + visibleH) {
+                graphics.fill(textX, sepY, introTextPanelX + introTextPanelW - INTRO_PANEL_PADDING, sepY + 1, 0x33FFFFFF);
+            }
+            currentY += separatorH;
+        }
+
+        graphics.disableScissor();
+
+        // 绘制滚动条
+        if (introMaxScroll > 0) {
+            int scrollBarX = introTextPanelX + introTextPanelW - INTRO_SCROLL_BAR_W - 3;
+            int scrollBarY = introTextPanelY + INTRO_PANEL_PADDING;
+            int scrollBarH = visibleH;
+            graphics.fill(scrollBarX, scrollBarY, scrollBarX + INTRO_SCROLL_BAR_W, scrollBarY + scrollBarH, INTRO_SCROLL_BAR_COLOR);
+
+            int handleH = Math.max(12, scrollBarH * scrollBarH / (totalContentH + visibleH));
+            int handleY = scrollBarY + (int)((float) introScrollOffset / introMaxScroll * (scrollBarH - handleH));
+            graphics.fill(scrollBarX, handleY, scrollBarX + INTRO_SCROLL_BAR_W, handleY + handleH, INTRO_SCROLL_HANDLE_COLOR);
+        }
+    }
+
+    /**
+     * 处理详情按钮点击（包括不死人子角色详情按钮）
+     * @return 是否命中按钮
+     */
+    public static boolean handleDetailButtonClick(int mouseX, int mouseY) {
+        if (!isInIntroPanel(mouseX, mouseY)) return false;
+        // 先检查不死人子角色详情按钮
+        for (UndeadDetailBtn btn : undeadDetailBtns) {
+            if (btn.y >= introTextPanelY + INTRO_PANEL_PADDING
+                    && btn.y + btn.h <= introTextPanelY + introTextPanelH - INTRO_PANEL_PADDING
+                    && mouseX >= btn.x && mouseX < btn.x + btn.w
+                    && mouseY >= btn.y && mouseY < btn.y + btn.h) {
+                boolean current = undeadSubDetailExpanded.getOrDefault(btn.fileKey, false);
+                undeadSubDetailExpanded.put(btn.fileKey, !current);
+                introScrollOffset = 0;
+                return true;
+            }
+        }
+
+        // 普通详情按钮
+        if (detailBtnX <= 0) {
+            return false;
+        }
+        if (mouseX >= detailBtnX && mouseX < detailBtnX + detailBtnW
+                && mouseY >= detailBtnY && mouseY < detailBtnY + detailBtnH) {
+            detailExpanded = !detailExpanded;
+            introScrollOffset = 0;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 处理介绍面板鼠标滚轮滚动
+     */
+    public static void handleIntroScroll(double scrollY) {
+        if (introMaxScroll <= 0) return;
+        introScrollOffset -= (int)(scrollY * 24);
+        if (introScrollOffset < 0) introScrollOffset = 0;
+        if (introScrollOffset > introMaxScroll) introScrollOffset = introMaxScroll;
+    }
+
+    /**
+     * 检测鼠标是否在介绍文本面板内
+     */
+    public static boolean isInIntroPanel(int mouseX, int mouseY) {
+        return mouseX >= introTextPanelX && mouseX < introTextPanelX + introTextPanelW
+                && mouseY >= introTextPanelY && mouseY < introTextPanelY + introTextPanelH;
+    }
+
+    /**
+     * 根据角色ID获取介绍文件路径名
+     */
+    private static String introFileName(String characterId) {
+        if (characterId == null) return null;
+        String path = characterId.contains(":") ? characterId.substring(characterId.indexOf(':') + 1) : characterId;
+        if (path.endsWith("/undead")) {
+            return null; // 不死人由 loadUndeadSubIntros 单独处理
+        }
+        int lastSlash = path.lastIndexOf('/');
+        return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+    }
+
+    /**
+     * 加载并解析干员介绍文本
+     */
+    private static IntroText loadIntroText(String characterId) {
+        String name = introFileName(characterId);
+        if (name == null) return null;
+        return loadIntroResource(name);
+    }
+
+    private static IntroText loadIntroResource(String name) {
+        if (introCache.containsKey(name)) return introCache.get(name);
+        IntroText result = null;
+        ResourceLocation resource = new ResourceLocation(
+                "dealt_force_skills", "operator_introduction/" + name + ".json");
+        var source = Minecraft.getInstance().getResourceManager().getResource(resource);
+        if (source.isPresent()) {
+            try (var reader = source.get().openAsReader()) {
+                var json = com.google.gson.JsonParser.parseReader(reader).getAsJsonObject();
+                String brief = json.has("brief") ? json.get("brief").getAsString() : "";
+                String full = json.has("full") ? json.get("full").getAsString() : brief;
+                result = new IntroText(brief.isBlank() ? full : brief, full.isBlank() ? brief : full);
+            } catch (java.io.IOException | RuntimeException error) {
+                org.slf4j.LoggerFactory.getLogger(Operator.class).warn("Cannot read operator introduction {}", resource, error);
+            }
+        }
+        introCache.put(name, result);
+        return result;
+    }
+
+    public static void resetIntroduction() {
+        introCache.clear();
+        undeadSubIntros = null;
+        lastDetailCharacterId = null;
+        introScrollOffset = 0;
+        introMaxScroll = 0;
+        detailBtnX = 0;
+        introTextPanelW = 0;
+        introTextPanelH = 0;
+        undeadDetailBtns.clear();
+    }
+
+    /**
+     * 加载不死人所有子角色介绍文本
+     */
+    private static List<SubIntroText> loadUndeadSubIntros() {
+        if (undeadSubIntros != null) {
+            return undeadSubIntros;
+        }
+        List<SubIntroText> result = new ArrayList<>();
+        for (String fileKey : UNDEAD_SUB_FILES) {
+            try {
+                IntroText intro = loadIntroResource("undead/" + fileKey);
+                if (intro == null) continue;
+                String briefRaw = intro.brief();
+                String fullRaw = intro.full();
+                if (briefRaw == null && fullRaw == null) {
+                    continue;
+                }
+                // 提取子角色名称（从brief第二行，跳过公共提示行）
+                String name = extractUndeadSubName(briefRaw, fullRaw);
+                // 清理brief文本：移除公共提示行和名称行
+                String brief = cleanUndeadSubText(briefRaw);
+                String full = cleanUndeadSubText(fullRaw);
+                result.add(new SubIntroText(fileKey, name, brief, full));
+            } catch (Exception e) {
+                // 跳过无法加载的文件
+            }
+        }
+        undeadSubIntros = result;
+        return result;
+    }
+
+    /**
+     * 从不死人子角色文本中提取名称
+     */
+    private static String extractUndeadSubName(String briefRaw, String fullRaw) {
+        // 从brief中查找以"不死人子角色-"开头的行
+        if (briefRaw != null) {
+            for (String line : briefRaw.split("\n")) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("不死人子角色-")) {
+                    return trimmed.substring("不死人子角色-".length());
+                }
+            }
+        }
+        // 回退：从full中查找
+        if (fullRaw != null) {
+            for (String line : fullRaw.split("\n")) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("不死人子角色-")) {
+                    return trimmed.substring("不死人子角色-".length());
+                }
+            }
+        }
+        return "???";
+    }
+
+    /**
+     * 清理不死人子角色文本：移除公共提示行和名称行
+     */
+    private static String cleanUndeadSubText(String raw) {
+        if (raw == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String line : raw.split("\n")) {
+            String trimmed = line.trim();
+            // 跳过公共提示行
+            if (trimmed.startsWith("（非创造模式下")) {
+                continue;
+            }
+            // 跳过名称行
+            if (trimmed.startsWith("不死人子角色-")) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append("\n");
+            }
+            sb.append(line);
+        }
+        return sb.toString().trim();
     }
 
     /**

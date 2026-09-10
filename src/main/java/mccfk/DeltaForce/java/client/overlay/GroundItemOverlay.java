@@ -1,5 +1,7 @@
 package mccfk.DeltaForce.java.client.overlay;
 
+import com.mojang.blaze3d.platform.InputConstants;
+import mccfk.DeltaForce.java.client.CustomDropConfig;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rzy.dealt_force_skills.item.DfsItemQuality;
@@ -40,7 +42,7 @@ public class GroundItemOverlay {
                                        float partialTick, int screenWidth, int screenHeight) {
         Minecraft mc = Minecraft.getInstance();
 
-        if (mc.options.hideGui || mc.player == null || mc.level == null) {
+        if (mc.options.hideGui || mc.player == null || mc.level == null || !CustomDropConfig.hudEnabled()) {
             fadeProgress = 0f;
             currentTarget = null;
             return;
@@ -75,12 +77,11 @@ public class GroundItemOverlay {
         }
 
         if (currentTarget != null && fadeProgress > 0) {
-            renderItemInfo(guiGraphics, mc, currentTarget, fadeProgress, screenWidth);
+            renderItemInfo(guiGraphics, mc, currentTarget, fadeProgress);
         }
     }
 
-    private static void renderItemInfo(GuiGraphics guiGraphics, Minecraft mc, GroundItemEntity entity, float alpha,
-                                        int screenWidth) {
+    private static void renderItemInfo(GuiGraphics guiGraphics, Minecraft mc, GroundItemEntity entity, float alpha) {
         PoseStack poseStack = guiGraphics.pose();
         poseStack.pushPose();
 
@@ -91,7 +92,42 @@ public class GroundItemOverlay {
         Component qualityLine = Component.translatable("tooltip.dealt_force_skills.quality",
                 Component.translatable("quality.dealt_force_skills." + quality.key()));
 
-        String description = getDescription(entity);
+        boolean simpleMode = CustomDropConfig.hudSimpleMode();
+        boolean hotkeyPressed = mc.screen == null && CustomDropConfig.hudHotkeyDetailed()
+                && areAllKeysDown(mc.getWindow().getWindow(), CustomDropConfig.hudHotKeys());
+
+        String description = null;
+        if (!simpleMode || hotkeyPressed) {
+            description = getDescription(entity);
+        }
+
+        renderItemHud(guiGraphics, mc, itemStack, quality, itemName, qualityLine, description,
+                alpha, CustomDropConfig.hudScale(), CustomDropConfig.hudXOffset(), CustomDropConfig.hudYOffset(),
+                simpleMode, hotkeyPressed);
+
+        poseStack.popPose();
+    }
+
+    /**
+     * 公开的HUD渲染方法，供预览等功能调用
+     * @param itemStack 物品堆（用于渲染模型）
+     * @param quality 品质（颜色）
+     * @param itemName 物品名称
+     * @param qualityLine 品质行文本
+     * @param description 物品描述（null则隐藏）
+     * @param alpha 透明度 0-1
+     * @param scale 缩放比例（0=原始大小）
+     * @param xOffset X偏移（像素）
+     * @param yOffset Y偏移（像素）
+     * @param simpleMode 简易模式
+     * @param showDetail 是否显示物品模型和描述
+     */
+    public static void renderItemHud(GuiGraphics guiGraphics, Minecraft mc, ItemStack itemStack,
+                                      DfsItemQuality quality, Component itemName, Component qualityLine,
+                                      String description, float alpha, float scale, int xOffset, int yOffset,
+                                      boolean simpleMode, boolean showDetail) {
+        PoseStack poseStack = guiGraphics.pose();
+        poseStack.pushPose();
 
         int padding = 8;
         int itemDisplaySize = 40;
@@ -111,16 +147,25 @@ public class GroundItemOverlay {
             maxTextWidth = Math.max(maxTextWidth, mc.font.width(line));
         }
         int boxWidth = Math.min(Math.max(150, maxTextWidth + padding * 2 + itemDisplaySize + 8),
-                Math.max(150, screenWidth - 40));
+                Math.max(150, guiGraphics.guiWidth() - 40));
 
         int nameHeight = lineHeight * 2;
-        int itemAreaHeight = itemDisplaySize + 4;
+        int itemAreaHeight = simpleMode && !showDetail ? 0 : itemDisplaySize + 4;
 
         int descHeight = wrappedDescLines.size() * lineHeight;
         int boxHeight = Math.max(60, topPadding + nameHeight + 4 + itemAreaHeight + 4 + descHeight + bottomPadding);
 
-        int boxX = screenWidth - boxWidth - 20;
-        int boxY = 60;
+        int screenWidth = guiGraphics.guiWidth();
+        int boxX = screenWidth - boxWidth - 20 + xOffset;
+        int boxY = 60 + yOffset;
+
+        // 应用缩放比例
+        float scaleFactor = Float.isFinite(scale) ? Math.max(0.1F, Math.min(2.0F, 1.0F + scale)) : 1.0F;
+        float centerX = boxX + boxWidth / 2.0F;
+        float centerY = boxY + boxHeight / 2.0F;
+        poseStack.translate(centerX, centerY, 0);
+        poseStack.scale(scaleFactor, scaleFactor, 1.0F);
+        poseStack.translate(-centerX, -centerY, 0);
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
@@ -146,8 +191,7 @@ public class GroundItemOverlay {
         } else {
             int nameColor = (int)(alpha * 255) << 24 | quality.color();
             guiGraphics.drawString(mc.font, itemName, boxX + padding, boxY + topPadding, nameColor, false);
-            guiGraphics.drawString(mc.font, qualityLine, boxX + padding, boxY + topPadding + lineHeight,
-                    nameColor, false);
+            guiGraphics.drawString(mc.font, qualityLine, boxX + padding, boxY + topPadding + lineHeight, nameColor, false);
         }
 
         int currentY = boxY + topPadding + nameHeight + 4;
@@ -158,31 +202,34 @@ public class GroundItemOverlay {
 
         currentY += 4;
 
-        int itemBoxX = boxX + padding;
-        int itemBoxY = currentY;
+        // 简易模式下隐藏物品模型和描述（按快捷键可临时显示）
+        if (!simpleMode || showDetail) {
+            int itemBoxX = boxX + padding;
+            int itemBoxY = currentY;
 
-        int itemBoxColor = (int)(alpha * 150) << 24 | 0x2A2A2A;
-        guiGraphics.fill(itemBoxX, itemBoxY, itemBoxX + itemDisplaySize, itemBoxY + itemDisplaySize, itemBoxColor);
-        guiGraphics.renderOutline(itemBoxX, itemBoxY, itemDisplaySize, itemDisplaySize, borderColorTop);
+            int itemBoxColor = (int)(alpha * 150) << 24 | 0x2A2A2A;
+            guiGraphics.fill(itemBoxX, itemBoxY, itemBoxX + itemDisplaySize, itemBoxY + itemDisplaySize, itemBoxColor);
+            guiGraphics.renderOutline(itemBoxX, itemBoxY, itemDisplaySize, itemDisplaySize, borderColorTop);
 
-        poseStack.pushPose();
-        poseStack.translate(itemBoxX + itemDisplaySize / 2f, itemBoxY + itemDisplaySize / 2f, 0);
-        poseStack.scale(2.0f, 2.0f, 1.0f);
-        ItemStack displayStack = DeltaForceItems.isRawMaterial(itemStack)
-            ? new ItemStack(DeltaForceItems.TEMP_DF.get())
-            : itemStack;
-        guiGraphics.renderFakeItem(displayStack, -8, -8);
-        poseStack.popPose();
+            poseStack.pushPose();
+            poseStack.translate(itemBoxX + itemDisplaySize / 2f, itemBoxY + itemDisplaySize / 2f, 0);
+            poseStack.scale(2.0f, 2.0f, 1.0f);
+            ItemStack displayStack = DeltaForceItems.isRawMaterial(itemStack)
+                    ? new ItemStack(DeltaForceItems.TEMP_DF.get())
+                    : itemStack;
+            guiGraphics.renderFakeItem(displayStack, -8, -8);
+            poseStack.popPose();
 
-        if (!wrappedDescLines.isEmpty()) {
-            int descStartY = itemBoxY + 2;
-            int descStartX = itemBoxX + itemDisplaySize + 8;
-            int textColor = (int)(alpha * 200) << 24 | 0xAAAAAA;
+            if (!wrappedDescLines.isEmpty()) {
+                int descStartY = itemBoxY + 2;
+                int descStartX = itemBoxX + itemDisplaySize + 8;
+                int textColor = (int)(alpha * 200) << 24 | 0xAAAAAA;
 
-            int descY = descStartY;
-            for (String line : wrappedDescLines) {
-                guiGraphics.drawString(mc.font, line, descStartX, descY, textColor, false);
-                descY += lineHeight;
+                int descY = descStartY;
+                for (String line : wrappedDescLines) {
+                    guiGraphics.drawString(mc.font, line, descStartX, descY, textColor, false);
+                    descY += lineHeight;
+                }
             }
         }
 
@@ -304,5 +351,14 @@ public class GroundItemOverlay {
             }
         }
         return result;
+    }
+    /** 检查组合键是否全部按下 */
+    private static boolean areAllKeysDown(long window, List<Integer> keys) {
+        for (int key : keys) {
+            if (key < 32 || key > 348 || !InputConstants.isKeyDown(window, key)) {
+                return false;
+            }
+        }
+        return !keys.isEmpty();
     }
 }

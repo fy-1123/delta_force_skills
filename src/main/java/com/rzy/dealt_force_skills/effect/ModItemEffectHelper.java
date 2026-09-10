@@ -1,6 +1,7 @@
 package com.rzy.dealt_force_skills.effect;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -319,7 +320,7 @@ public final class ModItemEffectHelper {
         CompoundTag persistent = player.getPersistentData();
         for (String key : new ArrayList<>(persistent.getAllKeys())) {
             if (key.startsWith(DealtForceSkillsMod.MODID + ".") && persistent.contains(key, Tag.TAG_COMPOUND)) {
-                refreshCooldownFields(persistent.getCompound(key));
+                refreshCooldownFields(persistent.getCompound(key), player);
             }
         }
         player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
@@ -330,13 +331,24 @@ public final class ModItemEffectHelper {
         return entity.hasEffect(ModEffects.LAUGHING_MANIA_III.get());
     }
 
-    private static void refreshCooldownFields(CompoundTag tag) {
-        for (String key : new ArrayList<>(tag.getAllKeys())) {
-            if (tag.contains(key, Tag.TAG_COMPOUND)) {
-                refreshCooldownFields(tag.getCompound(key));
+    private static void refreshCooldownFields(CompoundTag tag, ServerPlayer player) {
+        for (Map.Entry<String, Integer> entry : CHARGE_MAXIMUMS.entrySet()) {
+            String chargeKey = entry.getKey();
+            if (!tag.contains(chargeKey, Tag.TAG_INT)) {
                 continue;
             }
-            if (key.contains("NextRecharge") && restoreOneCharge(tag, key)) {
+            tag.putInt(chargeKey, CommanderStateManager.skillCapacity(player, entry.getValue()));
+            String rechargeKey = chargeKey.replace("Charges", "NextRecharge");
+            if (tag.contains(rechargeKey, Tag.TAG_LONG) || tag.contains(rechargeKey, Tag.TAG_INT)) {
+                tag.putLong(rechargeKey, 0L);
+            }
+        }
+        for (String key : new ArrayList<>(tag.getAllKeys())) {
+            if (tag.contains(key, Tag.TAG_COMPOUND)) {
+                refreshCooldownFields(tag.getCompound(key), player);
+                continue;
+            }
+            if (key.contains("NextRecharge") && restoreOneCharge(tag, key, player)) {
                 continue;
             }
             if (key.contains("CooldownUntil")
@@ -346,25 +358,18 @@ public final class ModItemEffectHelper {
         }
     }
 
-    private static boolean restoreOneCharge(CompoundTag tag, String rechargeKey) {
+    private static boolean restoreOneCharge(CompoundTag tag, String rechargeKey, ServerPlayer player) {
         String chargeKey = rechargeKey.replace("NextRecharge", "Charges");
-        Integer maxCharges = CHARGE_MAXIMUMS.get(chargeKey);
-        if (maxCharges == null || !tag.contains(chargeKey, Tag.TAG_INT)) {
+        Integer baseMaxCharges = CHARGE_MAXIMUMS.get(chargeKey);
+        if (baseMaxCharges == null || !tag.contains(chargeKey, Tag.TAG_INT)) {
             if (tag.contains(rechargeKey, Tag.TAG_LONG) || tag.contains(rechargeKey, Tag.TAG_INT)) {
                 tag.putLong(rechargeKey, 0L);
             }
             return true;
         }
-        int charges = Math.min(maxCharges, Math.max(0, tag.getInt(chargeKey)));
-        boolean restored = false;
-        if (charges < maxCharges) {
-            charges++;
-            restored = true;
-            tag.putInt(chargeKey, charges);
-        }
-        if (restored || charges >= maxCharges) {
-            tag.putLong(rechargeKey, 0L);
-        }
+        int maxCharges = CommanderStateManager.skillCapacity(player, baseMaxCharges);
+        tag.putInt(chargeKey, maxCharges);
+        tag.putLong(rechargeKey, 0L);
         return true;
     }
 

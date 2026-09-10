@@ -4,6 +4,7 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
+import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
 import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -149,6 +150,27 @@ public final class VyronStateManager {
         }
         RangedSoundHelper.playFollowingPlayer(player, ModSounds.VYRON_DASH.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f, 32.0D);
+        return true;
+    }
+
+    public static boolean updateDashDirection(ServerPlayer player, Vec3 direction) {
+        if (!isVyron(player) || dashTicks(player) <= 0
+                || !CommanderStateManager.hasBranchUpgrade(player,
+                CommanderBranchUpgrade.VYRON_PROPULSION_MOD)) {
+            return false;
+        }
+        Vec3 horizontal = new Vec3(direction.x, 0.0D, direction.z);
+        if (horizontal.lengthSqr() < 0.0001D) {
+            Vec3 look = player.getLookAngle();
+            horizontal = new Vec3(look.x, 0.0D, look.z);
+        }
+        if (horizontal.lengthSqr() < 0.0001D) {
+            return false;
+        }
+        Vec3 normalized = horizontal.normalize();
+        CompoundTag tag = data(player);
+        tag.putDouble(DASH_DIR_X, normalized.x);
+        tag.putDouble(DASH_DIR_Z, normalized.z);
         return true;
     }
 

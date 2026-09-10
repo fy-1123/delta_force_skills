@@ -4,6 +4,7 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterAvailability;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
+import com.rzy.dealt_force_skills.character.sineva.SinevaStateManager;
 import com.rzy.dealt_force_skills.effect.ModItemEffectHelper;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_OpenCharacterSelection;
@@ -278,6 +279,7 @@ public final class HookAuthorBlessingItem extends QualityTooltipItem {
     private static void refreshSkills(ServerPlayer player) {
         ModItemEffectHelper.refreshSkillCooldowns(player);
         clearCooldowns(player.getPersistentData());
+        SinevaStateManager.refreshBladeWireCharges(player);
         for (Item item : net.minecraftforge.registries.ForgeRegistries.ITEMS) {
             player.getCooldowns().removeCooldown(item);
         }

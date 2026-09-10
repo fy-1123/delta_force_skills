@@ -157,7 +157,7 @@ public final class SinevaShieldInputHandler {
             return;
         }
 
-        ClientSinevaHudState.startChargeCooldown(20);
+        ClientSinevaHudState.startChargeCooldown(10);
         ClientSinevaVisualState.startChargeAnimation();
         NetworkHandler.sendToServer(new C2S_SinevaShieldCharge());
     }

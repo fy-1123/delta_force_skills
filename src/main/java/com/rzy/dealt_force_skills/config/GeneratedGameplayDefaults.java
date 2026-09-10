@@ -466,7 +466,7 @@ DealtForceConfig.intValue("characters.department.department_of_transportation_st
         DealtForceConfig.doubleValue("characters.sineva.sineva_shield_geometry.viewport_ray_length", 50.0D);
         DealtForceConfig.intValue("characters.sineva.sineva_skills.bash_active_stamina_ticks", 20);
         DealtForceConfig.intValue("characters.sineva.sineva_skills.bash_cooldown_ticks", 10);
-        DealtForceConfig.intValue("characters.sineva.sineva_skills.charge_cooldown_ticks", 20);
+        DealtForceConfig.intValue("characters.sineva.sineva_skills.charge_cooldown_ticks", 10);
         DealtForceConfig.intValue("characters.sineva.sineva_skills.effect.stun.0.amplifier", 0);
         DealtForceConfig.doubleValue("characters.sineva.sineva_skills.projectile_charge_speed_bonus", 0.45D);
         DealtForceConfig.doubleValue("characters.sineva.sineva_skills.projectile_reflect_max_speed", 3.8D);

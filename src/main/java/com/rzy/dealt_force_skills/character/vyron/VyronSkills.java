@@ -30,6 +30,9 @@ public final class VyronSkills {
         if (!VyronStateManager.isVyron(player)) {
             return false;
         }
+        if (VyronStateManager.updateDashDirection(player, direction)) {
+            return true;
+        }
         if (!VyronStateManager.isDashReady(player)) {
             com.rzy.dealt_force_skills.skill.SkillCooldownHelper.notifyCooldown(player,
                     Component.translatable("message.dealt_force_skills.vyron.dash_cooldown"));

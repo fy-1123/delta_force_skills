@@ -188,6 +188,20 @@ public final class SinevaStateManager {
         return remainingTicks(player, BLADE_WIRE_NEXT_RECHARGE);
     }
 
+    /** Refills the stored wire charges after an external skill refresh. */
+    public static void refreshBladeWireCharges(ServerPlayer player) {
+        if (player == null) {
+            return;
+        }
+        CompoundTag persistent = player.getPersistentData();
+        if (!isSineva(player) && !persistent.contains(ROOT_TAG, Tag.TAG_COMPOUND)) {
+            return;
+        }
+        CompoundTag tag = data(player);
+        tag.putInt(BLADE_WIRE_CHARGES, bladeWireCapacity(player));
+        tag.putLong(BLADE_WIRE_NEXT_RECHARGE, 0L);
+    }
+
     public static boolean consumeBladeWireCharge(ServerPlayer player) {
         CompoundTag tag = data(player);
         int capacity = bladeWireCapacity(player);
@@ -308,7 +322,9 @@ public final class SinevaStateManager {
     }
 
     public static double bombSuitStepHeightBonus() {
-        return Math.max(0.0D, BOMB_SUIT_STEP_HEIGHT_BONUS);
+        // Existing configs may still contain the retired 0.5 value; the suit must
+        // always retain the one-block traversal it was designed to provide.
+        return Math.max(1.0D, BOMB_SUIT_STEP_HEIGHT_BONUS);
     }
 
     public static void reconcileStepHeight(Player player) {
