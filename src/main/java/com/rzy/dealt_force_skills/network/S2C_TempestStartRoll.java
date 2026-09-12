@@ -18,7 +18,7 @@ public class S2C_TempestStartRoll {
     public static void handle(S2C_TempestStartRoll msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(
                 Dist.CLIENT,
-                () -> ClientTempestParCoolBridge::startRoll
+                () -> ClientTempestRollVisuals::startRoll
         ));
         ctx.get().setPacketHandled(true);
     }

@@ -237,6 +237,7 @@ public final class ClientCommanderState {
     public static int skillCooldownTicks(CommanderSkillChoice choice) {
         String source = source(choice);
         SkillSlot slot = choice.skillSlot();
+        if (ModCharacters.ROVER_ID.equals(source)) return com.rzy.dealt_force_skills.client.RoverClient.cooldown(slot);
         if (ModCharacters.SINEVA_ID.equals(source)) {
             return switch (slot) {
                 case ACTIVE_1 -> chargeCooldown(ClientSinevaHudState.bladeWireCharges(),

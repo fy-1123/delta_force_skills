@@ -6,7 +6,7 @@ import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SinevaShieldStaminaConsume;
 import com.rzy.dealt_force_skills.network.S2C_SyncSinevaRenderState;
@@ -443,15 +443,9 @@ public final class SinevaStateManager {
             return;
         }
         recordShieldDamage(player);
-        if (player instanceof ServerPlayer serverPlayer) {
-            NetworkHandler.sendToPlayer(new S2C_SinevaShieldStaminaConsume(
-                    SHIELD_BLOCK_STAMINA_COST_PERCENT,
-                    SHIELD_BLOCK_STAMINA_FLOOR_PERCENT
-            ), serverPlayer);
-        } else if (player.level().isClientSide) {
-            ParcoolStaminaBridge.consumeLocalPercentAboveFloor(player,
-                    SHIELD_BLOCK_STAMINA_COST_PERCENT,
-                    SHIELD_BLOCK_STAMINA_FLOOR_PERCENT);
+        if (!player.level().isClientSide) {
+            StaminaManager.consumeAboveFloor(player, StaminaManager.skillCost(player, SHIELD_BLOCK_STAMINA_COST_PERCENT * 0.1D),
+                    SHIELD_BLOCK_STAMINA_FLOOR_PERCENT * 0.1D);
         }
     }
 

@@ -81,6 +81,19 @@ public class ModEntities {
     public static final DeferredRegister<EntityType<?>> ENTITIES =
             DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, DealtForceSkillsMod.MODID);
 
+    public static final RegistryObject<EntityType<com.rzy.dealt_force_skills.entity.RoverProjectileEntity>> ROVER_PROJECTILE =
+            ENTITIES.register("rover_projectile", () -> EntityType.Builder.<com.rzy.dealt_force_skills.entity.RoverProjectileEntity>of(
+                    com.rzy.dealt_force_skills.entity.RoverProjectileEntity::new, MobCategory.MISC)
+                    .sized(0.25F, 0.25F).clientTrackingRange(64).updateInterval(1).build("rover_projectile"));
+    public static final RegistryObject<EntityType<com.rzy.dealt_force_skills.entity.RoverFieldEntity>> ROVER_FIELD =
+            ENTITIES.register("rover_field", () -> EntityType.Builder.<com.rzy.dealt_force_skills.entity.RoverFieldEntity>of(
+                    com.rzy.dealt_force_skills.entity.RoverFieldEntity::new, MobCategory.MISC)
+                    .sized(0.1F, 0.1F).clientTrackingRange(64).updateInterval(5).build("rover_field"));
+    public static final RegistryObject<EntityType<com.rzy.dealt_force_skills.entity.RoverWolfEntity>> ROVER_WOLF =
+            ENTITIES.register("rover_wolf", () -> EntityType.Builder.<com.rzy.dealt_force_skills.entity.RoverWolfEntity>of(
+                    com.rzy.dealt_force_skills.entity.RoverWolfEntity::new, MobCategory.CREATURE)
+                    .sized(0.6F, 0.85F).clientTrackingRange(64).updateInterval(2).build("rover_wolf"));
+
     public static final RegistryObject<EntityType<DeathCrateEntity>> DEATH_CRATE =
             ENTITIES.register("death_crate",
                     () -> EntityType.Builder.<DeathCrateEntity>of(DeathCrateEntity::new, MobCategory.MISC)

@@ -52,13 +52,6 @@ ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
-modId="parcool"
-mandatory=true
-versionRange="[3.4.3,)"
-ordering="AFTER"
-side="BOTH"
-
-[[dependencies.${mod_id}]]
 modId="tacz"
 mandatory=true
 versionRange="[1.1.5,)"

@@ -44,12 +44,15 @@ public class C2S_UluruMissileControl {
     public static void handle(C2S_UluruMissileControl msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
-            if (player == null || player.isSpectator()) {
+            if (player == null) {
                 return;
             }
             // Client requested release of missile control
             if (msg.release) {
-                UluruLoiteringMissileEntity.stopPlayerControl(player);
+                UluruLoiteringMissileEntity.abortPlayerControl(player, msg.entityId);
+                return;
+            }
+            if (player.isSpectator()) {
                 return;
             }
             if (player.hasEffect(ModEffects.STUN.get()) || player.hasEffect(ModEffects.WEBBED.get()) || StingerStateManager.isDowned(player) || RoundStartFreezeManager.isFrozen(player)) {

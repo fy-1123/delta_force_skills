@@ -80,6 +80,7 @@ final class ClientChamberHudState {
     static void sync(Object... args) { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.character.ClientChamberHudState", "sync", args); }
 }
 final class ClientCharacterSelectionState {
+    static void openReselectionScreen(boolean free) { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState", "openReselectionScreen", free); }
     static void openReselectionScreen() { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState", "openReselectionScreen"); }
     static void openSelectionScreen() { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState", "openSelectionScreen"); }
     static void syncCharacterAvailability(Object... args) { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState", "syncCharacterAvailability", args); }
@@ -212,8 +213,8 @@ final class ClientTeamSpectatorState {
 final class ClientTempestHudState {
     static void sync(Object... args) { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.character.ClientTempestHudState", "sync", args); }
 }
-final class ClientTempestParCoolBridge {
-    static void startRoll() { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.ClientTempestParCoolBridge", "startRoll"); }
+final class ClientTempestRollVisuals {
+    static void startRoll() { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.ClientTempestRollVisuals", "startRoll"); }
 }
 final class ClientToxikHudState {
     static void sync(Object... args) { ClientPacketBridge.invoke("com.rzy.dealt_force_skills.client.character.ClientToxikHudState", "sync", args); }

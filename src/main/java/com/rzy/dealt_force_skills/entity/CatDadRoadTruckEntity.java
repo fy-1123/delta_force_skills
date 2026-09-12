@@ -206,7 +206,7 @@ public class CatDadRoadTruckEntity extends Entity {
                 current.z - roadWidth() * 0.75D, current.x + roadWidth() * 0.75D,
                 current.y + TRUCK_VERTICAL_TOP + 0.2D, current.z + roadWidth() * 0.75D);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, search,
-                target -> target.isAlive() && !target.isSpectator())) {
+                target -> TargetingUtil.isSelfOrHostileLivingFor(owner, target))) {
             if (!insideTruck(current, target) || !hitEntities.add(target.getId())) {
                 continue;
             }

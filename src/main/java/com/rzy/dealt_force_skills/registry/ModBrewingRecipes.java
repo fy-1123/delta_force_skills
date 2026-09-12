@@ -9,17 +9,29 @@ import net.minecraftforge.common.brewing.BrewingRecipeRegistry;
 import net.minecraftforge.common.brewing.IBrewingRecipe;
 
 import java.util.function.Supplier;
+import java.util.List;
 
 public final class ModBrewingRecipes {
+    private static final List<IBrewingRecipe> RECIPES = List.of(
+            new PotionCategoryRecipe(MobEffectCategory.HARMFUL, () -> ModItems.RAVEN_SHADOW_EXTRACT.get()),
+            new PotionCategoryRecipe(MobEffectCategory.BENEFICIAL, () -> ModItems.EXPERIMENTAL_IRON_CURTAIN_CATALYST.get()),
+            new CompoundRecipe());
+
     private ModBrewingRecipes() {
     }
 
     public static void register() {
-        BrewingRecipeRegistry.addRecipe(new PotionCategoryRecipe(MobEffectCategory.HARMFUL,
-                () -> ModItems.RAVEN_SHADOW_EXTRACT.get()));
-        BrewingRecipeRegistry.addRecipe(new PotionCategoryRecipe(MobEffectCategory.BENEFICIAL,
-                () -> ModItems.EXPERIMENTAL_IRON_CURTAIN_CATALYST.get()));
-        BrewingRecipeRegistry.addRecipe(new CompoundRecipe());
+        RECIPES.forEach(BrewingRecipeRegistry::addRecipe);
+    }
+
+    public static ItemStack getOutput(ItemStack input, ItemStack ingredient) {
+        for (IBrewingRecipe recipe : RECIPES) {
+            ItemStack output = recipe.getOutput(input, ingredient);
+            if (!output.isEmpty()) {
+                return output;
+            }
+        }
+        return ItemStack.EMPTY;
     }
 
     private static boolean isPotionInput(ItemStack stack) {

@@ -3,7 +3,7 @@ package com.rzy.dealt_force_skills.character.gambler;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncGamblerState;
 import com.rzy.dealt_force_skills.registry.ModEffects;
@@ -678,7 +678,6 @@ public final class GamblerStateManager {
             applyJackpotSpeed(player);
             tickArenaBgm(player, tag, now);
             if (player.tickCount % 20 == 0) {
-                ParcoolStaminaBridge.recoverLocalPercent(player, 100);
                 player.displayClientMessage(Component.translatable("message.dealt_force_skills.gambler.jackpot_remaining",
                         seconds(jackpotRemainingTicks(player))).withStyle(ChatFormatting.GOLD), true);
             }
@@ -853,6 +852,7 @@ public final class GamblerStateManager {
         tag.putBoolean(CORE_ACTIVE, false);
         tag.putInt(CORE_NO_JACKPOT_DRAWS, 0);
         tag.putLong(JACKPOT_UNTIL, now + JACKPOT_TICKS);
+        player.addEffect(new MobEffectInstance(ModEffects.BURNING_HEART.get(), JACKPOT_TICKS, 0, false, true, true));
         player.setHealth(player.getMaxHealth());
         player.addEffect(new MobEffectInstance(MobEffects.LUCK, JACKPOT_LUCK_TICKS, 9, false, true, true));
         applyJackpotSpeed(player);
@@ -1414,7 +1414,7 @@ public final class GamblerStateManager {
         if (attribute != null && attribute.getModifier(JACKPOT_SPEED_UUID) != null) {
             attribute.removeModifier(JACKPOT_SPEED_UUID);
         }
-        ParcoolStaminaBridge.clear(player);
+
     }
 
     private static void clearTemporaryFlight(Player player) {

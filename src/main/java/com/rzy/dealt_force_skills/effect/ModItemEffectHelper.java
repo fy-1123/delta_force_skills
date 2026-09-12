@@ -317,12 +317,17 @@ public final class ModItemEffectHelper {
     }
 
     public static void refreshSkillCooldowns(ServerPlayer player) {
+        refreshSkillCooldowns(player, false);
+    }
+
+    public static void refreshSkillCooldowns(ServerPlayer player, boolean fillRoverCharges) {
         CompoundTag persistent = player.getPersistentData();
         for (String key : new ArrayList<>(persistent.getAllKeys())) {
             if (key.startsWith(DealtForceSkillsMod.MODID + ".") && persistent.contains(key, Tag.TAG_COMPOUND)) {
                 refreshCooldownFields(persistent.getCompound(key), player);
             }
         }
+        com.rzy.dealt_force_skills.character.rover.RoverStateManager.refreshSkills(player, fillRoverCharges);
         player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
                 "message.dealt_force_skills.item.skill_cooldowns_refreshed"), true);
     }

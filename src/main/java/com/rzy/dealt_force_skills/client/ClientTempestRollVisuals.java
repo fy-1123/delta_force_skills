@@ -1,7 +1,5 @@
 package com.rzy.dealt_force_skills.client;
 
-import com.alrex.parcool.common.action.impl.Roll;
-import com.alrex.parcool.common.capability.Parkourability;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -14,11 +12,11 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID, value = Dist.CLIENT)
-public final class ClientTempestParCoolBridge {
+public final class ClientTempestRollVisuals {
     private static final int CAMERA_DIP_TICKS = 9;
     private static int cameraDipTicks;
 
-    private ClientTempestParCoolBridge() {
+    private ClientTempestRollVisuals() {
     }
 
     public static void startRoll() {
@@ -27,23 +25,7 @@ public final class ClientTempestParCoolBridge {
             return;
         }
         cameraDipTicks = CAMERA_DIP_TICKS;
-        try {
-            Parkourability parkourability = Parkourability.get(player);
-            if (parkourability != null) {
-                float previousForward = player.input.forwardImpulse;
-                float previousLeft = player.input.leftImpulse;
-                try {
-                    player.input.forwardImpulse = 1.0F;
-                    player.input.leftImpulse = 0.0F;
-                    parkourability.get(Roll.class).startRoll(player);
-                } finally {
-                    player.input.forwardImpulse = previousForward;
-                    player.input.leftImpulse = previousLeft;
-                }
-            }
-        } catch (LinkageError | RuntimeException ignored) {
-            // ParCool is an integration dependency; if it is missing at runtime, Tempest still keeps server state valid.
-        }
+        player.setForcedPose(net.minecraft.world.entity.Pose.SWIMMING);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -76,5 +58,8 @@ public final class ClientTempestParCoolBridge {
             return;
         }
         cameraDipTicks--;
+        if (cameraDipTicks == 0 && Minecraft.getInstance().player.getForcedPose() == net.minecraft.world.entity.Pose.SWIMMING) {
+            Minecraft.getInstance().player.setForcedPose(null);
+        }
     }
 }

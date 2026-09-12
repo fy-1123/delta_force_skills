@@ -90,6 +90,10 @@ public class C2S_RaptorFalconControl {
             if (player == null) {
                 return;
             }
+            if (msg.action == RaptorFalconControlAction.SIGNAL_LOST) {
+                RaptorFalconDroneEntity.abortPlayerControl(player, msg.entityId);
+                return;
+            }
             if (msg.action == RaptorFalconControlAction.EXIT) {
                 RaptorFalconDroneEntity.stopPlayerControl(player);
                 return;

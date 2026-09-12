@@ -4,7 +4,7 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncGhrothState;
 import com.rzy.dealt_force_skills.network.S2C_TempestStartRoll;
@@ -429,11 +429,12 @@ public final class GhrothStateManager {
     }
 
     private static boolean tryConsumeTacticalStamina(ServerPlayer player) {
-        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.consumeLocalPercent(player, 5);
-        if (result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH) {
+        StaminaManager.ConsumeResult result = StaminaManager.consume(player,
+                com.rzy.dealt_force_skills.stamina.StaminaRules.GHROTH_TACTICAL_COST);
+        if (result == StaminaManager.ConsumeResult.NOT_ENOUGH) {
             return false;
         }
-        ParcoolStaminaBridge.markActiveStaminaUse(player, TACTICAL_IMMUNE_TICKS);
+
         return true;
     }
 
@@ -467,7 +468,6 @@ public final class GhrothStateManager {
             tag.remove(TACTICAL_MODE);
             return;
         }
-        boolean lunge = TACTICAL_MODE_LUNGE.equals(tag.getString(TACTICAL_MODE));
         tag.putInt(TACTICAL_BOOST_TICKS, ticks - 1);
         Vec3 current = player.getDeltaMovement();
         double scale = ticks / (double) TACTICAL_BOOST_TOTAL_TICKS;
@@ -476,10 +476,8 @@ public final class GhrothStateManager {
                 Math.max(current.y, 0.08D),
                 current.z + tag.getDouble(TACTICAL_DIR_Z) * scale
         );
-        if (lunge) {
-            player.setPose(Pose.SWIMMING);
-            player.refreshDimensions();
-        }
+        player.setPose(Pose.SWIMMING);
+        player.refreshDimensions();
         if (ticks <= 1) {
             tag.remove(TACTICAL_MODE);
         }

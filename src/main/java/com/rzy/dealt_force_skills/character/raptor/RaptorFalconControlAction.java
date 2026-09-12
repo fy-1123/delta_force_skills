@@ -5,5 +5,6 @@ public enum RaptorFalconControlAction {
     REVEAL,
     PULSE,
     SELF_DESTRUCT,
-    EXIT
+    EXIT,
+    SIGNAL_LOST
 }

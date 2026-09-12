@@ -265,6 +265,11 @@ public final class DealtForceConfig {
     }
 
     public static void populateGameplayDefaults() {
+        try {
+            Class.forName("com.rzy.dealt_force_skills.character.rover.RoverConfig");
+        } catch (ClassNotFoundException error) {
+            throw new IllegalStateException(error);
+        }
         intValue("client.fov.maximum_degrees", 120);
         GeneratedGameplayDefaults.populate();
         for (String className : GAMEPLAY_DEFAULT_CLASSES) {

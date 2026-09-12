@@ -445,6 +445,8 @@ public final class TempestStateManager {
             return;
         }
         Vec3 motion = direction.normalize().scale(ROLL_BOOST_SPEED_PER_TICK);
+        player.setPose(net.minecraft.world.entity.Pose.SWIMMING);
+        player.refreshDimensions();
         player.setDeltaMovement(motion.x, player.getDeltaMovement().y, motion.z);
         player.fallDistance = 0.0F;
         player.hurtMarked = true;

@@ -70,6 +70,10 @@ public class EternalLoveBlessingItem extends QualityTooltipItem {
         super.appendHoverText(stack, level, tooltip, flag);
         tooltip.add(Component.translatable("tooltip.dealt_force_skills.eternal_love_blessing.1")
                 .withStyle(ChatFormatting.LIGHT_PURPLE));
+        for (String control : List.of("capture", "offhand", "upgrade", "manage", "clear")) {
+            tooltip.add(Component.translatable("tooltip.dealt_force_skills.eternal_love_blessing." + control)
+                    .withStyle(ChatFormatting.GRAY));
+        }
         Map<ResourceLocation, Integer> records = records(stack);
         if (!records.isEmpty()) {
             tooltip.add(Component.translatable("tooltip.dealt_force_skills.eternal_love_blessing.records",

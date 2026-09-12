@@ -20,7 +20,7 @@ import java.lang.reflect.Modifier;
 import java.util.function.Supplier;
 
 public class NetworkHandler {
-    private static final String PROTOCOL = "68";
+    private static final String PROTOCOL = "69";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(DealtForceSkillsMod.MODID, "main"),
@@ -31,6 +31,12 @@ public class NetworkHandler {
 
     public static void onCommonSetup(FMLCommonSetupEvent e) {
         e.enqueueWork(() -> {
+            CHANNEL.messageBuilder(C2S_StaminaVault.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_StaminaVault::encode).decoder(C2S_StaminaVault::decode)
+                    .consumerMainThread(C2S_StaminaVault::handle).add();
+            CHANNEL.messageBuilder(S2C_StaminaState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_StaminaState::encode).decoder(S2C_StaminaState::decode)
+                    .consumerMainThread(S2C_StaminaState::handle).add();
             CHANNEL.messageBuilder(C2S_SelectCharacter.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_SelectCharacter::encode)
                     .decoder(C2S_SelectCharacter::decode)
@@ -896,6 +902,12 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_CommanderVehicleState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_CommanderVehicleState::encode)
                     .decoder(S2C_CommanderVehicleState::decode)
+                    .consumerMainThread(NetworkHandler::handleClientPacket).add();
+            CHANNEL.messageBuilder(C2S_RoverAction.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_RoverAction::encode).decoder(C2S_RoverAction::decode)
+                    .consumerMainThread(C2S_RoverAction::handle).add();
+            CHANNEL.messageBuilder(S2C_RoverState.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_RoverState::encode).decoder(S2C_RoverState::decode)
                     .consumerMainThread(NetworkHandler::handleClientPacket).add();
         });
     }

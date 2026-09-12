@@ -111,6 +111,8 @@ public final class HeldToolThirdPersonVisuals {
 
     private static ToolSpec currentLocalSpec(Player player, float partialTick) {
         float seconds = (player.tickCount + partialTick) / 20.0F;
+        int roverTool = com.rzy.dealt_force_skills.client.RoverClient.tool();
+        if (roverTool > 0) return stinger(roverTool == 1 ? StingerTool.SMOKE_GRENADE : StingerTool.STIM_GUN, seconds);
         ClientToolReleaseAction.Action releaseAction = activeReleaseAction();
         if (releaseAction != null) {
             return release(releaseAction, seconds);

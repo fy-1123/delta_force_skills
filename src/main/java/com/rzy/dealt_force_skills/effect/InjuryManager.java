@@ -2,7 +2,6 @@ package com.rzy.dealt_force_skills.effect;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.mixin.LivingEntityUseItemAccessor;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import com.rzy.dealt_force_skills.registry.ModGameRules;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
@@ -33,7 +32,6 @@ public final class InjuryManager {
     private static final String DATA_ROOT = "DealtForceInjuryRuntime";
     private static final String FOOD_LEVEL = "FoodLevel";
     private static final String SATURATION = "Saturation";
-    private static final String PARCOOL_STAMINA = "ParcoolStamina";
     private static final String HEAD_BLINDNESS = "HeadBlindness";
 
     private InjuryManager() {
@@ -124,7 +122,6 @@ public final class InjuryManager {
         }
         tickHeadInjury(player, suppressed);
         tickFoodRecovery(player, suppressed);
-        tickParcoolRecovery(player, suppressed);
     }
 
     public static boolean apply(ServerPlayer player, Type type) {
@@ -257,23 +254,6 @@ public final class InjuryManager {
         }
         data.putInt(FOOD_LEVEL, currentFood);
         data.putFloat(SATURATION, currentSaturation);
-    }
-
-    private static void tickParcoolRecovery(ServerPlayer player, boolean suppressed) {
-        CompoundTag data = data(player);
-        int current = ParcoolStaminaBridge.currentValue(player);
-        if (current < 0) {
-            data.remove(PARCOOL_STAMINA);
-            return;
-        }
-        if (data.contains(PARCOOL_STAMINA) && has(player, Type.CHEST_INJURY) && !suppressed) {
-            int previous = data.getInt(PARCOOL_STAMINA);
-            if (current > previous) {
-                ParcoolStaminaBridge.consumeLocal(player, Math.max(1, (int) Math.floor((current - previous) * 0.75D)));
-                current = ParcoolStaminaBridge.currentValue(player);
-            }
-        }
-        data.putInt(PARCOOL_STAMINA, Math.max(0, current));
     }
 
     private static void applyTrueDamage(ServerPlayer player, float amount) {

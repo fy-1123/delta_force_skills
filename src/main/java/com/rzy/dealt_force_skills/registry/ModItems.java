@@ -243,7 +243,7 @@ public class ModItems {
                                     new EffectConsumableItem.EffectEntry(ModEffects.ITEM_WEAKNESS, 20 * 20, 0)),
                             List.of(new EffectConsumableItem.EffectEntry(ModEffects.LAUGHING_MANIA_II, 360 * 20, 0),
                                     new EffectConsumableItem.EffectEntry(ModEffects.ITEM_WEAKNESS, 360 * 20, 0),
-                                    effect(externalEffect("parcool", "inexhaustible"), 360, 0))
+                                    effect(ModEffects.BURNING_HEART, 360, 0))
                     )));
     public static final RegistryObject<Item> DARK_ZONE_RAINBOW_INJECTION = ITEMS.register("dark_zone_rainbow_injection",
             () -> new RainbowInjectionItem(new Item.Properties().stacksTo(16), DfsItemQuality.RED,
@@ -276,7 +276,7 @@ public class ModItems {
     public static final RegistryObject<Item> LONG_GOODBYE = ITEMS.register("long_goodbye",
             () -> beverage("long_goodbye", List.of(
                     effect(ModEffects.STAMINA_BOOST, 200, 1),
-                    effect(externalEffect("parcool", "inexhaustible"), 600, 0))));
+                    effect(ModEffects.BURNING_HEART, 600, 0))));
     public static final RegistryObject<Item> MOUNTAIN_RAIN = ITEMS.register("mountain_rain",
             () -> beverage("mountain_rain", List.of(effect(ModEffects.STAMINA_BOOST, 300, 2))));
     public static final RegistryObject<Item> SKY_ISLAND = ITEMS.register("sky_island",
@@ -294,7 +294,7 @@ public class ModItems {
                             doubled(List.of(effect(ModEffects.SMALL_INTERACTION_SPEED, 300, 0), effect(ModEffects.FATIGUE_REMOVAL, 300, 0))),
                             doubled(List.of(effect(ModEffects.LARGE_RELOAD_SPEED, 300, 0), effect(ModEffects.LARGE_ITEM_USE_SPEED, 300, 0))),
                             doubled(List.of(effect(ModEffects.LARGE_FIRE_RATE, 300, 0), effect(ModEffects.LARGE_AIM_SPEED, 300, 0))),
-                            doubled(List.of(effect(ModEffects.STAMINA_BOOST, 200, 1), effect(externalEffect("parcool", "inexhaustible"), 600, 0))),
+                            doubled(List.of(effect(ModEffects.STAMINA_BOOST, 200, 1), effect(ModEffects.BURNING_HEART, 600, 0))),
                             doubled(List.of(effect(ModEffects.STAMINA_BOOST, 300, 2))),
                             doubled(List.of(effect(ModEffects.MEDIUM_RELOAD_SPEED, 300, 0), effect(ModEffects.SMALL_AIM_SPEED, 300, 0), effect(ModEffects.SMALL_ITEM_USE_SPEED, 300, 0))),
                             doubled(List.of(effect(ModEffects.CONTINUOUS_HEALING, 60, 0), effect(ModEffects.SEDATION, 180, 0))),
@@ -330,7 +330,6 @@ public class ModItems {
             () -> injection("m1_muscle_injection", DfsItemQuality.PURPLE, 3 * 20, List.of(effect(ModEffects.CARRY_BOOST, 360, 1))));
     public static final RegistryObject<Item> OE2_COMBAT_STIMULANT = ITEMS.register("oe2_combat_stimulant",
             () -> injection("oe2_combat_stimulant", 30, List.of(
-                    effect(externalEffect("parcool", "inexhaustible"), 30, 0),
                     effect(ModEffects.FATIGUE_REMOVAL, 30, 0))));
     public static final RegistryObject<Item> STAMINA_ACTIVATION_INJECTION = ITEMS.register("stamina_activation_injection",
             () -> injection("stamina_activation_injection", 3 * 20, List.of(effect(ModEffects.STAMINA_BOOST, 180, 0))));

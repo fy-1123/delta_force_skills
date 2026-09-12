@@ -11,7 +11,7 @@ import com.rzy.dealt_force_skills.character.vyron.VyronStateManager;
 import com.rzy.dealt_force_skills.client.character.ClientVyronHudState;
 import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.visual.ClientVyronToolAnimationState;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import com.rzy.dealt_force_skills.network.C2S_VyronDash;
 import com.rzy.dealt_force_skills.network.C2S_VyronToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -198,18 +198,18 @@ public final class VyronInputHandler {
     }
 
     private static boolean canDashWithStamina(Player player) {
-        int cost = ClientCommanderState.skillCost(VyronStateManager.DASH_STAMINA_PERCENT_COST);
+        double cost = VyronStateManager.DASH_STAMINA_PERCENT_COST * 0.1D * (ClientCommanderState.shouldRender() ? 0.5D : 1.0D);
         if (cost <= 0) {
             return true;
         }
         if (ClientVyronHudState.dashCooldownTicks() > 0 || ClientVyronHudState.dashTicks() > 0) {
             return false;
         }
-        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.canConsumeLocalPercent(player, cost);
-        if (result == ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
+        StaminaManager.ConsumeResult result = StaminaManager.canConsume(player, cost);
+        if (result == StaminaManager.ConsumeResult.SUCCESS) {
             return true;
         }
-        player.displayClientMessage(Component.translatable(result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH
+        player.displayClientMessage(Component.translatable(result == StaminaManager.ConsumeResult.NOT_ENOUGH
                 ? "message.dealt_force_skills.vyron.not_enough_stamina"
                 : "message.dealt_force_skills.vyron.parcool_stamina_unavailable"), true);
         return false;

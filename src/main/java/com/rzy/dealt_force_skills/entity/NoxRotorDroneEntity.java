@@ -269,7 +269,7 @@ public class NoxRotorDroneEntity extends Projectile implements ItemSupplier {
 
         AABB box = new AABB(center, center).inflate(EXPLOSION_RADIUS);
         for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
-            if (!TargetingUtil.isTargetableLiving(target)) {
+            if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)) {
                 continue;
             }
             Vec3 targetCenter = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);

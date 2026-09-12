@@ -1,6 +1,6 @@
 package com.rzy.dealt_force_skills.effect;
 
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.entity.LivingEntity;
@@ -19,7 +19,7 @@ public class StaminaCapacityEffect extends MobEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         if (!entity.level().isClientSide && entity instanceof Player player) {
-            ParcoolStaminaBridge.recoverLocalPercent(player, 5 * (amplifier + 1));
+            StaminaManager.recoverPercent(player, 5 * (amplifier + 1));
         }
     }
 }

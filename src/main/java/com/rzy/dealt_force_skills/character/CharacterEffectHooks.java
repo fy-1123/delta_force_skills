@@ -33,6 +33,7 @@ public final class CharacterEffectHooks {
     }
 
     public static void onCharacterDeselected(ServerPlayer player, CharacterDefinition character) {
+        if (ModCharacters.ROVER_ID.equals(character.id())) com.rzy.dealt_force_skills.character.rover.RoverStateManager.cleanup(player);
         if (ModCharacters.SINEVA_ID.equals(character.id())) {
             SinevaSkills.clearForPlayer(player);
             SinevaStateManager.removeTransientModifiers(player);

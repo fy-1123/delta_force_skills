@@ -67,6 +67,7 @@ public final class PlayerReviveCompatEvents {
         }
         if (event.player instanceof ServerPlayer player) {
             PlayerReviveCompat.trackNativeReviveHelpers(player);
+            PlayerReviveCompat.extendRoverBleeding(player);
         }
     }
 }

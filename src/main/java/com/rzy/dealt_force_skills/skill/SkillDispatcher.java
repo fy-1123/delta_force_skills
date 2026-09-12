@@ -85,6 +85,10 @@ public final class SkillDispatcher {
     }
 
     public static void onCharacterSelected(ServerPlayer player, CharacterDefinition character) {
+        if (ModCharacters.ROVER_ID.equals(character.id())) {
+            com.rzy.dealt_force_skills.character.rover.RoverStateManager.initialize(player);
+            com.rzy.dealt_force_skills.character.rover.RoverStateManager.sync(player);
+        }
         CharacterEffectHooks.onCharacterSelected(player, character);
         if (!ModCharacters.UNDEAD_ID.equals(character.id())) {
             UndeadStateManager.onDeselected(player);
@@ -402,7 +406,7 @@ public final class SkillDispatcher {
         return finishSkillUse(player, selected.get().id(), choice.skillSlot(), inheritedAlternate, handled);
     }
 
-    private static boolean passesInputGuards(ServerPlayer player, SkillSlot slot) {
+    public static boolean passesInputGuards(ServerPlayer player, SkillSlot slot) {
         if (player == null || player.isSpectator() || slot == null) {
             return false;
         }
@@ -410,7 +414,8 @@ public final class SkillDispatcher {
                 || RaptorFalconDroneEntity.isPlayerControlling(player)) {
             return false;
         }
-        if (player.hasEffect(ModEffects.STUN.get())
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.isDowned(player)
+                || player.hasEffect(ModEffects.STUN.get())
                 || player.hasEffect(ModEffects.WEBBED.get())
                 || player.hasEffect(ModEffects.N_TWO_FROZEN.get())
                 || player.hasEffect(ModEffects.TEMPEST_DISARMED.get())
@@ -453,6 +458,10 @@ public final class SkillDispatcher {
 
     private static boolean dispatchCharacterSkill(ServerPlayer player, CharacterDefinition character,
                                                   SkillSlot slot, boolean alternate) {
+        if (ModCharacters.ROVER_ID.equals(character.id())) {
+            return finishSkillUse(player, character.id(), slot, alternate,
+                    com.rzy.dealt_force_skills.character.rover.RoverStateManager.useSkill(player, slot, alternate));
+        }
 
         if (ModCharacters.SINEVA_ID.equals(character.id())) {
             boolean handled = SinevaSkills.useSkill(player, slot, alternate);

@@ -52,6 +52,35 @@ public final class PlayerReviveCompat {
     private static Method revivingPlayersMethod;
     private static Method timeLeftMethod;
     private static Field progressField;
+    private static final Map<UUID, Object> ROVER_EXTENDED_BLEEDING = new HashMap<>();
+
+    public static void extendRoverBleeding(ServerPlayer player) {
+        Object bleeding = bleeding(player);
+        if (bleeding == null || !isBleeding(player)) {
+            ROVER_EXTENDED_BLEEDING.remove(player.getUUID());
+            return;
+        }
+        if (ROVER_EXTENDED_BLEEDING.get(player.getUUID()) == bleeding) return;
+        boolean roverPresent = com.rzy.dealt_force_skills.character.rover.RoverStateManager.isRover(player)
+                || DealtTeamManager.onlineTeammates(player).stream()
+                .anyMatch(com.rzy.dealt_force_skills.character.rover.RoverStateManager::isRover);
+        if (!roverPresent) return;
+        try {
+            Field remaining = bleeding.getClass().getDeclaredField("timeLeft");
+            remaining.setAccessible(true);
+            int ticks = Math.max(0, remaining.getInt(bleeding));
+            long extended = ticks + Math.round(ticks * Math.max(0,
+                    com.rzy.dealt_force_skills.character.rover.RoverConfig.TEAM_DOWNED_BONUS));
+            remaining.setInt(bleeding, (int) Math.min(Integer.MAX_VALUE, extended));
+            ROVER_EXTENDED_BLEEDING.put(player.getUUID(), bleeding);
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            ROVER_EXTENDED_BLEEDING.put(player.getUUID(), bleeding);
+        }
+    }
+
+    public static void clearRoverBleeding(ServerPlayer player) {
+        ROVER_EXTENDED_BLEEDING.remove(player.getUUID());
+    }
 
     private PlayerReviveCompat() {
     }
@@ -396,12 +425,14 @@ public final class PlayerReviveCompat {
     }
 
     private static boolean isSupportRescuer(ServerPlayer helper) {
-        return StingerStateManager.isStinger(helper)
+        return com.rzy.dealt_force_skills.character.rover.RoverStateManager.isRover(helper)
+                || StingerStateManager.isStinger(helper)
                 || ToxikStateManager.isToxik(helper)
                 || VlinderStateManager.isVlinder(helper);
     }
 
     private static String rescueSource(ServerPlayer helper) {
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.isRover(helper)) return "rover";
         if (StingerStateManager.isStinger(helper)) {
             return "stinger";
         }

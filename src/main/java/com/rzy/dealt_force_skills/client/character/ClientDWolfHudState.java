@@ -2,7 +2,7 @@ package com.rzy.dealt_force_skills.client.character;
 
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfTool;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import net.minecraft.client.Minecraft;
 
 public final class ClientDWolfHudState {
@@ -93,7 +93,7 @@ public final class ClientDWolfHudState {
     }
 
     public static void restoreStaminaPercent(int percent) {
-        ParcoolStaminaBridge.recoverLocalPercent(Minecraft.getInstance().player, percent);
+        StaminaManager.recoverPercent(Minecraft.getInstance().player, percent);
     }
 
     public static boolean shouldRender() {

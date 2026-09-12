@@ -77,6 +77,15 @@ public class ModEffects {
     public static final RegistryObject<MobEffect> STUN =
             EFFECTS.register("stun", StunEffect::new);
 
+    public static final RegistryObject<MobEffect> ROVER_DOWNED = EFFECTS.register("rover_downed",
+            () -> new com.rzy.dealt_force_skills.effect.RoverEffect(net.minecraft.world.effect.MobEffectCategory.NEUTRAL, 0x718B70));
+    public static final RegistryObject<MobEffect> ROVER_PURIFIED = EFFECTS.register("rover_purified",
+            () -> new com.rzy.dealt_force_skills.effect.RoverEffect(net.minecraft.world.effect.MobEffectCategory.BENEFICIAL, 0xA6E9A2));
+    public static final RegistryObject<MobEffect> ROVER_SECOND_CHANCE = EFFECTS.register("rover_second_chance",
+            () -> new com.rzy.dealt_force_skills.effect.RoverEffect(net.minecraft.world.effect.MobEffectCategory.BENEFICIAL, 0xDAE88D));
+    public static final RegistryObject<MobEffect> ROVER_VULNERABLE = EFFECTS.register("rover_vulnerable",
+            () -> new com.rzy.dealt_force_skills.effect.RoverEffect(net.minecraft.world.effect.MobEffectCategory.HARMFUL, 0x9B796F));
+
     public static final RegistryObject<MobEffect> CHARACTER_FRAMEWORK =
             EFFECTS.register("character_framework", CharacterFrameworkEffect::new);
 
@@ -150,6 +159,8 @@ public class ModEffects {
             EFFECTS.register("carry_boost", CarryBoostEffect::new);
     public static final RegistryObject<MobEffect> HEARING_AMPLIFICATION =
             EFFECTS.register("hearing_amplification", () -> new PlannedStatusEffect(MobEffectCategory.BENEFICIAL, 0x9DD7FF));
+    public static final RegistryObject<MobEffect> BURNING_HEART =
+            EFFECTS.register("burning_heart", () -> new PlannedStatusEffect(MobEffectCategory.BENEFICIAL, 0xED5438));
     public static final RegistryObject<MobEffect> STAMINA_CAPACITY =
             EFFECTS.register("stamina_capacity", StaminaCapacityEffect::new);
     public static final RegistryObject<MobEffect> FATIGUE_REMOVAL =

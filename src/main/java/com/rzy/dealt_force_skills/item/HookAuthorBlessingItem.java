@@ -273,11 +273,11 @@ public final class HookAuthorBlessingItem extends QualityTooltipItem {
         }
         CharacterSelectionManager.grantCharacterReselection(player);
         CharacterAvailability.syncToClient(player);
-        NetworkHandler.sendToPlayer(new S2C_OpenCharacterSelection(true), player);
+        NetworkHandler.sendToPlayer(new S2C_OpenCharacterSelection(true, true), player);
     }
 
     private static void refreshSkills(ServerPlayer player) {
-        ModItemEffectHelper.refreshSkillCooldowns(player);
+        ModItemEffectHelper.refreshSkillCooldowns(player, true);
         clearCooldowns(player.getPersistentData());
         SinevaStateManager.refreshBladeWireCharges(player);
         for (Item item : net.minecraftforge.registries.ForgeRegistries.ITEMS) {

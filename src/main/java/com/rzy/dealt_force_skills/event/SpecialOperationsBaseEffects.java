@@ -1,7 +1,6 @@
 package com.rzy.dealt_force_skills.event;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
 import com.rzy.dealt_force_skills.shop.SpecialOperationsBaseManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffect;
@@ -36,11 +35,8 @@ public final class SpecialOperationsBaseEffects {
     private static final UUID MOVEMENT_ID = UUID.fromString("bf07bea6-93d3-49b2-9563-2c621b6e2741");
     private static final UUID SWIM_ID = UUID.fromString("0cd21a56-ab87-4779-93db-440ade722768");
     private static final String LAST_AIR = DealtForceSkillsMod.MODID + ".base.last_air";
-    private static final String LAST_STAMINA = DealtForceSkillsMod.MODID + ".base.last_stamina";
-    private static final String STAMINA_FRACTION = DealtForceSkillsMod.MODID + ".base.stamina_fraction";
     private static final ThreadLocal<Boolean> RESCALING_EFFECT = ThreadLocal.withInitial(() -> false);
     private static final Map<UUID, Map<MobEffect, Entity>> PENDING_EFFECTS = new HashMap<>();
-    private static final Set<UUID> ACTIVE_PARCOOL_ACTIONS = new HashSet<>();
 
     private SpecialOperationsBaseEffects() {
     }
@@ -100,8 +96,8 @@ public final class SpecialOperationsBaseEffects {
             ServerPlayer serverPlayer = (ServerPlayer) player;
             tickAttributesAndAir(serverPlayer);
             applyPendingEffects(serverPlayer);
-            tickStamina(serverPlayer);
-            tickParcoolSpeed(serverPlayer);
+
+
         }
     }
 
@@ -191,45 +187,6 @@ public final class SpecialOperationsBaseEffects {
         player.getPersistentData().putInt(LAST_AIR, currentAir);
     }
 
-    private static void tickStamina(ServerPlayer player) {
-        int level = SpecialOperationsBaseManager.effectiveLevel(player,
-                SpecialOperationsBaseManager.Facility.TRAINING_CENTER);
-        int current = ParcoolStaminaBridge.currentValue(player);
-        if (current < 0) {
-            player.getPersistentData().remove(LAST_STAMINA);
-            return;
-        }
-        if (level > 0 && player.getPersistentData().contains(LAST_STAMINA)) {
-            int previous = player.getPersistentData().getInt(LAST_STAMINA);
-            if (current < previous) {
-                double refund = (previous - current) * level * 0.07D
-                        + player.getPersistentData().getDouble(STAMINA_FRACTION);
-                int whole = (int) Math.floor(refund);
-                player.getPersistentData().putDouble(STAMINA_FRACTION, refund - whole);
-                if (whole > 0) {
-                    ParcoolStaminaBridge.recoverLocal(player, whole);
-                    current = ParcoolStaminaBridge.currentValue(player);
-                }
-            }
-        }
-        player.getPersistentData().putInt(LAST_STAMINA, Math.max(0, current));
-    }
-
-    private static void tickParcoolSpeed(ServerPlayer player) {
-        int level = SpecialOperationsBaseManager.effectiveLevel(player,
-                SpecialOperationsBaseManager.Facility.DIVING_CENTER);
-        UUID playerId = player.getUUID();
-        if (level <= 0 || !ParcoolStaminaBridge.isParcoolActionActive(player)) {
-            ACTIVE_PARCOOL_ACTIONS.remove(playerId);
-            return;
-        }
-        if (ACTIVE_PARCOOL_ACTIONS.add(playerId)) {
-            Vec3 motion = player.getDeltaMovement();
-            double multiplier = 1.0D + level * 0.15D;
-            player.setDeltaMovement(motion.x * multiplier, motion.y * multiplier, motion.z * multiplier);
-        }
-    }
-
     @SubscribeEvent
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         clearPlayerRuntime(event.getEntity().getUUID());
@@ -238,13 +195,13 @@ public final class SpecialOperationsBaseEffects {
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
         PENDING_EFFECTS.clear();
-        ACTIVE_PARCOOL_ACTIONS.clear();
+
         RESCALING_EFFECT.remove();
     }
 
     private static void clearPlayerRuntime(UUID playerId) {
         PENDING_EFFECTS.remove(playerId);
-        ACTIVE_PARCOOL_ACTIONS.remove(playerId);
+
     }
 
     private static void applyModifier(AttributeInstance attribute, UUID id, String name, double amount) {

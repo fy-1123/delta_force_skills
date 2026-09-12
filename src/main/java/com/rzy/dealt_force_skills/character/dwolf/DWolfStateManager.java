@@ -42,7 +42,6 @@ public final class DWolfStateManager {
       "characters.dwolf.d_wolf_state_manager.overload_kill_heal_fraction", 0.5F
    ));
     public static volatile int SLIDE_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SLIDE_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.dwolf.d_wolf_state_manager.slide_ticks", 12));
-    public static volatile int SLIDE_STAMINA_PERCENT_COST = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SLIDE_STAMINA_PERCENT_COST", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.dwolf.d_wolf_state_manager.slide_stamina_percent_cost", 15));
     public static volatile int SLIDE_COOLDOWN_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SLIDE_COOLDOWN_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.dwolf.d_wolf_state_manager.slide_cooldown_ticks", 8));
     private static final int OVERLOAD_STEP_INTERVAL_TICKS = 4;
     private static volatile double SLIDE_SPEED = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("SLIDE_SPEED", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.doubleValue("characters.dwolf.d_wolf_state_manager.slide_speed", 0.9));
@@ -280,7 +279,7 @@ public final class DWolfStateManager {
         tag.putFloat(OVERLOAD_KILL_HEAL_REMAINING, healTotal);
         tag.putInt(OVERLOAD_KILL_HEAL_TICKS, Math.max(1, OVERLOAD_REGEN_TICKS));
         player.addEffect(new MobEffectInstance(MobEffects.SATURATION, OVERLOAD_REGEN_TICKS, com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("characters.dwolf.d_wolf_state_manager.effect.saturation.1.amplifier", 1), false, true, true));
-        NetworkHandler.sendToPlayer(new S2C_DWolfStaminaRestore(modifiedSkeleton ? 100 : 50), player);
+        com.rzy.dealt_force_skills.stamina.StaminaManager.recoverPercent(player, modifiedSkeleton ? 100 : 50);
         player.level().playSound(null, player.blockPosition(), ModSounds.D_WOLF_OVERLOAD_KILL_EXTENSION.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f);
         player.displayClientMessage(Component.translatable("message.dealt_force_skills.d_wolf.overload_extended"), true);
@@ -333,6 +332,13 @@ public final class DWolfStateManager {
             return false;
         }
 
+        if (!CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.DWOLF_EFFICIENT_STAMINA)
+                && com.rzy.dealt_force_skills.stamina.StaminaManager.consume(player,
+                com.rzy.dealt_force_skills.stamina.StaminaManager.skillCost(player, com.rzy.dealt_force_skills.stamina.StaminaRules.DWOLF_SLIDE_COST))
+                != com.rzy.dealt_force_skills.stamina.StaminaManager.ConsumeResult.SUCCESS) {
+            player.displayClientMessage(Component.translatable("message.dealt_force_skills.d_wolf.not_enough_stamina"), true);
+            return false;
+        }
         Vec3 direction = horizontal.normalize();
         tag.putInt(SLIDE_TICKS_REMAINING, SLIDE_TICKS);
         tag.putLong(SLIDE_COOLDOWN_UNTIL, SkillCooldownHelper.until(player, now, SLIDE_COOLDOWN_TICKS));
@@ -394,7 +400,7 @@ public final class DWolfStateManager {
         tag.putLong(OVERLOAD_ACTIVE_UNTIL, now + CommanderStateManager.skillDuration(player, OVERLOAD_DURATION_TICKS));
         tag.putDouble(OVERLOAD_STEP_LAST_X, player.getX());
         tag.putDouble(OVERLOAD_STEP_LAST_Z, player.getZ());
-        NetworkHandler.sendToPlayer(new S2C_DWolfStaminaRestore(50), player);
+        com.rzy.dealt_force_skills.stamina.StaminaManager.recoverPercent(player, 50);
         RangedSoundHelper.playFollowingPlayer(player, ModSounds.D_WOLF_OVERLOAD_ACTIVE.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f, 32.0D);
         player.displayClientMessage(Component.translatable("message.dealt_force_skills.d_wolf.overload_active"), true);

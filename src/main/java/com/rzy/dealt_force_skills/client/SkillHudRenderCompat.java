@@ -53,6 +53,7 @@ public final class SkillHudRenderCompat {
     }
 
     private static void renderSkillHud(RenderGuiOverlayEvent.Post event) {
+        RoverClient.hud(event);
         if (ClientCommanderState.shouldRender()) {
             CommanderHudOverlay.render(event);
         }

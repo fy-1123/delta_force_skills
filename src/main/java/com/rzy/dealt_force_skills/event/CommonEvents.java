@@ -315,6 +315,7 @@ public class CommonEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onLivingAttack(LivingAttackEvent event) {
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.executingDeath(event.getEntity())) return;
         DamageSource source = event.getSource();
         if (AsaraTrooperEntity.shouldCancelFriendlyDamage(event.getEntity(), source)) {
             event.setCanceled(true);
@@ -481,6 +482,7 @@ public class CommonEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onLivingHurt(LivingHurtEvent event) {
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.executingDeath(event.getEntity())) return;
         LivingEntity hurtEntity = event.getEntity();
         DamageSource source = event.getSource();
         if (TeamCombatRules.shouldCancelFriendlyDamage(hurtEntity, source)) {
@@ -1284,6 +1286,7 @@ public class CommonEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMobEffectApplicable(MobEffectEvent.Applicable event) {
         MobEffectInstance effect = event.getEffectInstance();
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.isProtectedEffect(effect.getEffect())) return;
         if (event.getEntity() instanceof ServerPlayer player
                 && com.rzy.dealt_force_skills.item.PortableAdsDeviceItem.isActive(player)) {
             event.setResult(Event.Result.DENY);
@@ -1341,6 +1344,7 @@ public class CommonEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMobEffectAddedTeamRules(MobEffectEvent.Added event) {
+        if (event.getEffectInstance().getEffect() == ModEffects.ROVER_DOWNED.get()) return;
         if (event.getEntity().level().isClientSide) {
             return;
         }
@@ -1375,6 +1379,7 @@ public class CommonEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onMobEffectAdded(MobEffectEvent.Added event) {
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.isProtectedEffect(event.getEffectInstance().getEffect())) return;
         if (event.getEntity() instanceof ServerPlayer player
                 && com.rzy.dealt_force_skills.item.PortableAdsDeviceItem.isActive(player)) {
             player.removeEffect(event.getEffectInstance().getEffect());
@@ -1500,6 +1505,7 @@ public class CommonEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onLivingHurtHiveSmokeFloor(LivingHurtEvent event) {
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.executingDeath(event.getEntity())) return;
         if (!(event.getEntity() instanceof ServerPlayer player)
                 || !StingerStateManager.isHiveSmokeActive(player)
                 || event.getSource().is(SkillDamageHelper.NIKAIDOU_DECAY)
@@ -1538,6 +1544,7 @@ public class CommonEvents {
     @SubscribeEvent
     public static void onLivingDeath(LivingDeathEvent event) {
         LivingEntity entity = event.getEntity();
+        if (!com.rzy.dealt_force_skills.character.rover.RoverStateManager.executingDeath(entity)) {
         if (entity instanceof ServerPlayer target
                 && CommanderSupportManager.tryPreventFatal(target, event.getSource(), Float.MAX_VALUE)) {
             event.setCanceled(true);
@@ -1601,6 +1608,7 @@ public class CommonEvents {
             recordRedOwlRevengeOnDeath(protectedPlayer, event.getSource());
         }
         // Clear control effects on death so players can click Respawn and move after respawn.
+        }
         entity.removeEffect(ModEffects.STUN.get());
         entity.removeEffect(ModEffects.WEBBED.get());
         entity.removeEffect(ModEffects.CORROSION.get());
@@ -1826,7 +1834,8 @@ public class CommonEvents {
         }
         ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
         if (id != null && DealtForceSkillsMod.MODID.equals(id.getNamespace())
-                && !(entity instanceof AcceleratedTroopsEntity)) {
+                && !(entity instanceof AcceleratedTroopsEntity)
+                && !(entity instanceof com.rzy.dealt_force_skills.entity.RoverWolfEntity)) {
             entity.discard();
         }
     }
@@ -2064,7 +2073,7 @@ public class CommonEvents {
             return;
         }
 
-        if (StingerStateManager.isDowned(player)
+        if ((com.rzy.dealt_force_skills.character.rover.RoverStateManager.isDowned(player) || StingerStateManager.isDowned(player))
                 || VlinderStateManager.isDowned(player)
                 || CatDadStateManager.isDowned(player)
                 || TempestStateManager.isActionLocked(player)) {
@@ -2112,7 +2121,7 @@ public class CommonEvents {
             return;
         }
 
-        if (StingerStateManager.isDowned(player)
+        if ((com.rzy.dealt_force_skills.character.rover.RoverStateManager.isDowned(player) || StingerStateManager.isDowned(player))
                 || VlinderStateManager.isDowned(player)
                 || CatDadStateManager.isDowned(player)
                 || TempestStateManager.isActionLocked(player)) {
@@ -2147,7 +2156,7 @@ public class CommonEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onUseItemTick(net.minecraftforge.event.entity.living.LivingEntityUseItemEvent.Tick event) {
         if (event.getEntity() instanceof Player player
-                && (StingerStateManager.isDowned(player)
+                && ((com.rzy.dealt_force_skills.character.rover.RoverStateManager.isDowned(player) || StingerStateManager.isDowned(player))
                 || VlinderStateManager.isDowned(player)
                 || CatDadStateManager.isDowned(player)
                 || NikaidouHiroStateManager.isWeaponActive(player)
@@ -2274,7 +2283,7 @@ public class CommonEvents {
         }
         accelerateTaczAdrenalineTimers(player);
         TaczSpeedMultipliers superbWarfareMultipliers = taczSpeedMultipliers(player);
-        boolean optionalGunDisabled = StingerStateManager.isDowned(player)
+        boolean optionalGunDisabled = (com.rzy.dealt_force_skills.character.rover.RoverStateManager.isDowned(player) || StingerStateManager.isDowned(player))
                 || VlinderStateManager.isDowned(player)
                 || CatDadStateManager.isDowned(player)
                 || TempestStateManager.isActionLocked(player)
@@ -2299,7 +2308,7 @@ public class CommonEvents {
                     superbWarfareMultipliers.bolt());
             SuperbWarfareCompat.setVehicleWeaponDisabled(player.getVehicle(), optionalGunDisabled);
         }
-        if (StingerStateManager.isDowned(player) || VlinderStateManager.isDowned(player) || CatDadStateManager.isDowned(player)) {
+        if ((com.rzy.dealt_force_skills.character.rover.RoverStateManager.isDowned(player) || StingerStateManager.isDowned(player)) || VlinderStateManager.isDowned(player) || CatDadStateManager.isDowned(player)) {
             player.stopUsingItem();
             player.setSprinting(false);
             if (!player.level().isClientSide && player.containerMenu != player.inventoryMenu) {
@@ -3416,7 +3425,7 @@ public class CommonEvents {
         }
         LivingEntity entity = taczEventEntity(event);
         if (entity instanceof Player player
-                && (StingerStateManager.isDowned(player)
+                && ((com.rzy.dealt_force_skills.character.rover.RoverStateManager.isDowned(player) || StingerStateManager.isDowned(player))
                 || VlinderStateManager.isDowned(player)
                 || CatDadStateManager.isDowned(player)
                 || NikaidouHiroStateManager.isWeaponActive(player)

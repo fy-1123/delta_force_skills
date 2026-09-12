@@ -1035,6 +1035,12 @@ public final class ConfigLabelHelper {
         if (lower.equals("button_scale")) {
             return "技能按钮缩放倍率";
         }
+        if (lower.equals("stamina_x_offset") || lower.equals("stamina_y_offset")) {
+            return "体力条位置偏移（通用偏移与角色偏移相加）";
+        }
+        if (lower.equals("stamina_scale")) {
+            return "体力条缩放倍率（通用倍率与角色倍率相乘）";
+        }
         return translateLeaf(leaf);
     }
 
@@ -1068,8 +1074,9 @@ public final class ConfigLabelHelper {
             return "单位: 生命值（2点=1心）";
         }
         if (lower.endsWith("_amplifier")) return "单位: 效果等级（0=I级）";
-        if (lower.equals("x_offset") || lower.equals("y_offset")) return "单位: 像素";
-        if (lower.equals("button_scale")) return "单位: 倍率（0.25~3.0）";
+        if (lower.equals("x_offset") || lower.equals("y_offset")
+                || lower.equals("stamina_x_offset") || lower.equals("stamina_y_offset")) return "单位: 像素";
+        if (lower.equals("button_scale") || lower.equals("stamina_scale")) return "单位: 倍率（0.25~3.0）";
         return "";
     }
 

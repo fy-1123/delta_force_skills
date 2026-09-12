@@ -65,6 +65,9 @@ public abstract class DfsUseItem extends QualityTooltipItem {
     public ItemStack finishUsingItem(ItemStack stack, Level level, LivingEntity entity) {
         if (!level.isClientSide && entity instanceof ServerPlayer player) {
             if (applyUseEffect(stack, level, player)) {
+                if (stack.is(com.rzy.dealt_force_skills.registry.ModItems.OE2_COMBAT_STIMULANT.get())) {
+                    com.rzy.dealt_force_skills.stamina.StaminaManager.fill(player);
+                }
                 consumeOneUse(stack, player);
                 play(level, player, finishSound);
                 message(player, finishMessageKey);

@@ -57,7 +57,8 @@ public final class RangedSoundHelper {
         long seed = level.getRandom().nextLong();
         double radiusSqr = radius * radius;
         for (ServerPlayer listener : level.players()) {
-            if (listener.distanceToSqr(position.x, position.y, position.z) > radiusSqr) {
+            double hearingMultiplier = HearingRangeHelper.multiplier(listener);
+            if (listener.distanceToSqr(position.x, position.y, position.z) > radiusSqr * hearingMultiplier * hearingMultiplier) {
                 continue;
             }
             listener.connection.send(new ClientboundSoundEntityPacket(
@@ -92,7 +93,8 @@ public final class RangedSoundHelper {
         double radiusSqr = radius * radius;
         long seed = level.getRandom().nextLong();
         for (ServerPlayer player : level.players()) {
-            if (player.distanceToSqr(position.x, position.y, position.z) > radiusSqr) {
+            double hearingMultiplier = HearingRangeHelper.multiplier(player);
+            if (player.distanceToSqr(position.x, position.y, position.z) > radiusSqr * hearingMultiplier * hearingMultiplier) {
                 continue;
             }
             player.connection.send(new ClientboundSoundPacket(
@@ -117,7 +119,8 @@ public final class RangedSoundHelper {
     public static void stop(ServerLevel level, Vec3 position, SoundEvent sound, SoundSource source, double radius) {
         double radiusSqr = radius * radius;
         for (ServerPlayer player : level.players()) {
-            if (player.distanceToSqr(position.x, position.y, position.z) <= radiusSqr) {
+            double hearingMultiplier = HearingRangeHelper.multiplier(player);
+            if (player.distanceToSqr(position.x, position.y, position.z) <= radiusSqr * hearingMultiplier * hearingMultiplier) {
                 player.connection.send(new ClientboundStopSoundPacket(sound.getLocation(), source));
             }
         }

@@ -49,6 +49,7 @@ public final class SkillRoundResetHelper {
     }
 
     public static void resetForRoundEnd(ServerPlayer player) {
+        com.rzy.dealt_force_skills.character.rover.RoverStateManager.cleanup(player);
         clearEffects(player);
         clearRuntimeControllers(player);
         clearCharacterState(player);

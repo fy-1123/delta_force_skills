@@ -109,7 +109,7 @@ public final class StingerHudOverlay {
         }
     }
 
-    private static void drawSlot(
+    static void drawSlot(
             GuiGraphics graphics,
             Font font,
             int x,

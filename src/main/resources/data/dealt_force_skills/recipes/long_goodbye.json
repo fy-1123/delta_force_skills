@@ -4,17 +4,17 @@
     {
       "type": "forge:nbt",
       "item": "minecraft:potion",
-      "nbt": "{Potion:\"parcool:energy_drink\"}"
+      "nbt": "{Potion:\"minecraft:swiftness\"}"
     },
     {
       "type": "forge:nbt",
       "item": "minecraft:potion",
-      "nbt": "{Potion:\"parcool:energy_drink\"}"
+      "nbt": "{Potion:\"minecraft:swiftness\"}"
     },
     {
       "type": "forge:nbt",
       "item": "minecraft:potion",
-      "nbt": "{Potion:\"parcool:energy_drink\"}"
+      "nbt": "{Potion:\"minecraft:swiftness\"}"
     },
     {
       "item": "minecraft:glowstone_dust"

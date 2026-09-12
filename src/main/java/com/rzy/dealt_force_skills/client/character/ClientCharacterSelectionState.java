@@ -44,6 +44,12 @@ public final class ClientCharacterSelectionState {
     private ClientCharacterSelectionState() {
     }
 
+    private static boolean freeReselection;
+
+    public static boolean hasFreeReselection() {
+        return freeReselection;
+    }
+
     public static boolean hasSelectedCharacter() {
         return selectedCharacterId != null && !selectedCharacterId.isBlank();
     }
@@ -73,6 +79,8 @@ public final class ClientCharacterSelectionState {
     }
 
     public static void resetSession() {
+        freeReselection = false;
+        com.rzy.dealt_force_skills.client.RoverClient.reset();
         selectedCharacterId = null;
         receivedServerState = false;
         promptedForCurrentWorld = false;
@@ -132,6 +140,7 @@ public final class ClientCharacterSelectionState {
     }
 
     public static void syncSelectedCharacter(String characterId, boolean normalPlayer) {
+        freeReselection = false;
         receivedServerState = true;
         selectedCharacterId = characterId == null || characterId.isBlank() ? null : characterId;
         ClientCharacterSelectionState.normalPlayer = normalPlayer && selectedCharacterId == null;
@@ -314,10 +323,16 @@ public final class ClientCharacterSelectionState {
     }
 
     public static void openSelectionScreen() {
+        freeReselection = false;
         openSelectionScreen(false);
     }
 
     public static void openReselectionScreen() {
+        openReselectionScreen(false);
+    }
+
+    public static void openReselectionScreen(boolean free) {
+        freeReselection = free;
         openSelectionScreen(true);
     }
 

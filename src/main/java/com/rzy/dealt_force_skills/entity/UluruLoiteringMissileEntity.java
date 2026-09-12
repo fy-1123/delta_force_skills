@@ -178,6 +178,12 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
         }
 
         updateMotion();
+        if (guided && level() instanceof ServerLevel level
+                && (!(getOwner() instanceof ServerPlayer owner)
+                || !com.rzy.dealt_force_skills.util.RemoteControlRange.isLoaded(level, owner, position().add(getDeltaMovement())))) {
+            discard();
+            return;
+        }
         if (level() instanceof ServerLevel serverLevel) {
             // Camera control is restricted to chunks already tracked by the normal player view.
             // Do not force-load or stream remote terrain from the missile tick.
@@ -201,12 +207,6 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
         }
 
         Vec3 next = position().add(motion);
-        if (guided && level() instanceof ServerLevel serverLevel
-                && !isWithinOwnerLoadedView(serverLevel, next)) {
-            setDeltaMovement(Vec3.ZERO);
-            streamMissileStateForOwner();
-            return;
-        }
         setPos(next.x, next.y, next.z);
         if (!level().noCollision(this, getBoundingBox().deflate(0.01D))) {
             explode(position());
@@ -269,6 +269,16 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
             finishGuidedControl(player, entityId);
         } else {
             ACTIVE_GUIDED_ANCHORS.remove(player.getUUID());
+        }
+    }
+
+    public static void abortPlayerControl(ServerPlayer player, int entityId) {
+        if (!Objects.equals(ACTIVE_GUIDED_MISSILES.get(player.getUUID()), entityId)) return;
+        if (player.level().getEntity(entityId) instanceof UluruLoiteringMissileEntity missile
+                && missile.isGuided() && missile.isOwnedBy(player)) {
+            missile.discard();
+        } else {
+            finishGuidedControl(player, entityId);
         }
     }
 
@@ -427,6 +437,7 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
             boolean damagedTarget = false;
             AABB box = new AABB(center, center).inflate(EXPLOSION_RADIUS);
             for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
+                if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)) continue;
                 double distance = target.position().add(0, target.getBbHeight() * 0.5, 0).distanceTo(center);
                 if (distance > EXPLOSION_RADIUS) continue;
                 if (!UluruExplosionHelper.hasExplosionLineOfSight(serverLevel, center, target)) continue;
@@ -457,19 +468,6 @@ public class UluruLoiteringMissileEntity extends Projectile implements ItemSuppl
 
     private void updateForcedChunks(ServerLevel level) {
         releaseForcedChunks();
-    }
-
-    private boolean isWithinOwnerLoadedView(ServerLevel level, Vec3 next) {
-        if (!(getOwner() instanceof ServerPlayer player)) {
-            return false;
-        }
-        int nextChunkX = Mth.floor(next.x) >> 4;
-        int nextChunkZ = Mth.floor(next.z) >> 4;
-        int radius = Math.max(2, player.server.getPlayerList().getViewDistance() - 1);
-        ChunkPos ownerChunk = player.chunkPosition();
-        return Math.abs(nextChunkX - ownerChunk.x) <= radius
-                && Math.abs(nextChunkZ - ownerChunk.z) <= radius
-                && level.getChunkSource().hasChunk(nextChunkX, nextChunkZ);
     }
 
     private void ensureChunkLoaded(ServerLevel level, int centerX, int centerZ) {

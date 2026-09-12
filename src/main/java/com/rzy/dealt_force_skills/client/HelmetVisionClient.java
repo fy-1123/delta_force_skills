@@ -168,7 +168,7 @@ public final class HelmetVisionClient {
         boolean thermal = DfsEquipmentItem.activeVisionMode(player) == DfsEquipmentItem.VISION_THERMAL;
         ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
         DfsEquipmentItem.Profile profile = DfsEquipmentItem.profile(head);
-        double hearingRange = hearingRevealRange(head, profile);
+        double hearingRange = hearingRevealRange(player, profile);
         boolean hearing = hearingRange > 0.0D && !HEARING_REVEALS.isEmpty();
         if (!thermal && !hearing) {
             return;
@@ -274,7 +274,7 @@ public final class HelmetVisionClient {
                 continue;
             }
             double distance = labelPos.distanceTo(player.getEyePosition());
-            if (!isFinite(distance) || distance > MAX_HEARING_REVEAL_RANGE + MAX_HEARING_BOX_EDGE) {
+            if (!isFinite(distance)) {
                 continue;
             }
             String text = labelPrefix + " " + Math.round(distance) + "m";
@@ -301,11 +301,13 @@ public final class HelmetVisionClient {
         return player.isAlliedTo(other) || other.isAlliedTo(player);
     }
 
-    private static double hearingRevealRange(ItemStack head, DfsEquipmentItem.Profile profile) {
-        if (profile == null || profile.hearingBoost() <= 0.0D) {
-            return 0.0D;
-        }
-        return Math.min(MAX_HEARING_REVEAL_RANGE, Math.max(0.0D, profile.hearingBoost() * HEARING_REVEAL_RANGE_PER_BOOST));
+    private static double hearingRevealRange(LocalPlayer player, DfsEquipmentItem.Profile profile) {
+        var amplification = player.getEffect(ModEffects.HEARING_AMPLIFICATION.get());
+        int level = amplification == null ? 0 : amplification.getAmplifier() + 1;
+        double baseRange = profile == null || profile.hearingBoost() <= 0.0D ? 0.0D
+                : Math.min(MAX_HEARING_REVEAL_RANGE, profile.hearingBoost() * HEARING_REVEAL_RANGE_PER_BOOST);
+        // The effect grants its own reveal radius, including without a hearing helmet.
+        return baseRange * (1.0D + 0.1D * level) + 10.0D * level;
     }
 
     private static void tickHearingReveals(Minecraft minecraft) {
@@ -316,7 +318,7 @@ public final class HelmetVisionClient {
         }
         ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
         DfsEquipmentItem.Profile profile = DfsEquipmentItem.profile(head);
-        double hearingRange = hearingRevealRange(head, profile);
+        double hearingRange = hearingRevealRange(player, profile);
         if (hearingRange <= 0.0D) {
             clearHearingRevealCache();
             return;
@@ -370,7 +372,8 @@ public final class HelmetVisionClient {
         if (!(entity instanceof LivingEntity living)) {
             return null;
         }
-        double rangeSqr = MAX_HEARING_REVEAL_RANGE * MAX_HEARING_REVEAL_RANGE;
+        double range = hearingRevealRange(player, DfsEquipmentItem.profile(player.getItemBySlot(EquipmentSlot.HEAD)));
+        double rangeSqr = range * range;
         return isHearingRevealCandidate(player, living, rangeSqr) ? living : null;
     }
 
@@ -387,7 +390,7 @@ public final class HelmetVisionClient {
         double distanceSqr = entity.distanceToSqr(player);
         return isFinite(distanceSqr)
                 && distanceSqr <= rangeSqr
-                && distanceSqr <= MAX_HEARING_REVEAL_RANGE * MAX_HEARING_REVEAL_RANGE;
+                && rangeSqr > 0.0D;
     }
 
     private static AABB safeHearingRenderBox(AABB box, Vec3 cameraPos, double inflate) {

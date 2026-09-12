@@ -56,6 +56,14 @@ public final class HeldToolVisualSync {
     }
 
     private static HeldToolVisual current(ServerPlayer player) {
+        if (com.rzy.dealt_force_skills.character.rover.RoverStateManager.isRover(player)
+                && com.rzy.dealt_force_skills.character.rover.RoverStateManager.data(player).getInt("Tool") > 0) {
+            return switch (com.rzy.dealt_force_skills.character.rover.RoverStateManager.data(player).getInt("Tool")) {
+                case 1 -> HeldToolVisual.STINGER_SMOKE_GRENADE;
+                case 2 -> HeldToolVisual.STINGER_STIM_GUN;
+                default -> HeldToolVisual.NONE;
+            };
+        }
         if (ManbaStateManager.isManba(player) && ManbaStateManager.isFlashlightActive(player)) {
             return HeldToolVisual.MANBA_FLASHLIGHT;
         }

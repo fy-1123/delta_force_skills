@@ -298,7 +298,9 @@ public final class SpecialOperationsBaseScreen extends Screen {
                         missingConditions ? 0xFFFF6B6B : 0xFF7FC9A4);
             }
             if (!compactLayout() || maxed) {
-                graphics.drawString(font, facilityEffect(facility.id(), maxed ? facility.level() : facility.nextLevel()),
+                String effect = facilityEffect(facility.id(), maxed ? facility.level() : facility.nextLevel()).getString();
+                graphics.drawString(font, "training_center".equals(facility.id())
+                                ? fit(effect, Math.max(1, panelWidth() - 28)) : effect,
                         x, y + 26, 0xFF7FC9A4);
             }
             y += 50;
@@ -453,6 +455,19 @@ public final class SpecialOperationsBaseScreen extends Screen {
             S2C_SpecialOperationsBaseSnapshot.FacilityView facility = facilityConditionAt(mouseX, mouseY);
             if (facility != null && hasMissingConditions(facility)) {
                 graphics.renderComponentTooltip(font, facilityConditionTooltip(facility), mouseX, mouseY);
+                return;
+            }
+            int y = panelTop() + 64;
+            int end = Math.min(snapshot.facilities().size(), scrollRow + visibleFacilityRows());
+            for (int index = scrollRow; index < end; index++, y += 50) {
+                var hovered = snapshot.facilities().get(index);
+                if ("training_center".equals(hovered.id())
+                        && inside(mouseX, mouseY, panelLeft() + 14, y, Math.max(1, panelWidth() - 112), 38)) {
+                    int level = hovered.level() >= hovered.maxLevel() ? hovered.level() : hovered.nextLevel();
+                    graphics.renderTooltip(font, font.split(facilityEffect(hovered.id(), level),
+                            Math.max(1, Math.min(300, width - 24))), mouseX, mouseY);
+                    return;
+                }
             }
         } else if (tab == Tab.SELL) {
             List<ItemStack> stacks = sellStacks();
@@ -625,7 +640,7 @@ public final class SpecialOperationsBaseScreen extends Screen {
             case "shooting_range" -> Component.translatable("screen.dealt_force_skills.base.effect.shooting_range",
                     level * 3, level * 5);
             case "training_center" -> Component.translatable("screen.dealt_force_skills.base.effect.training_center",
-                    level * 7, level * 3);
+                    level * 7, level * 3, level * 5);
             case "diving_center" -> Component.translatable("screen.dealt_force_skills.base.effect.diving_center",
                     level * 30, level * 25, level * 15);
             case "decontamination_room" -> Component.translatable("screen.dealt_force_skills.base.effect.decontamination_room",

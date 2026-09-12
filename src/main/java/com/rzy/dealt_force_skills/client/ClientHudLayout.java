@@ -166,6 +166,24 @@ public final class ClientHudLayout {
         return new ButtonScale(graphics);
     }
 
+    public static int staminaXOffset() {
+        return offset("stamina_x_offset", 0);
+    }
+
+    public static int staminaYOffset() {
+        return offset("stamina_y_offset", 0);
+    }
+
+    public static synchronized float staminaScale() {
+        ensureFresh();
+        float global = floatValue("global.stamina_scale", 1.0F);
+        String characterId = sanitizedCharacterId();
+        float character = characterId.isEmpty()
+                ? 1.0F : floatValue("hud." + characterId + ".stamina_scale", 1.0F);
+        float effective = global * character;
+        return Float.isFinite(effective) ? Math.max(0.25F, Math.min(3.0F, effective)) : 1.0F;
+    }
+
     private static synchronized int offset(String axis, int fallback) {
         ensureFresh();
         int global = intValue("global." + axis, fallback);
@@ -185,7 +203,9 @@ public final class ClientHudLayout {
             changed = true;
         }
         if (COMMENTED_PATHS.add(path)) {
-            config.setComment(path, "Pixel offset added to the standard skill HUD. Default: " + defaultValue
+            config.setComment(path, (path.contains(".stamina_")
+                    ? "Stamina bar pixel offset; global and character offsets add. Default: "
+                    : "Pixel offset added to the standard skill HUD. Default: ") + defaultValue
                     + ". The file is checked for changes once per second.");
             changed = true;
         }
@@ -208,7 +228,9 @@ public final class ClientHudLayout {
             changed = true;
         }
         if (COMMENTED_PATHS.add(path)) {
-            config.setComment(path, "Skill button scale multiplier. Default: " + defaultValue
+            config.setComment(path, (path.endsWith(".stamina_scale")
+                    ? "Stamina bar scale; global and character multipliers multiply. Default: "
+                    : "Skill button scale multiplier. Default: ") + defaultValue
                     + ". Effective scale is clamped to 0.25-3.0 and the file is checked once per second.");
             changed = true;
         }
@@ -324,12 +346,28 @@ public final class ClientHudLayout {
         intValue("global.x_offset", 208);
         intValue("global.y_offset", 0);
         floatValue("global.button_scale", 0.8F);
+        ensureStaminaDefaults("global");
         String characterId = sanitizedCharacterId();
         if (!characterId.isEmpty()) {
             intValue("hud." + characterId + ".x_offset", 0);
             intValue("hud." + characterId + ".y_offset", 0);
             floatValue("hud." + characterId + ".button_scale", 1.0F);
+            ensureStaminaDefaults("hud." + characterId);
         }
+        Object profiles = config.get("hud");
+        if (profiles instanceof UnmodifiableConfig hud) {
+            for (String id : new ArrayList<>(hud.valueMap().keySet())) {
+                if (hud.get(id) instanceof UnmodifiableConfig) {
+                    ensureStaminaDefaults("hud." + id);
+                }
+            }
+        }
+    }
+
+    private static void ensureStaminaDefaults(String prefix) {
+        intValue(prefix + ".stamina_x_offset", 0);
+        intValue(prefix + ".stamina_y_offset", 0);
+        floatValue(prefix + ".stamina_scale", 1.0F);
     }
 
     private static void flattenHud(UnmodifiableConfig source, String prefix, List<ConfigEntryData> out) {

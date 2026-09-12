@@ -4,7 +4,8 @@ import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.character.SkillSlot;
 import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
+import com.rzy.dealt_force_skills.stamina.StaminaRules;
 import com.rzy.dealt_force_skills.effect.InjuryManager;
 import com.rzy.dealt_force_skills.entity.BladeWireProjectileEntity;
 import com.rzy.dealt_force_skills.entity.GrappleHookEntity;
@@ -110,8 +111,11 @@ public final class SinevaSkills {
             return false;
         }
 
+        if (StaminaManager.consume(player, StaminaManager.skillCost(player,
+                StaminaRules.SINEVA_BASH_COST))
+                != StaminaManager.ConsumeResult.SUCCESS) return false;
         SinevaStateManager.setBashCooldown(player, BASH_COOLDOWN_TICKS);
-        ParcoolStaminaBridge.markActiveStaminaUse(player, BASH_ACTIVE_STAMINA_TICKS);
+
         RangedSoundHelper.playFollowingPlayer(player, ModSounds.SINEVA_SHIELD_BASH.get(),
                 SoundSource.PLAYERS, 1.0f, 1.0f, 32.0D);
 
@@ -155,6 +159,9 @@ public final class SinevaSkills {
             return true;
         }
 
+        if (StaminaManager.consume(player, StaminaManager.skillCost(player,
+                StaminaRules.SINEVA_CHARGE_COST))
+                != StaminaManager.ConsumeResult.SUCCESS) return false;
         SinevaStateManager.setChargeCooldown(player, CHARGE_COOLDOWN_TICKS);
         CHARGING_PLAYERS.put(player.getUUID(), new ChargeData(horizontal.normalize(), 14));
         RangedSoundHelper.playFollowingPlayer(player, ModSounds.SINEVA_SHIELD_BASH_CHARGE.get(),

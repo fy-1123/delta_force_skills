@@ -6,7 +6,8 @@ import com.rzy.dealt_force_skills.client.character.ClientSinevaHudState;
 import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.client.visual.ClientSinevaVisualState;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
+import com.rzy.dealt_force_skills.stamina.StaminaRules;
 import com.rzy.dealt_force_skills.network.C2S_SinevaShieldBash;
 import com.rzy.dealt_force_skills.network.C2S_SinevaShieldCharge;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -27,9 +28,6 @@ import org.lwjgl.glfw.GLFW;
 
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID, value = Dist.CLIENT)
 public final class SinevaShieldInputHandler {
-    private static volatile int BASH_STAMINA_PERCENT_COST = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BASH_STAMINA_PERCENT_COST", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("client.sineva_shield_input_handler.bash_stamina_percent_cost", 20));
-    private static volatile int CHARGE_STAMINA_PERCENT_COST = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("CHARGE_STAMINA_PERCENT_COST", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("client.sineva_shield_input_handler.charge_stamina_percent_cost", 30));
-    private static volatile int BASH_ACTIVE_STAMINA_TICKS = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BASH_ACTIVE_STAMINA_TICKS", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.intValue("client.sineva_shield_input_handler.bash_active_stamina_ticks", 20));
     private static int lockedHotbarSlot = -1;
 
     private SinevaShieldInputHandler() {
@@ -136,7 +134,7 @@ public final class SinevaShieldInputHandler {
             return;
         }
         Player player = Minecraft.getInstance().player;
-        if (!consumeStamina(player, BASH_STAMINA_PERCENT_COST, BASH_ACTIVE_STAMINA_TICKS)) {
+        if (!consumeStamina(player, StaminaRules.SINEVA_BASH_COST)) {
             return;
         }
 
@@ -153,7 +151,7 @@ public final class SinevaShieldInputHandler {
         if (player == null || !hasHorizontalLook(player)) {
             return;
         }
-        if (!consumeStamina(player, CHARGE_STAMINA_PERCENT_COST, 0)) {
+        if (!consumeStamina(player, StaminaRules.SINEVA_CHARGE_COST)) {
             return;
         }
 
@@ -167,15 +165,16 @@ public final class SinevaShieldInputHandler {
         return look.x * look.x + look.z * look.z >= 0.001;
     }
 
-    private static boolean consumeStamina(Player player, int percent, int activeTicks) {
-        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.consumeLocalPercent(player, percent);
-        if (result == ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
-            ParcoolStaminaBridge.markActiveStaminaUse(player, activeTicks);
+    private static boolean consumeStamina(Player player, double cost) {
+        StaminaManager.ConsumeResult result = StaminaManager.canConsume(player, StaminaRules.skillCost(cost,
+                com.rzy.dealt_force_skills.client.character.ClientCommanderState.shouldRender()));
+        if (result == StaminaManager.ConsumeResult.SUCCESS) {
+
             return true;
         }
 
         if (player != null) {
-            player.displayClientMessage(Component.translatable(result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH
+            player.displayClientMessage(Component.translatable(result == StaminaManager.ConsumeResult.NOT_ENOUGH
                     ? "message.dealt_force_skills.sineva.not_enough_stamina"
                     : "message.dealt_force_skills.sineva.parcool_stamina_unavailable"), true);
         }

@@ -180,9 +180,9 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
         }
         setDeltaMovement(motion);
         releaseForcedChunks();
-        if (controlled && !isWithinOwnerLoadedView(level, owner, position().add(motion))) {
-            motion = Vec3.ZERO;
-            setDeltaMovement(Vec3.ZERO);
+        if (controlled && !com.rzy.dealt_force_skills.util.RemoteControlRange.isLoaded(level, owner, position().add(motion))) {
+            discard();
+            return;
         }
         move(MoverType.SELF, motion);
         if (selfDestructing && shouldSelfDestructExplode(level, owner)) {
@@ -342,6 +342,15 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
             finishControlledCamera(player, entityId);
         } else {
             ACTIVE_CONTROL_ANCHORS.remove(player.getUUID());
+        }
+    }
+
+    public static void abortPlayerControl(ServerPlayer player, int entityId) {
+        if (!java.util.Objects.equals(ACTIVE_CONTROLLED_FALCONS.get(player.getUUID()), entityId)) return;
+        if (player.level().getEntity(entityId) instanceof RaptorFalconDroneEntity drone && drone.isOwnedBy(player)) {
+            drone.discard();
+        } else {
+            finishControlledCamera(player, entityId);
         }
     }
 
@@ -693,16 +702,6 @@ public class RaptorFalconDroneEntity extends Entity implements ItemSupplier, Blo
 
     private void updateControlledChunks(ServerLevel level, ServerPlayer player, Vec3 motion) {
         releaseForcedChunks();
-    }
-
-    private static boolean isWithinOwnerLoadedView(ServerLevel level, ServerPlayer player, Vec3 next) {
-        int nextChunkX = Mth.floor(next.x) >> 4;
-        int nextChunkZ = Mth.floor(next.z) >> 4;
-        int radius = Math.max(2, player.server.getPlayerList().getViewDistance() - 1);
-        ChunkPos ownerChunk = player.chunkPosition();
-        return Math.abs(nextChunkX - ownerChunk.x) <= radius
-                && Math.abs(nextChunkZ - ownerChunk.z) <= radius
-                && level.getChunkSource().hasChunk(nextChunkX, nextChunkZ);
     }
 
     private static void addChunkArea(Set<Long> chunks, int centerX, int centerZ, int radius) {

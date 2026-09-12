@@ -119,6 +119,7 @@ public final class GenericSkillHudOverlay {
                 || ModCharacters.VYRON_ID.equals(selectedId)
                 || ModCharacters.NOX_ID.equals(selectedId)
                 || ModCharacters.STINGER_ID.equals(selectedId)
+                || ModCharacters.ROVER_ID.equals(selectedId)
                 || ModCharacters.MANBA_ID.equals(selectedId)
                 || ModCharacters.NIKAIDOU_HIRO_ID.equals(selectedId)
                 || ModCharacters.NIKAIDOU_HIRO_WITCHIFICATION_ID.equals(selectedId)

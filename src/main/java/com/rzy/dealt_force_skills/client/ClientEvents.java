@@ -557,6 +557,7 @@ public class ClientEvents {
         HackclawInputHandler.tick(mc);
         VyronInputHandler.tick(mc);
         StingerInputHandler.tick(mc);
+        RoverClient.tick(mc);
         NoxInputHandler.tick(mc);
         ManbaInputHandler.tick(mc);
         NikaidouHiroInputHandler.tick(mc);
@@ -578,7 +579,7 @@ public class ClientEvents {
         RaptorFalconController.tick(mc);
         UluruGhostEntityManager.tick(mc);
         DWolfSlideVisuals.tick();
-        if (mc.player.hasEffect(ModEffects.STINGER_DOWNED.get())
+        if (mc.player.hasEffect(ModEffects.ROVER_DOWNED.get()) || mc.player.hasEffect(ModEffects.STINGER_DOWNED.get())
                 || mc.player.hasEffect(ModEffects.VLINDER_VITAL_DOWNED.get())
                 || mc.player.hasEffect(ModEffects.TEMPEST_EMERGENCY_DOWNED.get())
                 || mc.player.hasEffect(ModEffects.TEMPEST_DISARMED.get())
@@ -647,7 +648,7 @@ public class ClientEvents {
         }
 
         if (UndeadInputHandler.ownsSkillKeys() || LexNinjiaInputHandler.ownsSkillKeys()
-                || DWolfInputHandler.ownsCoreSkill() || StingerInputHandler.ownsCoreSkill()
+                || RoverClient.ownsCoreSkill() || DWolfInputHandler.ownsCoreSkill() || StingerInputHandler.ownsCoreSkill()
                 || NoxInputHandler.ownsCoreSkill() || ManbaInputHandler.ownsCoreSkill()
                 || CorpsInputHandler.ownsCoreSkill()
                 || MorseInputHandler.ownsCoreSkill()
@@ -969,6 +970,7 @@ public class ClientEvents {
     }
 
     private static boolean isAnyClientToolActive() {
+        if (RoverClient.tool() > 0) return true;
         // Sineva: shield deployed or blade wire held
         if ((ClientSinevaHudState.shouldRender() || ClientCommanderState.inherits(ModCharacters.SINEVA_ID))
                 && ClientSinevaHudState.shieldDeployed()) {
@@ -1197,6 +1199,9 @@ public class ClientEvents {
                     BlockbenchProjectileRenderer.Alignment.MOTION_Z));
             e.registerEntityRenderer(ModEntities.VYRON_MAGNETIC_BOMB.get(), VyronMagneticBombRenderer::new);
             e.registerEntityRenderer(ModEntities.VYRON_TIGER_CANNON.get(), VyronTigerCannonProjectileRenderer::new);
+            e.registerEntityRenderer(ModEntities.ROVER_PROJECTILE.get(), ctx -> new ThrownItemRenderer<>(ctx));
+            e.registerEntityRenderer(ModEntities.ROVER_FIELD.get(), com.rzy.dealt_force_skills.client.renderer.RoverFieldRenderer::new);
+            e.registerEntityRenderer(ModEntities.ROVER_WOLF.get(), net.minecraft.client.renderer.entity.WolfRenderer::new);
             e.registerEntityRenderer(ModEntities.STINGER_SMOKE_GRENADE.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("stinger_smoke_grenade"), "prime", "idle", 0.85F,
                     BlockbenchProjectileRenderer.Alignment.NONE));

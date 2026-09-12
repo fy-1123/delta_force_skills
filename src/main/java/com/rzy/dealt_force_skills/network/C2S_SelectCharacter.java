@@ -68,9 +68,11 @@ public class C2S_SelectCharacter {
                     NetworkHandler.sendToPlayer(new S2C_SyncSelectedCharacter(currentCharacterId.get()), player);
                     return;
                 }
-                ItemStack driftwood = player.getAbilities().instabuild
+                boolean freeReselection = player.getAbilities().instabuild
+                        || CharacterSelectionManager.hasCharacterReselection(player);
+                ItemStack driftwood = freeReselection
                         ? ItemStack.EMPTY : findDriftwood(player);
-                if (!player.getAbilities().instabuild && driftwood.isEmpty()) {
+                if (!freeReselection && driftwood.isEmpty()) {
                     NetworkHandler.sendToPlayer(new S2C_SyncSelectedCharacter(currentCharacterId.get()), player);
                     player.displayClientMessage(Component.translatable(
                             "message.dealt_force_skills.driftwood_missing"), false);

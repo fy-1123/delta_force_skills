@@ -6,7 +6,7 @@ import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.ModCharacters;
 import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_SyncVyronState;
 import com.rzy.dealt_force_skills.registry.ModEffects;
@@ -175,15 +175,15 @@ public final class VyronStateManager {
     }
 
     private static boolean consumeDashStamina(ServerPlayer player) {
-        int cost = CommanderStateManager.skillCost(player, DASH_STAMINA_PERCENT_COST);
+        double cost = StaminaManager.skillCost(player, DASH_STAMINA_PERCENT_COST * 0.1D);
         if (cost <= 0) {
             return true;
         }
-        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.consumeLocalPercent(player, cost);
-        if (result == ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
+        StaminaManager.ConsumeResult result = StaminaManager.consume(player, cost);
+        if (result == StaminaManager.ConsumeResult.SUCCESS) {
             return true;
         }
-        player.displayClientMessage(Component.translatable(result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH
+        player.displayClientMessage(Component.translatable(result == StaminaManager.ConsumeResult.NOT_ENOUGH
                 ? "message.dealt_force_skills.vyron.not_enough_stamina"
                 : "message.dealt_force_skills.vyron.parcool_stamina_unavailable"), true);
         return false;

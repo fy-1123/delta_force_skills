@@ -11,7 +11,7 @@ import com.rzy.dealt_force_skills.client.character.ClientCharacterSelectionState
 import com.rzy.dealt_force_skills.client.character.ClientCommanderState;
 import com.rzy.dealt_force_skills.client.character.ClientDWolfHudState;
 import com.rzy.dealt_force_skills.client.visual.DWolfPlaceholderVisuals;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import com.rzy.dealt_force_skills.network.C2S_DWolfSlide;
 import com.rzy.dealt_force_skills.network.C2S_DWolfToolAction;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
@@ -100,25 +100,11 @@ public final class DWolfInputHandler {
 
     public static void acceptSlide() {
         Player player = Minecraft.getInstance().player;
-        boolean commanderSlide = player != null
-                && ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID)
-                && ClientCommanderState.ownsBranchUpgrade(CommanderBranchUpgrade.DWOLF_EFFICIENT_STAMINA);
         if (player == null || (!ClientDWolfHudState.shouldRender()
                 && !ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID))) {
             return;
         }
 
-        if (!commanderSlide) {
-            ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.consumeLocalPercent(
-                    player,
-                    ClientCommanderState.skillCost(DWolfStateManager.SLIDE_STAMINA_PERCENT_COST)
-            );
-            if (result != ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
-                player.displayClientMessage(Component.translatable(result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH
-                        ? "message.dealt_force_skills.d_wolf.not_enough_stamina"
-                        : "message.dealt_force_skills.d_wolf.parcool_stamina_unavailable"), true);
-            }
-        }
         localSlideTicks = DWolfStateManager.SLIDE_TICKS;
         localSlideCooldownTicks = SLIDE_LOCAL_COOLDOWN_TICKS;
         pendingSlideRequestTicks = 0;
@@ -347,16 +333,13 @@ public final class DWolfInputHandler {
 
     private static boolean hasSlideStamina(Player player) {
         if (ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID)
-                && ClientCommanderState.ownsBranchUpgrade(CommanderBranchUpgrade.DWOLF_EFFICIENT_STAMINA)) {
-            return true;
-        }
-        ParcoolStaminaBridge.ConsumeResult result = ParcoolStaminaBridge.canConsumeLocalPercent(
-                player, ClientCommanderState.skillCost(DWolfStateManager.SLIDE_STAMINA_PERCENT_COST));
-        if (result == ParcoolStaminaBridge.ConsumeResult.SUCCESS) {
+                && ClientCommanderState.ownsBranchUpgrade(CommanderBranchUpgrade.DWOLF_EFFICIENT_STAMINA)) return true;
+        StaminaManager.ConsumeResult result = StaminaManager.canConsume(player, com.rzy.dealt_force_skills.stamina.StaminaRules.DWOLF_SLIDE_COST * (ClientCommanderState.shouldRender() ? 0.5D : 1.0D));
+        if (result == StaminaManager.ConsumeResult.SUCCESS) {
             return true;
         }
 
-        player.displayClientMessage(Component.translatable(result == ParcoolStaminaBridge.ConsumeResult.NOT_ENOUGH
+        player.displayClientMessage(Component.translatable(result == StaminaManager.ConsumeResult.NOT_ENOUGH
                 ? "message.dealt_force_skills.d_wolf.not_enough_stamina"
                 : "message.dealt_force_skills.d_wolf.parcool_stamina_unavailable"), true);
         return false;

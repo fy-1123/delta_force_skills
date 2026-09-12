@@ -226,7 +226,7 @@ public class DepartmentExplosiveTrapEntity extends Entity implements ItemSupplie
                     || TargetingUtil.isPlayerOwnedSummonOf(ownerLiving, target)) {
                 continue;
             }
-            if (!TargetingUtil.isTargetableLiving(target)) {
+            if (!TargetingUtil.isSelfOrHostileLivingFor(ownerLiving, target)) {
                 continue;
             }
             double distance = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D).distanceTo(position());

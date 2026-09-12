@@ -32,6 +32,7 @@ public final class ModCharacters {
     public static final String COMMANDER_ID = DealtForceSkillsMod.MODID + ":boss/commander";
     public static final String LEGACY_COMMANDER_ID = DealtForceSkillsMod.MODID + ":special/commander";
     public static final String STINGER_ID = DealtForceSkillsMod.MODID + ":support/stinger";
+    public static final String ROVER_ID = DealtForceSkillsMod.MODID + ":support/rover";
     public static final String TOXIK_ID = DealtForceSkillsMod.MODID + ":support/toxik";
     public static final String VLINDER_ID = DealtForceSkillsMod.MODID + ":support/vlinder";
     public static final String MANBA_ID = DealtForceSkillsMod.MODID + ":special/manba";
@@ -67,6 +68,8 @@ public final class ModCharacters {
             Map.entry(normalizeCommandName("指挥官"), COMMANDER_ID),
             Map.entry(normalizeCommandName("Commander"), COMMANDER_ID),
             Map.entry(normalizeCommandName("毒刺"), STINGER_ID),
+            Map.entry(normalizeCommandName("旅人"), ROVER_ID),
+            Map.entry(normalizeCommandName("Rover"), ROVER_ID),
             Map.entry(normalizeCommandName("毒克"), TOXIK_ID),
             Map.entry(normalizeCommandName("蝶"), VLINDER_ID),
             Map.entry(normalizeCommandName("曼巴"), MANBA_ID),
@@ -94,6 +97,18 @@ public final class ModCharacters {
             "尚博勒", "Chamber"
     );
     private static final Map<String, CharacterDefinition> CHARACTERS = new LinkedHashMap<>();
+
+    public static final CharacterDefinition ROVER = register(new CharacterDefinition(
+            ROVER_ID, "character.dealt_force_skills.rover.name", CharacterRole.SUPPORT,
+            "characters_records/Support/Rover.txt", List.of(
+                    new SkillDefinition(SkillSlot.PASSIVE, "character.dealt_force_skills.rover.skill.survivor",
+                            "character.dealt_force_skills.rover.skill.survivor.desc", 0, true),
+                    new SkillDefinition(SkillSlot.ACTIVE_1, "character.dealt_force_skills.rover.skill.smoke",
+                            "character.dealt_force_skills.rover.skill.smoke.desc", 600, true),
+                    new SkillDefinition(SkillSlot.ACTIVE_2, "character.dealt_force_skills.rover.skill.injector",
+                            "character.dealt_force_skills.rover.skill.injector.desc", 700, true),
+                    new SkillDefinition(SkillSlot.CORE, "character.dealt_force_skills.rover.skill.dog",
+                            "character.dealt_force_skills.rover.skill.dog.desc", 1500, true))));
 
     public static final CharacterDefinition SINEVA = register(new CharacterDefinition(
             SINEVA_ID,

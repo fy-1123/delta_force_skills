@@ -95,6 +95,7 @@ public class Operator {
             Map.entry("dealt_force_skills:special/nikaidou_hiro_witchification", new PreviewAsset(521, 288)),
             Map.entry("dealt_force_skills:special/undead", new PreviewAsset(567, 288)),
             Map.entry("dealt_force_skills:support/stinger", new PreviewAsset(223, 288)),
+            Map.entry("dealt_force_skills:support/rover", new PreviewAsset(226, 228)),
             Map.entry("dealt_force_skills:support/toxik", new PreviewAsset(284, 288)),
             Map.entry("dealt_force_skills:support/vlinder", new PreviewAsset(236, 288)),
             Map.entry("dealt_force_skills:valorant/chamber", new PreviewAsset(580, 288))
@@ -473,6 +474,7 @@ public class Operator {
     private static void confirmSelection(String characterId) {
         var player = Minecraft.getInstance().player;
         if (player != null && !player.getAbilities().instabuild
+                && !ClientCharacterSelectionState.hasFreeReselection()
                 && ClientCharacterSelectionState.hasSelectedCharacter()) {
             // 生存模式重选：需要浮木，无浮木也弹窗提示
             if (hasDriftwood(player)) {

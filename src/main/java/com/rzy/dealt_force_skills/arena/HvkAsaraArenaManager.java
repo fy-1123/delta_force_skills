@@ -3,7 +3,7 @@ package com.rzy.dealt_force_skills.arena;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.character.gambler.GamblerArenaManager;
 import com.rzy.dealt_force_skills.character.ntwo.NTwoStateManager;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import com.rzy.dealt_force_skills.effect.InjuryManager;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.network.S2C_HvkAsaraArenaStatus;
@@ -664,12 +664,8 @@ public final class HvkAsaraArenaManager {
             session.lastY = player.getY();
             session.lastZ = player.getZ();
         }
-        if (selected.contains(HvkAsaraArenaModifier.STAMINA_FAILURE)
-                && ParcoolStaminaBridge.isParcoolActionActive(player)) {
-            int stamina = ParcoolStaminaBridge.currentValue(player);
-            if (stamina > 0) {
-                ParcoolStaminaBridge.consumeLocal(player, stamina);
-            }
+        if (selected.contains(HvkAsaraArenaModifier.STAMINA_FAILURE)) {
+            StaminaManager.empty(player);
         }
         if (selected.contains(HvkAsaraArenaModifier.DISEASED)) {
             for (InjuryManager.Type type : InjuryManager.Type.values()) {

@@ -1,7 +1,7 @@
 package com.rzy.dealt_force_skills.client.character;
 
 import com.rzy.dealt_force_skills.character.ModCharacters;
-import com.rzy.dealt_force_skills.compat.ParcoolStaminaBridge;
+import com.rzy.dealt_force_skills.stamina.StaminaManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 
@@ -159,6 +159,6 @@ public final class ClientSinevaHudState {
 
     public static void consumeShieldBlockStamina(int percent, int floorPercent) {
         Player player = Minecraft.getInstance().player;
-        ParcoolStaminaBridge.consumeLocalPercentAboveFloor(player, percent, floorPercent);
+        StaminaManager.consumeAboveFloor(player, (percent) * 0.1D, (floorPercent) * 0.1D);
     }
 }

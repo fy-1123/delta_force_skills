@@ -9,21 +9,28 @@ import java.util.function.Supplier;
 
 public class S2C_OpenCharacterSelection {
     private final boolean allowReselection;
+    private final boolean freeReselection;
 
     public S2C_OpenCharacterSelection() {
         this(false);
     }
 
     public S2C_OpenCharacterSelection(boolean allowReselection) {
+        this(allowReselection, false);
+    }
+
+    public S2C_OpenCharacterSelection(boolean allowReselection, boolean freeReselection) {
         this.allowReselection = allowReselection;
+        this.freeReselection = freeReselection;
     }
 
     public static void encode(S2C_OpenCharacterSelection msg, FriendlyByteBuf buf) {
         buf.writeBoolean(msg.allowReselection);
+        buf.writeBoolean(msg.freeReselection);
     }
 
     public static S2C_OpenCharacterSelection decode(FriendlyByteBuf buf) {
-        return new S2C_OpenCharacterSelection(buf.readBoolean());
+        return new S2C_OpenCharacterSelection(buf.readBoolean(), buf.readBoolean());
     }
 
     public static void handle(S2C_OpenCharacterSelection msg, Supplier<NetworkEvent.Context> ctx) {
@@ -31,7 +38,7 @@ public class S2C_OpenCharacterSelection {
                 Dist.CLIENT,
                 () -> () -> {
                     if (msg.allowReselection) {
-                        ClientCharacterSelectionState.openReselectionScreen();
+                        ClientCharacterSelectionState.openReselectionScreen(msg.freeReselection);
                     } else {
                         ClientCharacterSelectionState.openSelectionScreen();
                     }

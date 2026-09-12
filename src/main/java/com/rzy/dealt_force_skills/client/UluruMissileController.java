@@ -28,6 +28,7 @@ public final class UluruMissileController {
     private static int controlledEntityId = -1;
     private static int blackScreenTicks;
     private static int missingEntityTicks;
+    private static boolean receivedControlledEntity;
     private static int remainingCostX2;
     private static int localFlightSoundTicks;
     private static int restoreFreezeTicks;
@@ -49,6 +50,7 @@ public final class UluruMissileController {
             return;
         }
         controlledEntityId = entityId;
+        receivedControlledEntity = false;
         missingEntityTicks = 0;
         remainingCostX2 = GUIDED_MAX_COST_X2;
         localFlightSoundTicks = 0;
@@ -111,19 +113,19 @@ public final class UluruMissileController {
         float pitch = minecraft.player.getXRot();
         if (missile == null || !missile.isAlive()) {
             missingEntityTicks++;
-            if (missingEntityTicks >= MISSING_ENTITY_TIMEOUT_TICKS) {
-                // Missile has been unreachable for too long - force stop control
+            if (receivedControlledEntity || missingEntityTicks >= MISSING_ENTITY_TIMEOUT_TICKS) {
                 stop(true);
                 return;
             }
-            NetworkHandler.sendToServer(new C2S_UluruMissileControl(
-                    controlledEntityId,
-                    yaw,
-                    pitch,
-                    boosting
-            ));
             tickLocalFlightSound(minecraft, boosting);
             remainingCostX2 = Math.max(0, remainingCostX2 - (boosting ? 3 : 2));
+            return;
+        }
+        receivedControlledEntity = true;
+        if (!com.rzy.dealt_force_skills.util.RemoteControlRange.contains(minecraft.player.chunkPosition(),
+                missile.position(), minecraft.options.getEffectiveRenderDistance())
+                || !minecraft.level.hasChunkAt(missile.blockPosition())) {
+            stop(true);
             return;
         }
         missingEntityTicks = 0;
@@ -279,7 +281,7 @@ public final class UluruMissileController {
             beginRestoreFreeze(minecraft);
         }
         Entity camera = minecraft.getCameraEntity();
-        if (camera != null && camera.getId() == entityId) {
+        if (!minecraft.player.isSpectator() || camera != null && camera.getId() == entityId) {
             minecraft.setCameraEntity(minecraft.player);
         }
         if (!minecraft.player.isSpectator()) {

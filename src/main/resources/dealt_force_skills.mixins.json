@@ -6,6 +6,8 @@
   "compatibilityLevel": "JAVA_17",
   "minVersion": "0.8",
   "mixins": [
+    "HearingSoundBroadcastMixin",
+    "ServerPlayerSelfSkillDamageMixin",
     "LivingEntityUseItemAccessor",
     "apotheosis.ItemAffixesMixin",
     "pmmo.CoreObjectModifierMapMixin",
@@ -13,6 +15,7 @@
     "tacz.AttachmentDataUtilsMixin"
   ],
   "client": [
+    "client.HearingSoundEngineMixin",
     "client.AbstractClientPlayerSkinMixin",
     "client.HookAuthorChargeSoundPitchMixin",
     "client.HvkClimbableMixin",

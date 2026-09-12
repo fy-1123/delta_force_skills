@@ -50,6 +50,7 @@ public final class ElectronicInterferenceManager {
         }
         if (isElectronicSkill(character, slot)
                 && (player.hasEffect(ModEffects.RAPTOR_ELECTROMAGNETIC_INTERFERENCE.get())
+                || player.hasEffect(ModEffects.HACKCLAW_INTERFERENCE.get())
                 || player.hasEffect(ModEffects.VLINDER_MEDICAL_WASTE_INTERFERENCE.get()))) {
             player.displayClientMessage(Component.translatable(
                     "message.dealt_force_skills.electronic_interference_blocked"), true);

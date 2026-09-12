@@ -118,7 +118,7 @@ public final class StunInputHandler {
         return minecraft.player != null
                 && minecraft.player.isAlive()
                 && !minecraft.player.isSpectator()
-                && minecraft.player.hasEffect(ModEffects.STINGER_DOWNED.get());
+                && (minecraft.player.hasEffect(ModEffects.STINGER_DOWNED.get()) || minecraft.player.hasEffect(ModEffects.ROVER_DOWNED.get()));
     }
 
     private static void drainDownedKeys() {

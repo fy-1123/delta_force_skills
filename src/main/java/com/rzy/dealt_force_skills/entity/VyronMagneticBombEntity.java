@@ -229,6 +229,9 @@ public class VyronMagneticBombEntity extends Projectile implements ItemSupplier 
 
         AABB box = new AABB(center, center).inflate(radius);
         for (LivingEntity target : serverLevel.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive)) {
+            if (!TargetingUtil.isSelfOrHostileLivingFor(owner, target)) {
+                continue;
+            }
             Vec3 targetCenter = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
             double distance = targetCenter.distanceTo(center);
             if (distance > radius || !hasLineOfSight(center, targetCenter)) {
