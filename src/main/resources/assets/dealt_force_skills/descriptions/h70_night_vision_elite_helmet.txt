@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 装配夜视仪的 H70 精英头盔，符合6级防弹标准。

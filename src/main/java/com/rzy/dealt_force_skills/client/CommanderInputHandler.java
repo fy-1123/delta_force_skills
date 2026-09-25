@@ -10,7 +10,7 @@ import com.rzy.dealt_force_skills.network.C2S_UseCharacterSkill;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.registry.ModSounds;
 import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
-import mccfk.DeltaForce.java.client.MarkerClientEvents;
+import mccfk.DeltaForce.java.client.DeltaForceClient;
 import mccfk.DeltaForce.java.network.C2S_CreateMarker;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -50,7 +50,7 @@ public final class CommanderInputHandler {
             }
             if (minecraft.screen == null && !selectionLongActionTriggered
                     && ++selectionHeldTicks >= LONG_HOLD_TICKS) {
-                if (minecraft.player.isShiftKeyDown()) {
+                if (minecraft.player.isShiftKeyDown() != minecraft.player.isCreative()) {
                     DFGUI_MAIN.openToLogistics();
                 } else {
                     NetworkHandler.sendToServer(new C2S_OpenCommanderScreen(false));
@@ -59,10 +59,12 @@ public final class CommanderInputHandler {
             }
         } else if (selectionWasDown) {
             if (!selectionLongActionTriggered && minecraft.screen == null) {
-                if (minecraft.player.isShiftKeyDown()) {
-                    NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
-                } else {
+                if (minecraft.player.isShiftKeyDown() == minecraft.player.isCreative()) {
                     NetworkHandler.sendToServer(new C2S_OpenCommanderScreen(true));
+                } else if (minecraft.player.isCreative()) {
+                    DFGUI_MAIN.openToOperator();
+                } else {
+                    NetworkHandler.sendToServer(new C2S_OpenSelectionOrShop());
                 }
             }
             selectionHeldTicks = 0;
@@ -125,7 +127,7 @@ public final class CommanderInputHandler {
                 || !ClientCharacterSelectionState.isSelectedCharacter(ModCharacters.COMMANDER_ID)) {
             return;
         }
-        var view = MarkerClientEvents.captureMarkerFromView();
+        var view = DeltaForceClient.ForgeEvents.captureMarkerFromView();
         if (view.isEmpty()) {
             minecraft.player.displayClientMessage(Component.translatable(
                     "message.dealt_force_skills.commander.support_mark_invalid"), true);

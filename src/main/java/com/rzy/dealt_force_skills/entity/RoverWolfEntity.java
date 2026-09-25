@@ -31,6 +31,28 @@ import java.util.EnumSet;
 public final class RoverWolfEntity extends Wolf {
     public RoverWolfEntity(EntityType<? extends Wolf> type, Level level) { super(type, level); }
 
+    public boolean isRecovering() {
+        return getPersistentData().getLong("RoverRecoverUntil") > SkillCooldownHelper.now(this);
+    }
+
+    public boolean preventLethalDamage() {
+        if (level().isClientSide) return false;
+        if (!isRecovering()) {
+            getPersistentData().putLong("RoverRecoverUntil", SkillCooldownHelper.now(this) + 8 * 20);
+        }
+        setHealth(1.0F);
+        setInvulnerable(true);
+        setNoAi(false);
+        setTarget(null);
+        getNavigation().stop();
+        setDeltaMovement(Vec3.ZERO);
+        return true;
+    }
+
+    @Override public boolean hurt(net.minecraft.world.damagesource.DamageSource source, float amount) {
+        return !isRecovering() && super.hurt(source, amount);
+    }
+
     @Override protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0, true));
@@ -50,10 +72,15 @@ public final class RoverWolfEntity extends Wolf {
     }
 
     @Override public boolean canAttack(LivingEntity target) {
-        return isValidTarget(target) && super.canAttack(target);
+        return !isRecovering() && isValidTarget(target) && super.canAttack(target);
     }
 
     @Override public void tick() {
+        if (!level().isClientSide && isRecovering()) {
+            // Keep pathfinding active, including dogs saved by the old no-AI recovery.
+            setNoAi(false);
+            setTarget(null);
+        }
         super.tick();
         if (level().isClientSide) return;
         if (!(getOwner() instanceof ServerPlayer owner) || !owner.isAlive() || !RoverStateManager.isRover(owner)
@@ -61,6 +88,18 @@ public final class RoverWolfEntity extends Wolf {
                 || !getUUID().equals(RoverStateManager.data(owner).getUUID("Dog"))
                 || owner.level() != level() || SkillCooldownHelper.now(this) >= getPersistentData().getLong("RoverExpires")) {
             discard(); return;
+        }
+        if (getPersistentData().contains("RoverRecoverUntil")) {
+            if (isRecovering()) {
+                setHealth(1.0F);
+                setInvulnerable(true);
+                setTarget(null);
+            } else {
+                getPersistentData().remove("RoverRecoverUntil");
+                setHealth(getMaxHealth());
+                setInvulnerable(false);
+                setNoAi(false);
+            }
         }
         getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(owner.getAttributeValue(Attributes.MOVEMENT_SPEED) * 4.0);
         double range = Math.max(1, RoverConfig.DOG_TARGET_RANGE);
@@ -80,7 +119,7 @@ public final class RoverWolfEntity extends Wolf {
 
         @Override public void tick() {
             if (!(getOwner() instanceof ServerPlayer owner)) return;
-            Vec3 point = RoverStateManager.waypoint(owner);
+            Vec3 point = isRecovering() ? null : RoverStateManager.waypoint(owner);
             if (point == null) point = owner.position();
             if (position().distanceToSqr(point) > 2.25) getNavigation().moveTo(point.x, point.y, point.z, 1.0);
             else getNavigation().stop();
@@ -91,7 +130,7 @@ public final class RoverWolfEntity extends Wolf {
     }
 
     @Override public boolean doHurtTarget(Entity entity) {
-        if (!(getOwner() instanceof ServerPlayer owner) || !(entity instanceof LivingEntity target)
+        if (isRecovering() || !(getOwner() instanceof ServerPlayer owner) || !(entity instanceof LivingEntity target)
                 || !TargetingUtil.isHostileLivingFor(owner, target)) return false;
         boolean applied = SkillDamageHelper.hurt(target, damageSources().mobAttack(this), owner,
                 (float) Math.max(0, RoverConfig.DOG_DAMAGE));

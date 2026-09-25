@@ -1,25 +1,26 @@
 package com.rzy.dealt_force_skills.mixin.client;
 
 import com.rzy.dealt_force_skills.client.HvkGlueClientCache;
+import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyConstant;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
 /**
- * Disables passive climbing on blocks glued by the HVK Universal Glue item. Registered client-only
- * (same reasoning as the mod's other movement mixins): player movement is client-predicted, so the
- * server never runs this and would desync if it did.
- * <p>
- * Once a block is part of a glued network it becomes a directional zipline (see
- * {@link com.rzy.dealt_force_skills.climb.HvkZiplineManager}) instead of a ladder: forcing
- * {@code onClimbable()} to {@code false} here overrides vanilla's own climbable check, so even a glued
- * ladder or vine can no longer be climbed by simply walking into it.
+ * 客户端攀爬加速，适用于被HVK万能胶水粘合的方块。仅注册客户端侧。
+ * 通过(1)使实体在粘合位置旁时{@code onClimbable()}返回{@code true}，
+ * 然后(2)缩放原版的爬升/侧移速度来实现加速效果。
  */
 @Mixin(LivingEntity.class)
 public abstract class HvkClimbableMixin {
@@ -28,8 +29,37 @@ public abstract class HvkClimbableMixin {
     private void dealt_force_skills$forceClimbableWhenGlued(CallbackInfoReturnable<Boolean> cir) {
         LivingEntity self = (LivingEntity) (Object) this;
         if (dealt_force_skills$isNearGluedPosition(self)) {
-            cir.setReturnValue(false);
+            cir.setReturnValue(true);
         }
+    }
+
+    @Invoker(value = "handleOnClimbable")
+    abstract Vec3 dealt_force_skills$invokeHandleOnClimbable(Vec3 vec3);
+
+    @Redirect(method = "handleRelativeFrictionAndCalculateMovement",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/LivingEntity;handleOnClimbable(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;"))
+    private Vec3 dealt_force_skills$rescaleClimbShimmy(LivingEntity self, Vec3 deltaMovement) {
+        Vec3 result = this.dealt_force_skills$invokeHandleOnClimbable(deltaMovement);
+        if (!dealt_force_skills$isNearGluedPosition(self)) {
+            return result;
+        }
+        double multiplier = dealt_force_skills$climbSpeedMultiplier();
+        return new Vec3(result.x * multiplier, result.y, result.z * multiplier);
+    }
+
+    @ModifyConstant(method = "handleRelativeFrictionAndCalculateMovement",
+            constant = @Constant(doubleValue = 0.2D), require = 0, expect = 1)
+    private double dealt_force_skills$rescaleClimbUpBoost(double original) {
+        LivingEntity self = (LivingEntity) (Object) this;
+        if (!dealt_force_skills$isNearGluedPosition(self)) {
+            return original;
+        }
+        return original * dealt_force_skills$climbSpeedMultiplier();
+    }
+
+    private static double dealt_force_skills$climbSpeedMultiplier() {
+        return DealtForceConfig.doubleValue("items.hvk_universal_glue.climb_speed_multiplier", 4.0D);
     }
 
     private static boolean dealt_force_skills$isNearGluedPosition(LivingEntity entity) {

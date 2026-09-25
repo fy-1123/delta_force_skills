@@ -19,9 +19,9 @@ import net.minecraft.world.item.ItemStack;
  */
 public class OperatorSwitchConfirmScreen extends Screen {
 
-    private static final ResourceLocation BTN_CONFIRM = new ResourceLocation(
+    private static final ResourceLocation BTN_CONFIRM = ResourceLocation.fromNamespaceAndPath(
             "deltaforce", "textures/temp/mod-gbutton-normal.png");
-    private static final ResourceLocation BTN_CANCEL = new ResourceLocation(
+    private static final ResourceLocation BTN_CANCEL = ResourceLocation.fromNamespaceAndPath(
             "deltaforce", "textures/temp/mod-gbutton-update-hover.png");
 
     // 按钮显示尺寸（基准尺寸的 0.4 倍），窗口随按钮/文字长度自动缩放
@@ -234,4 +234,3 @@ public class OperatorSwitchConfirmScreen extends Screen {
         return false;
     }
 }
-

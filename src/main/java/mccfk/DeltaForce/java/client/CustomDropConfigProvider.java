@@ -1,109 +1,263 @@
 package mccfk.DeltaForce.java.client;
 
-import com.rzy.dealt_force_skills.config.ConfigEntryData;
 import mccfk.DeltaForce.java.client.screen.IConfigProvider;
+import com.electronwill.nightconfig.core.UnmodifiableConfig;
+import com.electronwill.nightconfig.core.file.CommentedFileConfig;
+import net.minecraft.client.Minecraft;
 
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Client-local values are validated together before any value is written. */
-public final class CustomDropConfigProvider implements IConfigProvider {
-    private static final String PREFIX = "customdrop.hud.";
-    private static final Map<String, Object> DEFAULTS = new LinkedHashMap<>();
-    static {
-        DEFAULTS.put("enabled", true);
-        DEFAULTS.put("scale", 0.0D);
-        DEFAULTS.put("x_offset", 0);
-        DEFAULTS.put("y_offset", 0);
-        DEFAULTS.put("simple_mode", false);
-        DEFAULTS.put("hotkey_detailed", false);
-        DEFAULTS.put("hotkey", "73");
-    }
-    private final Map<String, String> saved = new LinkedHashMap<>();
-    private final Map<String, String> dirty = new LinkedHashMap<>();
+/**
+ * 自定义掉落物配置提供者
+ * 在 DeltaForce 主类中注册，使得设置界面可以编辑自定义掉落物配置
+ */
+public class CustomDropConfigProvider implements IConfigProvider {
+
+    private static final String LAYOUT_BUTTON_PATH = "layout.go_to_config";
+
+    private final Map<String, String> dirtyValues = new HashMap<>();
     private String status = "";
 
     public CustomDropConfigProvider() {
-        CustomDropConfig.bootstrap();
-        DEFAULTS.forEach((name, value) -> {
-            Object current = CustomDropConfig.rawConfig().get(PREFIX + name);
-            saved.put(PREFIX + name, String.valueOf(current == null ? value : current));
-        });
     }
 
-    private static ConfigValueKind kind(String path) {
-        Object value = DEFAULTS.get(path.substring(PREFIX.length()));
-        if (value instanceof Boolean) return ConfigValueKind.BOOLEAN;
-        if (value instanceof Integer) return ConfigValueKind.INTEGER;
-        if (value instanceof Double) return ConfigValueKind.DOUBLE;
-        return ConfigValueKind.STRING;
+    @Override
+    public List<ConfigEntry> getConfigEntries() {
+        List<ConfigEntry> entries = new ArrayList<>();
+        CommentedFileConfig config = CustomDropConfig.rawConfig();
+        if (config == null) return entries;
+        flatten(config, "", entries);
+        // 按层级排序：父项在前，子项在后（父→子→孙）
+        entries.sort(Comparator.comparingInt(e -> sortOrderFor(e.path())));
+        // 添加布局自定义前往配置按钮
+        addLayoutButton(entries);
+        return entries;
     }
 
-    @Override public List<ConfigEntry> getConfigEntries() {
-        return saved.keySet().stream().map(path -> {
-            String parent = path.endsWith(".enabled") ? null
-                    : path.endsWith(".hotkey") ? PREFIX + "hotkey_detailed"
-                    : path.endsWith(".hotkey_detailed") ? PREFIX + "simple_mode" : PREFIX + "enabled";
-            return new ConfigEntry(path, path, getValue(path), saved.get(path), "", kind(path),
-                    "customdrop", "hud", parent == null ? 0 : 1, parent);
-        }).toList();
+    @Override
+    public String getValue(String path) {
+        if (LAYOUT_BUTTON_PATH.equals(path)) {
+            return String.valueOf(DFClientConfig.getInstance().isLayoutCustomEnabled());
+        }
+        CustomDropConfig.reload();
+        CommentedFileConfig config = CustomDropConfig.rawConfig();
+        if (config == null) return "";
+        Object raw = config.get(path);
+        return raw == null ? "" : String.valueOf(raw);
     }
-    @Override public String getValue(String path) { return dirty.getOrDefault(path, saved.getOrDefault(path, "")); }
-    @Override public boolean setValue(String path, String value) {
-        if (!saved.containsKey(path)) return false;
-        if (saved.get(path).equals(value)) dirty.remove(path);
-        else dirty.put(path, value);
+
+    @Override
+    public boolean setValue(String path, String value) {
+        if (LAYOUT_BUTTON_PATH.equals(path)) {
+            DFClientConfig.getInstance().setLayoutCustomEnabled("true".equalsIgnoreCase(value));
+            dirtyValues.put(path, value);
+            return true;
+        }
+        dirtyValues.put(path, value);
         return true;
     }
-    private Object parse(String path, String value) {
-        if (path.endsWith(".hotkey")) {
-            if ("-1".equals(value)) return value;
-            String[] keys = value.split("\\+", -1);
-            if (keys.length == 0 || keys.length > 5) throw new IllegalArgumentException();
-            for (String key : keys) {
-                int code = Integer.parseInt(key.trim());
-                if (code < 32 || code > 348) throw new IllegalArgumentException();
-            }
-            return value;
-        }
-        Object parsed = ConfigEntryData.parse(com.rzy.dealt_force_skills.config.ConfigValueKind.valueOf(kind(path).name()), value);
-        if (path.endsWith(".scale") && ((double) parsed < -0.9 || (double) parsed > 1.0)) throw new IllegalArgumentException();
-        if (path.endsWith("_offset") && Math.abs((long) (int) parsed) > 10000) throw new IllegalArgumentException();
-        return parsed;
-    }
-    @Override public boolean validate() {
-        for (var change : dirty.entrySet()) {
-            try { parse(change.getKey(), change.getValue()); }
-            catch (RuntimeException error) {
+
+    @Override
+    public void save() {
+        if (!validate()) return;
+        boolean hasLayoutDirty = dirtyValues.containsKey(LAYOUT_BUTTON_PATH);
+        CommentedFileConfig config = CustomDropConfig.rawConfig();
+        if (config != null) {
+            Map<String, Object> before = new HashMap<>();
+            try {
+                for (Map.Entry<String, String> dirty : dirtyValues.entrySet()) {
+                    String path = dirty.getKey();
+                    if (LAYOUT_BUTTON_PATH.equals(path)) continue;
+                    String newValue = dirty.getValue();
+                    before.put(path, config.get(path));
+                    Object current = config.get(path);
+                    if (current instanceof Boolean || "true".equalsIgnoreCase(newValue) || "false".equalsIgnoreCase(newValue)) {
+                        config.set(path, Boolean.parseBoolean(newValue));
+                    } else if (current instanceof Double || current instanceof Float || newValue.contains(".")) {
+                        try {
+                            config.set(path, Double.parseDouble(newValue));
+                        } catch (NumberFormatException e) {
+                            config.set(path, newValue);
+                        }
+                    } else if (current instanceof Integer || current instanceof Long) {
+                        try {
+                            config.set(path, Long.parseLong(newValue));
+                        } catch (NumberFormatException e) {
+                            config.set(path, newValue);
+                        }
+                    } else {
+                        config.set(path, newValue);
+                    }
+                }
+                CustomDropConfig.markDirty();
+                CustomDropConfig.flush();
+            } catch (RuntimeException error) {
+                before.forEach(config::set);
                 status = net.minecraft.network.chat.Component.translatable(
-                        "config.dealt_force_skills.status.invalid", change.getKey()).getString();
+                        "config.dealt_force_skills.status.save_failed", error.getMessage()).getString();
+                return;
+            }
+        }
+        if (hasLayoutDirty) {
+            DFClientConfig.getInstance().save();
+        }
+        dirtyValues.clear();
+        status = "";
+    }
+
+    @Override
+    public boolean validate() {
+        for (Map.Entry<String, String> dirty : dirtyValues.entrySet()) {
+            String path = dirty.getKey();
+            if (LAYOUT_BUTTON_PATH.equals(path)) continue;
+            try {
+                String value = dirty.getValue();
+                if (value.length() > 1024) throw new IllegalArgumentException();
+                if (path.endsWith(".scale")) {
+                    double d = Double.parseDouble(value);
+                    if (d < -0.9 || d > 1.0) throw new IllegalArgumentException();
+                }
+                if (path.endsWith("_offset")) {
+                    long v = Long.parseLong(value);
+                    if (Math.abs(v) > 10000) throw new IllegalArgumentException();
+                }
+                if (path.endsWith(".hotkey")) {
+                    if (!"-1".equals(value)) {
+                        String[] keys = value.split("\\+", -1);
+                        if (keys.length == 0 || keys.length > 5) throw new IllegalArgumentException();
+                        for (String key : keys) {
+                            int code = Integer.parseInt(key.trim());
+                            if (code < 32 || code > 348) throw new IllegalArgumentException();
+                        }
+                    }
+                }
+            } catch (RuntimeException error) {
+                status = net.minecraft.network.chat.Component.translatable(
+                        "config.dealt_force_skills.status.invalid", path).getString();
                 return false;
             }
         }
         return true;
     }
-    @Override public void save() {
-        if (!validate()) return;
-        var config = CustomDropConfig.rawConfig();
-        Map<String, Object> before = new LinkedHashMap<>();
-        try {
-            dirty.forEach((path, value) -> {
-                before.put(path, config.get(path));
-                config.set(path, parse(path, value));
-            });
-            CustomDropConfig.markDirty();
-            CustomDropConfig.flush();
-            saved.putAll(dirty);
-            dirty.clear();
-            status = "";
-        } catch (RuntimeException error) {
-            before.forEach(config::set);
-            status = net.minecraft.network.chat.Component.translatable(
-                    "config.dealt_force_skills.status.save_failed", error.getMessage()).getString();
+
+    @Override
+    public boolean isBusy() {
+        return false;
+    }
+
+    @Override
+    public String status() {
+        return status;
+    }
+
+    @Override
+    public void cancel() {
+        dirtyValues.clear();
+        status = "";
+    }
+
+    @Override
+    public boolean isDirty() {
+        return !dirtyValues.isEmpty();
+    }
+
+    private void flatten(UnmodifiableConfig source, String prefix, List<ConfigEntry> out) {
+        for (Map.Entry<String, Object> entry : source.valueMap().entrySet()) {
+            String key = entry.getKey();
+            if (key == null || key.isBlank()) continue;
+            String path = prefix.isEmpty() ? key : prefix + "." + key;
+            Object value = entry.getValue();
+            if (value instanceof UnmodifiableConfig nested) {
+                flatten(nested, path, out);
+                continue;
+            }
+            if (!(value instanceof Number || value instanceof Boolean || value instanceof String)) {
+                continue;
+            }
+            ConfigValueKind kind = kindOf(value);
+            String currentValue = dirtyValues.getOrDefault(path, String.valueOf(value));
+            String defaultValue = String.valueOf(value);
+            String comment = "";
+            if (source instanceof CommentedFileConfig commented) {
+                try {
+                    String raw = commented.getComment(path);
+                    if (raw != null) comment = raw;
+                } catch (RuntimeException ignored) {
+                }
+            }
+            String category = "customdrop";
+            String subCategory = "hud";
+            String[] parts = path.split("\\.");
+            if (parts.length > 1 && "customdrop".equals(parts[0])) {
+                subCategory = parts.length > 2 ? parts[1] : "hud";
+            }
+            // 计算嵌套层级和父路径
+            int nestLevel = nestLevelFor(path);
+            String parentPath = parentPathFor(path);
+            out.add(new ConfigEntry(path, path, currentValue, defaultValue, comment, kind, category, subCategory,
+                    nestLevel, parentPath, false));
         }
     }
-    @Override public void cancel() { dirty.clear(); status = ""; }
-    @Override public boolean isDirty() { return !dirty.isEmpty(); }
-    @Override public String status() { return status; }
+
+    /** 根据路径计算嵌套层级 */
+    private static int nestLevelFor(String path) {
+        return switch (path) {
+            case "customdrop.hud.enabled" -> 0;
+            case "customdrop.hud.scale", "customdrop.hud.x_offset", "customdrop.hud.y_offset" -> 1;
+            case "customdrop.hud.simple_mode" -> 2;
+            case "customdrop.hud.hotkey_detailed" -> 3;
+            case "customdrop.hud.hotkey" -> 4;
+            default -> 0;
+        };
+    }
+
+    /** 根据路径计算排序权重：HUD显示 → 缩放比例 → X偏移 → Y偏移 → 简易模式 → 快捷键显示详情 → 快捷键设置 → 布局按钮 */
+    private static int sortOrderFor(String path) {
+        return switch (path) {
+            case "customdrop.hud.enabled" -> 0;
+            case "customdrop.hud.scale" -> 1;
+            case "customdrop.hud.x_offset" -> 2;
+            case "customdrop.hud.y_offset" -> 3;
+            case "customdrop.hud.simple_mode" -> 4;
+            case "customdrop.hud.hotkey_detailed" -> 5;
+            case "customdrop.hud.hotkey" -> 6;
+            case "layout.go_to_config" -> 7;
+            default -> 99;
+        };
+    }
+
+    /** 根据路径计算父配置项路径 */
+    private static String parentPathFor(String path) {
+        return switch (path) {
+            case "customdrop.hud.scale", "customdrop.hud.x_offset", "customdrop.hud.y_offset" -> "customdrop.hud.enabled";
+            case "customdrop.hud.simple_mode" -> "customdrop.hud.enabled";
+            case "customdrop.hud.hotkey_detailed" -> "customdrop.hud.simple_mode";
+            case "customdrop.hud.hotkey" -> "customdrop.hud.hotkey_detailed";
+            default -> null;
+        };
+    }
+
+    /** 添加布局自定义前往配置按钮（仅对MC_CaoFangKuai开放，alpha版功能） */
+    private void addLayoutButton(List<ConfigEntry> entries) {
+        var player = Minecraft.getInstance().player;
+        if (player == null || !"MC_CaoFangKuai".equals(player.getName().getString())) {
+            return;
+        }
+        String path = LAYOUT_BUTTON_PATH;
+        String currentValue = String.valueOf(DFClientConfig.getInstance().isLayoutCustomEnabled());
+        entries.add(new ConfigEntry(path, path, currentValue, "false",
+                "前往自定义布局配置界面（alpha版功能）", ConfigValueKind.BUTTON, "layout", "layout",
+                0, null, true));
+    }
+
+    private static ConfigValueKind kindOf(Object value) {
+        if (value instanceof Boolean) return ConfigValueKind.BOOLEAN;
+        if (value instanceof Integer || value instanceof Long) return ConfigValueKind.INTEGER;
+        if (value instanceof Float || value instanceof Double) return ConfigValueKind.FLOAT;
+        return ConfigValueKind.STRING;
+    }
 }

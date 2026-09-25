@@ -20,16 +20,26 @@ import java.util.Set;
 /**
  * 物品介绍加载器 - 从物品自身模组命名空间的descriptions文件夹读取txt文件
  * 文件格式:
- * 第一行: .tag("#deltaforce:df_age_X") (可选,设置标签)
+ * 第一行: .level(X); (可选,设置品质等级0-8)
  * 后续行: 介绍文本(支持\n等转义字符)
  */
 public class ItemDescriptionLoader {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItemDescriptionLoader.class);
     private static final Map<ResourceLocation, String> descriptionCache = new HashMap<>();
-    private static final Map<ResourceLocation, Integer> tagCache = new HashMap<>();
+    private static final Map<ResourceLocation, Integer> levelCache = new HashMap<>();
     private static final Set<ResourceLocation> missingCache = new HashSet<>();
     private static final Set<ResourceLocation> failedCache = new HashSet<>();
+    private static final int MAX_CACHE_SIZE = 2000;
+
+    private static void safePutCache() {
+        if (descriptionCache.size() > MAX_CACHE_SIZE) {
+            descriptionCache.clear();
+            levelCache.clear();
+            missingCache.clear();
+            failedCache.clear();
+        }
+    }
 
     /**
      * 获取物品的介绍文本
@@ -54,10 +64,11 @@ public class ItemDescriptionLoader {
         FileContent content = loadDescriptionFromFile(itemId);
 
         if (content != null) {
+            safePutCache();
             descriptionCache.put(itemId, content.description);
-            if (content.tagAge != null) {
-                tagCache.put(itemId, content.tagAge);
-                DfsItemQuality.applyTagQualityOverride(itemId, content.tagAge);
+            if (content.level != null) {
+                levelCache.put(itemId, content.level);
+                DfsItemQuality.applyTagQualityOverride(itemId, content.level);
             }
             return content.description;
         }
@@ -91,9 +102,9 @@ public class ItemDescriptionLoader {
     }
 
     /**
-     * 获取物品的标签等级
+     * 获取物品的品质等级
      */
-    public static synchronized Integer getTagAge(ItemStack itemStack) {
+    public static synchronized Integer getLevel(ItemStack itemStack) {
         if (itemStack.isEmpty()) {
             return null;
         }
@@ -107,7 +118,7 @@ public class ItemDescriptionLoader {
             getDescription(itemStack);
         }
 
-        return tagCache.get(itemId);
+        return levelCache.get(itemId);
     }
 
     /**
@@ -121,7 +132,7 @@ public class ItemDescriptionLoader {
 
             var resourceManager = mc.getResourceManager();
             var resourceOpt = resourceManager.getResource(
-                new ResourceLocation(itemId.getNamespace(), resourcePath)
+                    ResourceLocation.fromNamespaceAndPath(itemId.getNamespace(), resourcePath)
             );
 
             if (resourceOpt.isPresent()) {
@@ -130,7 +141,7 @@ public class ItemDescriptionLoader {
                         new InputStreamReader(resource.open(), StandardCharsets.UTF_8))) {
 
                     StringBuilder content = new StringBuilder();
-                    Integer tagAge = null;
+                    Integer level = null;
                     boolean firstLine = true;
                     String line;
 
@@ -140,8 +151,8 @@ public class ItemDescriptionLoader {
                             if (line.startsWith("\uFEFF")) {
                                 line = line.substring(1);
                             }
-                            if (line.startsWith(".tag(")) {
-                                tagAge = parseTagAge(line);
+                            if (line.startsWith(".level(")) {
+                                level = parseLevel(line);
                                 continue;
                             }
                         }
@@ -157,11 +168,14 @@ public class ItemDescriptionLoader {
                         return null;
                     }
 
-                    return new FileContent(result, tagAge);
+                    return new FileContent(result, level);
                 }
             }
         } catch (Exception error) {
             if (failedCache.add(itemId)) {
+                if (failedCache.size() > MAX_CACHE_SIZE) {
+                    failedCache.clear();
+                }
                 LOGGER.warn("Unable to load item description for {}", itemId, error);
             }
         }
@@ -170,29 +184,26 @@ public class ItemDescriptionLoader {
     }
 
     /**
-     * 解析标签年龄等级
+     * 解析品质等级
+     * 格式: .level(0-8);
      */
-    private static Integer parseTagAge(String tagLine) {
+    private static Integer parseLevel(String line) {
         try {
-            int startIndex = tagLine.indexOf("df_age_");
+            int startIndex = line.indexOf(".level(");
             if (startIndex == -1) {
                 return null;
             }
 
             startIndex += 7;
-            int endIndex = tagLine.indexOf('"', startIndex);
-            if (endIndex == -1) {
-                endIndex = tagLine.indexOf(')', startIndex);
-            }
-
+            int endIndex = line.indexOf(')', startIndex);
             if (endIndex == -1) {
                 return null;
             }
 
-            String ageStr = tagLine.substring(startIndex, endIndex).trim();
-            return Integer.parseInt(ageStr);
+            String levelStr = line.substring(startIndex, endIndex).trim();
+            return Integer.parseInt(levelStr);
         } catch (RuntimeException error) {
-            LOGGER.warn("Ignoring invalid item-description tag {}", tagLine);
+            LOGGER.warn("Ignoring invalid item-description level line {}", line);
             return null;
         }
     }
@@ -248,7 +259,7 @@ public class ItemDescriptionLoader {
      */
     public static synchronized void clearCache() {
         descriptionCache.clear();
-        tagCache.clear();
+        levelCache.clear();
         missingCache.clear();
         failedCache.clear();
     }
@@ -258,11 +269,11 @@ public class ItemDescriptionLoader {
      */
     private static class FileContent {
         String description;
-        Integer tagAge;
+        Integer level;
 
-        FileContent(String description, Integer tagAge) {
+        FileContent(String description, Integer level) {
             this.description = description;
-            this.tagAge = tagAge;
+            this.level = level;
         }
     }
 }

@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 世界上最大的钻石，璀璨夺目，象征永恒的爱。

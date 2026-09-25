@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_1")
+.level(1);
 附带的监听耳机能提供较弱的拾音与降噪效果。

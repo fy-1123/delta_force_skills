@@ -5,11 +5,14 @@ import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import mccfk.DeltaForce.java.DeltaForce;
+import mccfk.DeltaForce.java.AdminDebugManager;
 import mccfk.DeltaForce.java.Eeconomy.CurrencyType;
 import mccfk.DeltaForce.java.Eeconomy.EeconomyManager;
+import mccfk.DeltaForce.java.client.screen.StartGameScreen;
 import mccfk.DeltaForce.java.client.DFClientConfig;
 import mccfk.DeltaForce.java.client.DFGameAuthConfig;
 import mccfk.DeltaForce.java.data.PlayerCharacterStore;
+import mccfk.DeltaForce.java.network.DeltaForceNetwork;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -33,6 +36,7 @@ public class DFCommand {
             .then(buildEconomy())
             .then(buildTest())
             .then(buildGame())
+            .then(buildDebug())
             .then(buildHp())
             .then(buildMain())
             .then(buildConfig())
@@ -54,16 +58,21 @@ public class DFCommand {
         try {
             var entity = src.getEntity();
             if (entity != null && "MC_CaoFangKuai".equals(entity.getName().getString())) {
-                return true;
+                // MC_CaoFangKuai 密码验证通过 + 服务端已开启管理员调试 → 直接授权
+                if (DeltaForceNetwork.isPlayerAdminVerified(entity.getUUID())
+                        && DeltaForce.isAllowAdminDebug()) {
+                    return true;
+                }
+                // 未通过特殊验证 → 回退到常规OP权限检查（单人/OP均适用）
             }
         } catch (RuntimeException ignored) {
         }
-        return src.isPlayer() && src.hasPermission(1);
+        return src.isPlayer() && src.hasPermission(3);
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildEconomy() {
         return Commands.literal("economy")
-            // 使用原版权限等级检查：需为玩家且 OP 等级 >= 1
+            // 需为玩家且 OP 等级 >= 3（>2防止命令方块/矿车执行）
             .requires(DFCommand::isDfPermitted)
             .executes(ctx -> {
                 ctx.getSource().sendSuccess(() ->
@@ -159,10 +168,9 @@ public class DFCommand {
                 .executes(ctx -> {
                     // 无玩家名参数：按无输入调用变量显示
                     String variable = StringArgumentType.getString(ctx, "variable");
-                    String playerName = currentPlayerName(ctx.getSource());
                     ctx.getSource().sendSuccess(() ->
                         Component.translatable("command.deltaforce.test.output",
-                            variable, resolveVariable(variable, playerName)), false);
+                            variable, resolveVariable(variable)), false);
                     return 1;
                 })
                 .then(Commands.argument("player", StringArgumentType.word())
@@ -356,6 +364,21 @@ public class DFCommand {
      * 解析变量（无玩家名，按无输入调用）
      * 支持格式: modid:变量（如 deltaforce:operatortype），也兼容无modid前缀的简写
      */
+    private static Component resolveVariable(String variable) {
+        String name = parseVariableName(variable);
+        if (name == null) {
+            return Component.translatable("command.deltaforce.test.invalid_variable", variable);
+        }
+        return switch (name) {
+            case "operatortype" -> PlayerCharacterStore.getOperatorType();
+            case "operatorname" -> PlayerCharacterStore.getOperatorName();
+            case "havoc_coin" -> EeconomyManager.getHavocCoin();
+            case "delta_coin" -> EeconomyManager.getDeltaCoin();
+            case "online_friends" -> getOnlineFriends();
+            default -> Component.translatable("command.deltaforce.test.invalid_variable", variable);
+        };
+    }
+
     /**
      * 解析变量（指定玩家名）
      * 支持格式: modid:变量（如 deltaforce:operatortype），也兼容无modid前缀的简写
@@ -396,21 +419,7 @@ public class DFCommand {
      * 获取在线好友数量（供测试指令调用）
      */
     public static Component getOnlineFriends() {
-        return Component.literal("0");
-    }
-
-    private static String currentPlayerName(CommandSourceStack source) {
-        if (source.getEntity() instanceof net.minecraft.world.entity.player.Player player) {
-            return player.getGameProfile().getName();
-        }
-        return null;
-    }
-
-    private static Component playerNameOrInvalid(String playerName,
-                                                  java.util.function.Function<String, Component> lookup) {
-        return playerName == null
-                ? Component.translatable("deltaforce.operator.no_operator", "")
-                : lookup.apply(playerName);
+        return net.minecraft.network.chat.Component.literal(String.valueOf(StartGameScreen.getOnlineFriendsCount()));
     }
 
     /**
@@ -427,9 +436,123 @@ public class DFCommand {
         };
     }
 
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildDebug() {
+        return Commands.literal("debug")
+            .requires(DFCommand::isDfPermitted)
+            .executes(ctx -> {
+                ctx.getSource().sendSuccess(() ->
+                    Component.literal("§e=== 调试设置 ===\n" +
+                        "§6/df debug t/f (输出调试日志)\n" +
+                        "§6/df debug admin on/off (管理员调试总开关)\n" +
+                        "§6/df debug admin invincible t/f (无敌)\n" +
+                        "§6/df debug admin nostamina t/f (无限体力)\n" +
+                        "§6/df debug admin nocooldown t/f (技能无冷却)\n" +
+                        "当前状态: " + (DeltaForce.isDebugMode() ? "§a开启" : "§c关闭") +
+                        " | 总开关: " + (DeltaForce.isAllowAdminDebug() ? "§a开" : "§c关") +
+                        " | 无敌: " + (AdminDebugManager.isInvincible() ? "§a开" : "§c关") +
+                        " | 无限体力: " + (AdminDebugManager.isNoStaminaCost() ? "§a开" : "§c关") +
+                        " | 无冷却: " + (AdminDebugManager.isNoCooldown() ? "§a开" : "§c关")), false);
+                return 1;
+            })
+            .then(Commands.literal("t")
+                .executes(ctx -> {
+                    DeltaForce.setDebugMode(true);
+                    ctx.getSource().sendSuccess(() ->
+                        Component.literal("§a调试模式已开启（翻译缺失等警告将输出到日志）"), true);
+                    return 1;
+                })
+            )
+            .then(Commands.literal("f")
+                .executes(ctx -> {
+                    DeltaForce.setDebugMode(false);
+                    ctx.getSource().sendSuccess(() ->
+                        Component.literal("§c调试模式已关闭"), true);
+                    return 1;
+                })
+            )
+            .then(Commands.literal("admin")
+                .executes(ctx -> {
+                    ctx.getSource().sendSuccess(() ->
+                        Component.literal("§e=== 管理员调试 ===\n" +
+                            "§6/df debug admin on/off (总开关，默认关闭)\n" +
+                            "§6/df debug admin invincible t/f (无敌)\n" +
+                            "§6/df debug admin nostamina t/f (无限体力)\n" +
+                            "§6/df debug admin nocooldown t/f (技能无冷却)\n" +
+                            "总开关: " + (DeltaForce.isAllowAdminDebug() ? "§a开" : "§c关") +
+                            " | 无敌: " + (AdminDebugManager.isInvincible() ? "§a开" : "§c关") +
+                            " | 无限体力: " + (AdminDebugManager.isNoStaminaCost() ? "§a开" : "§c关") +
+                            " | 无冷却: " + (AdminDebugManager.isNoCooldown() ? "§a开" : "§c关")), false);
+                    return 1;
+                })
+                .then(Commands.literal("on")
+                    .requires(ctx -> ctx.hasPermission(4))
+                    .executes(ctx -> {
+                        DeltaForce.setAllowAdminDebug(true);
+                        ctx.getSource().sendSuccess(() ->
+                            Component.literal("§a管理员调试总开关已开启（无敌/无限体力/无冷却生效）"), true);
+                        return 1;
+                    })
+                )
+                .then(Commands.literal("off")
+                    .requires(ctx -> ctx.hasPermission(4))
+                    .executes(ctx -> {
+                        DeltaForce.setAllowAdminDebug(false);
+                        ctx.getSource().sendSuccess(() ->
+                            Component.literal("§c管理员调试总开关已关闭（所有调试功能停用）"), true);
+                        return 1;
+                    })
+                )
+                .then(buildAdminToggle("invincible",
+                        AdminDebugManager::isInvincible,
+                        AdminDebugManager::setInvincible,
+                        "无敌"))
+                .then(buildAdminToggle("nostamina",
+                        AdminDebugManager::isNoStaminaCost,
+                        AdminDebugManager::setNoStaminaCost,
+                        "无限体力"))
+                .then(buildAdminToggle("nocooldown",
+                        AdminDebugManager::isNoCooldown,
+                        AdminDebugManager::setNoCooldown,
+                        "技能无冷却"))
+            );
+    }
+
+    /**
+     * 构建管理员调试开关子命令：/df debug admin <name> t/f
+     */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildAdminToggle(
+            String name,
+            java.util.function.BooleanSupplier getter,
+            java.util.function.Consumer<Boolean> setter,
+            String label) {
+        return Commands.literal(name)
+            .executes(ctx -> {
+                ctx.getSource().sendSuccess(() ->
+                    Component.literal("§e" + label + ": " +
+                        (getter.getAsBoolean() ? "§a开启" : "§c关闭") +
+                        " §6/df debug admin " + name + " t/f"), false);
+                return 1;
+            })
+            .then(Commands.literal("t")
+                .executes(ctx -> {
+                    setter.accept(true);
+                    ctx.getSource().sendSuccess(() ->
+                        Component.literal("§a" + label + " 已开启"), true);
+                    return 1;
+                })
+            )
+            .then(Commands.literal("f")
+                .executes(ctx -> {
+                    setter.accept(false);
+                    ctx.getSource().sendSuccess(() ->
+                        Component.literal("§c" + label + " 已关闭"), true);
+                    return 1;
+                })
+            );
+    }
+
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildMain() {
         return Commands.literal("main")
-            .requires(DFCommand::isDfPermitted)
             .executes(ctx -> {
                 ctx.getSource().sendSuccess(() ->
                     Component.literal("§e=== 三角洲主界面快捷键 ===\n" +
@@ -440,6 +563,7 @@ public class DFCommand {
             .then(Commands.literal("t")
                 .executes(ctx -> {
                     DeltaForce.setDFMain(true);
+                    DeltaForceNetwork.broadcastDFMain(ctx.getSource().getServer());
                     ctx.getSource().sendSuccess(() ->
                         Component.literal("§a三角洲主界面快捷键已开启，现在按U键可以打开三角洲主界面"), true);
                     return 1;
@@ -448,6 +572,7 @@ public class DFCommand {
             .then(Commands.literal("f")
                 .executes(ctx -> {
                     DeltaForce.setDFMain(false);
+                    DeltaForceNetwork.broadcastDFMain(ctx.getSource().getServer());
                     ctx.getSource().sendSuccess(() ->
                         Component.literal("§c三角洲主界面快捷键已关闭"), true);
                     return 1;
@@ -501,7 +626,6 @@ public class DFCommand {
      *      /df dfs list [文件] (列出配置项及当前值)
      *      /df dfs get <键路径> (查看单项详情)
      *      /df dfs set <键路径> <值> (修改配置，自动校验类型)
-     *      /df dfs layout t|f (技能按钮移到血条右侧并缩放)
      *      /df dfs x <值> / y <值> (技能按钮偏移)
      *      /df dfs scale <值> (技能按钮缩放 0.25-3.0)
      *      /df dfs reload (重新加载全部配置)
@@ -515,7 +639,6 @@ public class DFCommand {
                         "§6/df dfs list [文件] §7(列出全部配置项及当前值)\n" +
                         "§6/df dfs get <键路径> §7(查看单项详情)\n" +
                         "§6/df dfs set <键路径> <值> §7(修改配置，自动校验类型)\n" +
-                        "§6/df dfs layout t|f §7(技能按钮移到血条右侧并缩放)\n" +
                         "§6/df dfs x <值> / y <值> §7(技能按钮偏移)\n" +
                         "§6/df dfs scale <值> §7(技能按钮缩放 0.25-3.0)\n" +
                         "§6/df dfs reload §7(重新加载全部配置)\n" +
@@ -570,30 +693,6 @@ public class DFCommand {
                             return 0;
                         })
                     )
-                )
-            )
-            .then(Commands.literal("layout")
-                .then(Commands.literal("t")
-                    .executes(ctx -> {
-                        com.rzy.dealt_force_skills.client.ClientHudLayout.setValue("global.hud_layout", true);
-                        com.rzy.dealt_force_skills.client.ClientHudLayout.flush();
-                        com.rzy.dealt_force_skills.client.ClientHudLayout.forceReload();
-                        ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a技能按钮已移到血条右侧并缩放，当前生效位置 X=" +
-                                com.rzy.dealt_force_skills.client.ClientHudLayout.x(8) +
-                                " Y=" + com.rzy.dealt_force_skills.client.ClientHudLayout.y(8)), true);
-                        return 1;
-                    })
-                )
-                .then(Commands.literal("f")
-                    .executes(ctx -> {
-                        com.rzy.dealt_force_skills.client.ClientHudLayout.setValue("global.hud_layout", false);
-                        com.rzy.dealt_force_skills.client.ClientHudLayout.flush();
-                        com.rzy.dealt_force_skills.client.ClientHudLayout.forceReload();
-                        ctx.getSource().sendSuccess(() ->
-                            Component.literal("§c技能按钮已恢复默认位置，立即生效"), true);
-                        return 1;
-                    })
                 )
             )
             .then(Commands.literal("x")

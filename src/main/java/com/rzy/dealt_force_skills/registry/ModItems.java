@@ -49,6 +49,9 @@ public class ModItems {
     public static final DeferredRegister<Item> ITEMS =
             DeferredRegister.create(ForgeRegistries.ITEMS, DealtForceSkillsMod.MODID);
 
+    public static final RegistryObject<Item> AUTO_SELL_UPGRADE = ITEMS.register("auto_sell_upgrade",
+            com.rzy.dealt_force_skills.compat.SophisticatedBackpackCompat::createUpgrade);
+
     public static final RegistryObject<Item> GTI_SPECIAL_OPERATIONS = ITEMS.register("gti_special_operations",
             () -> new BlockItem(ModBlocks.GTI_SPECIAL_OPERATIONS.get(), new Item.Properties()));
 

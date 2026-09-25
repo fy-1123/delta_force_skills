@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Uses the core editor's server-authorized snapshot/apply protocol. */
-final class DfsConfigProvider implements IConfigProvider {
+public final class DfsConfigProvider implements IConfigProvider {
     private final Map<String, ConfigEntryData> entries = new LinkedHashMap<>();
     private final Map<String, String> dirty = new LinkedHashMap<>();
     private final Map<String, String> submitted = new LinkedHashMap<>();
@@ -25,18 +25,18 @@ final class DfsConfigProvider implements IConfigProvider {
     private boolean awaitingSnapshot;
     private String status = "";
 
-    DfsConfigProvider() {
+    public DfsConfigProvider() {
         ClientHudLayout.snapshotEntries().forEach(this::putEntry);
         Minecraft mc = Minecraft.getInstance();
         if (mc.getConnection() == null) {
             canEditServer = true;
             ConfigAccess.snapshotAllServerFiles().forEach(this::putEntry);
-        } else if (mc.player != null && mc.player.hasPermissions(2)) {
+        } else {
+            // 始终向服务端请求配置快照，由服务端检查权限决定是否授权
+            // 避免客户端缓存hasPermission导致刚获得OP时无法获取服务器配置
             awaitingSnapshot = true;
             status = Component.translatable("config.dealt_force_skills.status.loading_server").getString();
             NetworkHandler.sendToServer(new C2S_RequestConfigSnapshot());
-        } else {
-            status = Component.translatable("config.dealt_force_skills.status.hud_only").getString();
         }
     }
 
@@ -53,7 +53,8 @@ final class DfsConfigProvider implements IConfigProvider {
     }
 
     void acceptSnapshot(List<ConfigEntryData> snapshot, boolean allowed) {
-        if (!awaitingSnapshot) return;
+        // 无论是否主动等待服务器快照，都应更新权限状态
+        // 防止在主菜单初始化后、进入多人服务器时 canEditServer 仍保持 true
         awaitingSnapshot = false;
         canEditServer = allowed;
         entries.values().removeIf(entry -> !entry.file().clientLocal());
@@ -104,6 +105,13 @@ final class DfsConfigProvider implements IConfigProvider {
         if (entry == null || !submitted.isEmpty() || (!entry.file().clientLocal() && !canEditServer)) return false;
         if (entry.valueText().equals(value)) dirty.remove(path);
         else dirty.put(path, value);
+        // HUD客户端本地配置立即写入内存，实现设置界面内实时预览（不落盘）
+        if (entry.file().clientLocal()) {
+            try {
+                ClientHudLayout.setValueInMemory(entry.path(), ConfigEntryData.parse(entry.kind(), value));
+            } catch (RuntimeException ignored) {
+            }
+        }
         return true;
     }
 
@@ -167,8 +175,28 @@ final class DfsConfigProvider implements IConfigProvider {
         }
     }
 
-    @Override public void cancel() { if (submitted.isEmpty()) dirty.clear(); }
+    @Override public void cancel() { if (submitted.isEmpty()) { dirty.clear(); ClientHudLayout.forceReload(); } }
     @Override public boolean isDirty() { return !dirty.isEmpty(); }
     @Override public boolean isBusy() { return !submitted.isEmpty(); }
     @Override public String status() { return status; }
+
+    /**
+     * 根据配置项所属文件返回 C/S 标记：
+     * HUD 文件 → 客户端本地（C，绿色），其余文件 → 服务端同步（S，红色）
+     */
+    @Override
+    public boolean isClientLocal(String path) {
+        ConfigEntryData entry = entries.get(path);
+        return entry == null || entry.file().clientLocal();
+    }
+
+    /**
+     * 服务器配置仅在拥有 OP 权限（本地/单人/服务器授权）时可编辑
+     */
+    @Override
+    public boolean canEdit(String path) {
+        ConfigEntryData entry = entries.get(path);
+        if (entry == null) return false;
+        return entry.file().clientLocal() || canEditServer;
+    }
 }

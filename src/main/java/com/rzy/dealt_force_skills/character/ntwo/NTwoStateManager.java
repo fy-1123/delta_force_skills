@@ -223,7 +223,9 @@ public final class NTwoStateManager {
     }
 
     public static int cold(LivingEntity target) {
-        return Math.max(0, coldData(target).getInt(COLD_VALUE));
+        CompoundTag tag = coldData(target);
+        int value = Math.max(0, tag.getInt(COLD_VALUE));
+        return tag.getBoolean(QUICK_FROST) ? value : Math.min(100, value);
     }
 
     public static boolean hasCold(LivingEntity target) {
@@ -242,7 +244,7 @@ public final class NTwoStateManager {
                 && CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.NTWO_QUICK_FROST);
         int value = quickFrost
                 ? (previous > Integer.MAX_VALUE - amount ? Integer.MAX_VALUE : previous + amount)
-                : Math.min(100, previous + amount);
+                : (int) Math.min(100L, (long) previous + amount);
         tag.putInt(COLD_VALUE, value);
         tag.putBoolean(QUICK_FROST, quickFrost);
         tag.putUUID(COLD_OWNER, owner.getUUID());
@@ -269,25 +271,34 @@ public final class NTwoStateManager {
         }
         CompoundTag tag = coldData(target);
         int previous = cold(target);
-        int value = Math.min(100, previous + amount);
+        int value = (int) Math.min(100L, (long) previous + amount);
         tag.putInt(COLD_VALUE, value);
         tag.putUUID(COLD_OWNER, target.getUUID());
         tag.putString(COLD_OWNER_NAME, target.getGameProfile().getName());
-        long now = SkillCooldownHelper.now(target);
-        tag.putLong(COLD_LAST_INCREASE_TICK, now);
-        tag.putLong(COLD_LAST_DECAY_TICK, now + COLD_DECAY_DELAY_TICKS - COLD_DECAY_INTERVAL_TICKS);
+        if (value > previous) {
+            long now = SkillCooldownHelper.now(target);
+            tag.putLong(COLD_LAST_INCREASE_TICK, now);
+            tag.putLong(COLD_LAST_DECAY_TICK, now + COLD_DECAY_DELAY_TICKS - COLD_DECAY_INTERVAL_TICKS);
+        }
         applyColdMovement(target);
-        if (value >= 100) {
+        if (value >= 100 && !target.hasEffect(ModEffects.N_TWO_FROZEN.get())) {
             target.addEffect(new MobEffectInstance(ModEffects.N_TWO_FROZEN.get(), FREEZE_TICKS,
                     0, false, true, true));
+            if (target.hasEffect(ModEffects.N_TWO_FROZEN.get())) onFrozenTick(target);
             syncFrozenVisual(target, FREEZE_TICKS);
         }
         return value > previous;
     }
 
     public static void tickColdDecay(LivingEntity target) {
-        if (target == null || target.level().isClientSide
-                || !target.getPersistentData().contains(COLD_TAG, Tag.TAG_COMPOUND)) {
+        if (target == null || target.level().isClientSide) return;
+        if (target.hasEffect(ModEffects.N_TWO_FROZEN.get())) {
+            onFrozenTick(target);
+            return;
+        }
+        if (!target.getPersistentData().contains(COLD_TAG, Tag.TAG_COMPOUND)) return;
+        if (coldData(target).getBoolean("WasFrozen")) {
+            onFreezeEnded(target);
             return;
         }
         CompoundTag tag = coldData(target);
@@ -298,7 +309,7 @@ public final class NTwoStateManager {
         }
         long now = SkillCooldownHelper.now(target);
         long lastIncrease = tag.getLong(COLD_LAST_INCREASE_TICK);
-        if (lastIncrease <= 0L) {
+        if (!tag.contains(COLD_LAST_INCREASE_TICK, Tag.TAG_LONG)) {
             tag.putLong(COLD_LAST_INCREASE_TICK, now);
             tag.putLong(COLD_LAST_DECAY_TICK, now + COLD_DECAY_DELAY_TICKS - COLD_DECAY_INTERVAL_TICKS);
             applyColdMovement(target);
@@ -332,9 +343,24 @@ public final class NTwoStateManager {
         target.getPersistentData().remove(COLD_TAG);
     }
 
+    public static void onFrozenTick(LivingEntity target) {
+        if (target.level().isClientSide) return;
+        CompoundTag tag = coldData(target);
+        if (!tag.getBoolean("WasFrozen")) {
+            tag.putBoolean("WasFrozen", true);
+            tag.putBoolean("BeforeFreezeNoAi", target instanceof net.minecraft.world.entity.Mob mob && mob.isNoAi());
+        }
+    }
+
     public static void onFreezeEnded(LivingEntity target) {
-        if (target == null || !target.isAlive()
-                || !target.getPersistentData().contains(COLD_TAG, Tag.TAG_COMPOUND)) {
+        if (target == null) return;
+        CompoundTag frozenState = coldData(target);
+        if (target instanceof net.minecraft.world.entity.Mob mob && frozenState.getBoolean("WasFrozen")) {
+            mob.setNoAi(frozenState.getBoolean("BeforeFreezeNoAi"));
+        }
+        frozenState.remove("WasFrozen");
+        frozenState.remove("BeforeFreezeNoAi");
+        if (!target.isAlive() || !target.getPersistentData().contains(COLD_TAG, Tag.TAG_COMPOUND)) {
             clearCold(target);
             return;
         }
@@ -462,6 +488,7 @@ public final class NTwoStateManager {
         }
         target.addEffect(new MobEffectInstance(ModEffects.N_TWO_FROZEN.get(),
                 duration, amplifier, false, true, true), owner);
+        if (target.hasEffect(ModEffects.N_TWO_FROZEN.get())) onFrozenTick(target);
         syncFrozenVisual(target, duration);
         target.setTicksFrozen(Math.max(target.getTicksFrozen(), 140));
         target.level().playSound(null, target.getX(), target.getY(), target.getZ(), ModSounds.N_TWO_FREEZE.get(),

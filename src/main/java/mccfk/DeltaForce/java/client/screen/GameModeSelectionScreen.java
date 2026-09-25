@@ -126,6 +126,15 @@ public class GameModeSelectionScreen extends Screen {
             int textY = tabStartY + (tabHeight - this.font.lineHeight) / 2;
             int textColor = (i == 0) ? 0xFFFFFFFF : 0xFFAAAAAA;
             guiGraphics.drawString(this.font, tabTitle, textX, textY, textColor, false);
+
+            // 改枪台（tab 6）无实际功能，绘制红叉遮罩
+            if (i == 6) {
+                StartGameScreen.renderWipOverlay(guiGraphics, x, tabStartY, tabWidth, tabHeight, mouseX, mouseY);
+            }
+            // 部门（tab 3）无实际内容，绘制红叉遮罩
+            if (i == 3) {
+                StartGameScreen.renderWipOverlay(guiGraphics, x, tabStartY, tabWidth, tabHeight, mouseX, mouseY);
+            }
         }
 
         int barY = this.height - BAR_HEIGHT;
@@ -273,10 +282,6 @@ public class GameModeSelectionScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0 || button == 1) {
             if (hoveredNewBtn >= 0 && hoveredNewBtn < NEW_BTN_COUNT) {
-                if (hoveredNewBtn == 2) {
-                    StartGameScreen.handleSocialClick((int)mouseX, (int)mouseY, this.width, this.height, button);
-                    return true;
-                }
                 return true;
             }
         }

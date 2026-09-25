@@ -7,6 +7,8 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 
 import java.io.BufferedWriter;
@@ -122,6 +124,9 @@ public class EeconomyManager {
         return currencyDirs.get(type);
     }
 
+    /**
+     * 检查玩家是否已有指定货币数据文件（新版保留，供 SpecialOperationsBaseManager 调用）
+     */
     public boolean hasCurrencyData(String playerName, CurrencyType type) {
         Path directory = currencyDirs.get(type);
         return directory != null && Files.exists(directory.resolve(playerName + ".json"));
@@ -311,22 +316,34 @@ public class EeconomyManager {
     /**
      * 获取哈夫币数量（默认当前玩家）
      */
+    public static Component getHavocCoin() {
+        var player = Minecraft.getInstance().player;
+        if (player == null) return Component.translatable("deltaforce.economy.invalid_player");
+        return Component.literal(String.valueOf(getInstance().getBalance(player.getName().getString(), CurrencyType.HAVOC_COIN)));
+    }
+
     /**
      * 获取指定玩家哈夫币数量
      */
-    public static net.minecraft.network.chat.Component getHavocCoin(String playerName) {
-        if (!hasPlayerData(playerName)) return net.minecraft.network.chat.Component.translatable("deltaforce.economy.invalid_player");
-        return net.minecraft.network.chat.Component.literal(String.valueOf(getInstance().getBalance(playerName, CurrencyType.HAVOC_COIN)));
+    public static Component getHavocCoin(String playerName) {
+        if (!hasPlayerData(playerName)) return Component.translatable("deltaforce.economy.invalid_player");
+        return Component.literal(String.valueOf(getInstance().getBalance(playerName, CurrencyType.HAVOC_COIN)));
     }
 
     /**
      * 获取三角币（三角洲）数量（默认当前玩家）
      */
+    public static Component getDeltaCoin() {
+        var player = Minecraft.getInstance().player;
+        if (player == null) return Component.translatable("deltaforce.economy.invalid_player");
+        return Component.literal(String.valueOf(getInstance().getBalance(player.getName().getString(), CurrencyType.DELTA_COIN)));
+    }
+
     /**
      * 获取指定玩家三角币（三角洲）数量
      */
-    public static net.minecraft.network.chat.Component getDeltaCoin(String playerName) {
-        if (!hasPlayerData(playerName)) return net.minecraft.network.chat.Component.translatable("deltaforce.economy.invalid_player");
-        return net.minecraft.network.chat.Component.literal(String.valueOf(getInstance().getBalance(playerName, CurrencyType.DELTA_COIN)));
+    public static Component getDeltaCoin(String playerName) {
+        if (!hasPlayerData(playerName)) return Component.translatable("deltaforce.economy.invalid_player");
+        return Component.literal(String.valueOf(getInstance().getBalance(playerName, CurrencyType.DELTA_COIN)));
     }
 }

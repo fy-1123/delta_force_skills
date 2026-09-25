@@ -14,13 +14,13 @@ import java.nio.file.StandardCopyOption;
 
 /**
  * DFGAME 密码验证配置
- * 记录密码和尝试次数，配置文件存储在 .MCCFK_ALL_MODCONFIG/dfgame-auth.json
+ * 记录密码和尝试次数，配置文件存储在 .MCCFK_ALL_MODCONFIG/deltaforce/dfgame-auth.json
  * 密码正确后不再要求输入；配置文件被删除后可以重新输入
  */
 public final class DFGameAuthConfig {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path CONFIG_PATH = Paths.get(".MCCFK_ALL_MODCONFIG", "dfgame-auth.json");
+    private static final Path CONFIG_PATH = Paths.get(".MCCFK_ALL_MODCONFIG", "deltaforce", "dfgame-auth.json");
 
     private static final String PASSWORD = "fdaa2ddc00e66e4c7d1f9ed426b4f8e176aad15c17029648b86eba40ae20afbb";
 

@@ -189,64 +189,51 @@ public class InterdimensionalBlockEntity extends BlockEntity {
                 count, output.getHoverName()), true);
     }
 
+    public static void warmQueryCatalog(ServerLevel level) {
+        List<EntryView> crops = new ArrayList<>();
+        List<EntryView> foods = new ArrayList<>();
+        for (Item item : ForgeRegistries.ITEMS.getValues()) {
+            ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
+            if (id == null) continue;
+            try {
+                ItemStack icon = new ItemStack(item);
+                String name = icon.getHoverName().getString();
+                if (plantCandidateFor(item) != null) {
+                    crops.add(new EntryView(id, icon, name, "", List.of(), 0, CROP_FOOD_COST));
+                }
+                double energy = foodEnergy(item);
+                if (energy > 0.0D) {
+                    foods.add(new EntryView(id, icon, name, "", List.of(icon), 0, energy));
+                }
+            } catch (RuntimeException error) {
+                WorkBlockQueryCatalog.warnEntry("plants/food", id, error);
+            }
+        }
+        WorkBlockQueryCatalog.register(level.getServer(), "crops", crops);
+        WorkBlockQueryCatalog.register(level.getServer(), "food", foods);
+    }
+
     private AdvancedWorkBlockData data(ServerPlayer player, int requestedMode, String query, int requestedPage) {
         int mode = requestedMode == AdvancedWorkBlockData.MODE_FOOD
-                ? AdvancedWorkBlockData.MODE_FOOD
-                : AdvancedWorkBlockData.MODE_CROP;
-        String normalized = normalizeQuery(query);
-        List<EntryView> entries = mode == AdvancedWorkBlockData.MODE_FOOD
-                ? foodEntries(player, normalized)
-                : cropEntries(player, normalized);
-        int maxPage = entries.isEmpty() ? 0 : (entries.size() - 1) / AdvancedWorkBlockData.PAGE_SIZE;
-        int page = clamp(requestedPage, 0, maxPage);
-        int from = page * AdvancedWorkBlockData.PAGE_SIZE;
-        int to = Math.min(entries.size(), from + AdvancedWorkBlockData.PAGE_SIZE);
-        return new AdvancedWorkBlockData(worldPosition, AdvancedWorkBlockData.BLOCK_INTERDIMENSIONAL, mode, normalized,
-                page, entries.size(), foodEnergy, entries.subList(from, to));
-    }
-
-    private List<EntryView> cropEntries(ServerPlayer player, String query) {
-        List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        Map<Item, Integer> stock = WorkBlockStorageAccess.countItems(sources);
-        List<EntryView> entries = new ArrayList<>();
-        for (Item item : ForgeRegistries.ITEMS.getValues()) {
-            ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
-            PlantCandidate plant = plantCandidateFor(item);
-            if (id == null || plant == null || !matches(item, id, query)) {
-                continue;
-            }
-            List<ItemStack> drops = maturePlantDrops(player, plant);
-            if (drops.isEmpty()) {
-                continue;
-            }
-            ItemStack icon = new ItemStack(item);
-            int available = stock.getOrDefault(item, 0);
-            String detail = Component.translatable("screen.dealt_force_skills.interdimensional.seed_count", available).getString();
-            entries.add(new EntryView(id, icon, icon.getHoverName().getString(), detail, drops, available, CROP_FOOD_COST));
-        }
-        entries.sort(Comparator.comparing(EntryView::name).thenComparing(entry -> entry.id().toString()));
-        return entries;
-    }
-
-    private List<EntryView> foodEntries(ServerPlayer player, String query) {
-        List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        Map<Item, Integer> stock = WorkBlockStorageAccess.countItems(sources);
-        List<EntryView> entries = new ArrayList<>();
-        for (Item item : ForgeRegistries.ITEMS.getValues()) {
-            ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
-            double energy = foodEnergy(item);
-            if (id == null || energy <= 0.0D || !matches(item, id, query)) {
-                continue;
-            }
-            ItemStack stack = new ItemStack(item);
-            int available = stock.getOrDefault(item, 0);
-            String detail = Component.translatable("screen.dealt_force_skills.interdimensional.food_energy",
-                    String.format(Locale.ROOT, "%.1f", energy), available).getString();
-            entries.add(new EntryView(id, stack, stack.getHoverName().getString(), detail,
-                    List.of(stack.copy()), available, energy));
-        }
-        entries.sort(Comparator.comparing(EntryView::name).thenComparing(entry -> entry.id().toString()));
-        return entries;
+                ? AdvancedWorkBlockData.MODE_FOOD : AdvancedWorkBlockData.MODE_CROP;
+        Map<Item, Integer> stock = WorkBlockStorageAccess.countItems(
+                WorkBlockStorageAccess.collectSources(level, worldPosition, player));
+        return WorkBlockQueryCatalog.page(player, this, mode == AdvancedWorkBlockData.MODE_FOOD ? "food" : "crops",
+                AdvancedWorkBlockData.BLOCK_INTERDIMENSIONAL, mode, normalizeQuery(query), requestedPage,
+                foodEnergy, () -> canUse(player), entry -> {
+                    Item item = entry.icon().getItem();
+                    int available = stock.getOrDefault(item, 0);
+                    if (mode == AdvancedWorkBlockData.MODE_FOOD) {
+                        double energy = foodEnergy(item);
+                        String detail = Component.translatable("screen.dealt_force_skills.interdimensional.food_energy",
+                                String.format(Locale.ROOT, "%.1f", energy), available).getString();
+                        return new EntryView(entry.id(), entry.icon(), entry.name(), detail,
+                                List.of(new ItemStack(item)), available, energy);
+                    }
+                    List<ItemStack> drops = maturePlantDrops(player, plantCandidateFor(item));
+                    String detail = Component.translatable("screen.dealt_force_skills.interdimensional.seed_count", available).getString();
+                    return new EntryView(entry.id(), entry.icon(), entry.name(), detail, drops, available, CROP_FOOD_COST);
+                });
     }
 
     private List<ItemStack> maturePlantDrops(ServerPlayer player, PlantCandidate plant) {

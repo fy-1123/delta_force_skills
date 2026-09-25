@@ -181,6 +181,9 @@ public class ModCreativeTabs {
                         output.accept(ModItems.HVK_UNIVERSAL_GLUE.get());
                         output.accept(ModItems.INTERDIMENSIONAL_BLOCK.get());
                         output.accept(ModItems.GTI_SPECIAL_OPERATIONS.get());
+                        if (com.rzy.dealt_force_skills.compat.SophisticatedBackpackCompat.isLoaded()) {
+                            output.accept(ModItems.AUTO_SELL_UPGRADE.get());
+                        }
                     })
                     .build());
 }

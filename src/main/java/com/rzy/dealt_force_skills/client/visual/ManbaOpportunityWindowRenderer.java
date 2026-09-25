@@ -15,7 +15,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import com.rzy.dealt_force_skills.client.renderer.DfsRenderTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -62,24 +62,34 @@ public final class ManbaOpportunityWindowRenderer {
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
         Font font = minecraft.font;
 
+        var markers = ClientManbaHudState.opportunityMarkers();
         RenderSystem.disableDepthTest();
-        var lineBuffer = buffers.getBuffer(RenderType.lines());
-        for (ManbaOpportunityMarker marker : ClientManbaHudState.opportunityMarkers()) {
-            double distanceSqr = marker.position().distanceToSqr(viewerPos);
-            if (distanceSqr > rangeSqr) {
-                continue;
+        try {
+            var lineBuffer = buffers.getBuffer(DfsRenderTypes.xrayLines());
+            for (ManbaOpportunityMarker marker : markers) {
+                double distanceSqr = marker.position().distanceToSqr(viewerPos);
+                if (distanceSqr > rangeSqr) {
+                    continue;
+                }
+                AABB box = markerBox(marker).move(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+                LevelRenderer.renderLineBox(poseStack, lineBuffer, box,
+                        red(marker.type()), green(marker.type()), blue(marker.type()), 0.95F);
             }
-            AABB box = markerBox(marker).move(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-            LevelRenderer.renderLineBox(poseStack, lineBuffer, box,
-                    red(marker.type()), green(marker.type()), blue(marker.type()), 0.95F);
-            renderLabel(poseStack, buffers, font, camera, cameraPos,
-                    labelPosition(marker),
-                    markerText(marker, Math.round(Math.sqrt(distanceSqr))),
-                    labelColor(marker.type()));
+            buffers.endBatch(DfsRenderTypes.xrayLines());
+
+            for (ManbaOpportunityMarker marker : markers) {
+                double distanceSqr = marker.position().distanceToSqr(viewerPos);
+                if (distanceSqr <= rangeSqr) {
+                    renderLabel(poseStack, buffers, font, camera, cameraPos,
+                            labelPosition(marker),
+                            markerText(marker, Math.round(Math.sqrt(distanceSqr))),
+                            labelColor(marker.type()));
+                }
+            }
+            buffers.endBatch();
+        } finally {
+            RenderSystem.enableDepthTest();
         }
-        buffers.endBatch(RenderType.lines());
-        buffers.endBatch();
-        RenderSystem.enableDepthTest();
     }
 
     private static AABB markerBox(ManbaOpportunityMarker marker) {

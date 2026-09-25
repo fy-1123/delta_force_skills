@@ -53,6 +53,10 @@ public final class SkillCooldownHelper {
         if (baseTicks <= 0) {
             return 0;
         }
+        // 管理员无冷却调试
+        if (mccfk.DeltaForce.java.AdminDebugManager.isNoCooldown(player)) {
+            return 1;
+        }
         int level = ModGameRules.effectiveExperienceLevel(player);
         double multiplier = Math.max(0.0D, 1.0D - level * REDUCTION_PER_LEVEL);
         multiplier *= com.rzy.dealt_force_skills.arena.HvkAsaraArenaManager.cooldownMultiplier(player);

@@ -10,16 +10,20 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
-import net.minecraft.util.FormattedCharSequence;
-import java.util.HashMap;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 干员选择栏（特战干员界面底栏上方）
@@ -74,9 +78,9 @@ public class Operator {
             Map.entry("dealt_force_skills:assault/nox", new PreviewAsset(382, 288)),
             Map.entry("dealt_force_skills:assault/tempest", new PreviewAsset(244, 288)),
             Map.entry("dealt_force_skills:assault/vyron", new PreviewAsset(273, 288)),
+            Map.entry("dealt_force_skills:boss/commander", new PreviewAsset(399, 288)),
             Map.entry("dealt_force_skills:boss/ghroth", new PreviewAsset(570, 288)),
             Map.entry("dealt_force_skills:boss/saeed", new PreviewAsset(254, 288)),
-            Map.entry("dealt_force_skills:boss/commander", new PreviewAsset(399, 288)),
             Map.entry("dealt_force_skills:engineer/gizmo", new PreviewAsset(364, 288)),
             Map.entry("dealt_force_skills:engineer/n_two", new PreviewAsset(294, 288)),
             Map.entry("dealt_force_skills:engineer/shepherd", new PreviewAsset(230, 288)),
@@ -124,7 +128,7 @@ public class Operator {
     // 详情按钮区域（由渲染时计算，供点击检测用）
     private static int detailBtnX = 0;
     private static int detailBtnY = 0;
-    private static int detailBtnW = 80;
+    private static int detailBtnW = 60;
     private static int detailBtnH = 20;
 
     // 介绍文本滚动
@@ -145,7 +149,7 @@ public class Operator {
     private static final int INTRO_PANEL_TOP = 40;        // 面板距上边缘（固定值，避开标签栏）
     private static final int INTRO_PANEL_BOTTOM_MARGIN = 8;
     private static final int INTRO_PANEL_PADDING = 12;
-    private static final int INTRO_PANEL_BG = 0x401A2422;
+    private static final int INTRO_PANEL_BG = 0xC0101A24;
     private static final int INTRO_BTN_BG = 0xFF2A3550;
     private static final int INTRO_BTN_HOVER = 0xFF3D4F6F;
 
@@ -329,7 +333,6 @@ public class Operator {
             g.fill(inX, inY, inX + inner, inY + inner, 0xFF00FF00);  // 绿色
         }
 
-        // Disabled portraits stay visibly black even when hovered or currently selected.
         if (!selectable) {
             g.fill(iconX, contentY, iconX + OP_ICON_W, contentY + OP_ICON_H, 0xD0000000);
         }
@@ -413,7 +416,7 @@ public class Operator {
     private static ResourceLocation operatorTexture(CharacterDefinition character) {
         String id = character.id();
         String path = id.contains(":") ? id.substring(id.indexOf(':') + 1) : id;
-        ResourceLocation tex = new ResourceLocation(
+        ResourceLocation tex = ResourceLocation.fromNamespaceAndPath(
                 "deltaforce", "textures/gui/operator/" + path + ".png");
         return Minecraft.getInstance().getResourceManager().getResource(tex).isPresent() ? tex : null;
     }
@@ -566,15 +569,11 @@ public class Operator {
     }
 
     /**
-     * 渲染角色预览大图：优先显示待确认（预选）角色，无待确认时显示当前已选角色。
-     * 贴图路径：deltaforce:textures/gui/operator_preview/&lt;角色短id&gt;.png
+     * 渲染干员详情面板：左边介绍图 + 右边介绍文本 + 详情按钮
+     * 不死人特殊处理：右边显示多个子角色，每个子角色有名字、介绍和详情按钮
      */
     public static void renderOperatorDetail(GuiGraphics graphics, int mouseX, int mouseY, int screenWidth, int screenHeight,
             int offsetX, int offsetY, float uiScale) {
-        detailBtnX = 0;
-        introTextPanelW = 0;
-        introTextPanelH = 0;
-        undeadDetailBtns.clear();
         String characterId = pendingCharacterId != null && !pendingCharacterId.isBlank()
                 ? pendingCharacterId
                 : ClientCharacterSelectionState.selectedCharacterId();
@@ -597,7 +596,7 @@ public class Operator {
         PreviewAsset asset = PREVIEWS.get(characterId);
         if (asset == null) asset = new PreviewAsset(288, 288);
         String path = characterId.substring(characterId.indexOf(':') + 1);
-        ResourceLocation texture = new ResourceLocation(
+        ResourceLocation texture = ResourceLocation.fromNamespaceAndPath(
                 "deltaforce", "textures/gui/operator_preview/" + path + ".png");
         boolean hasPreview = Minecraft.getInstance().getResourceManager().getResource(texture).isPresent();
 
@@ -624,12 +623,12 @@ public class Operator {
 
         // 绘制介绍图
         if (hasPreview) {
-        graphics.pose().pushPose();
-        graphics.pose().translate(drawX, drawY, 0.0F);
-        graphics.pose().scale(scale, scale, 1.0F);
-        graphics.blit(texture, 0, 0, 0, 0,
-                asset.width(), asset.height(), asset.width(), asset.height());
-        graphics.pose().popPose();
+            graphics.pose().pushPose();
+            graphics.pose().translate(drawX, drawY, 0.0F);
+            graphics.pose().scale(scale, scale, 1.0F);
+            graphics.blit(texture, 0, 0, 0, 0,
+                    asset.width(), asset.height(), asset.width(), asset.height());
+            graphics.pose().popPose();
         }
 
         // 右面板
@@ -754,7 +753,7 @@ public class Operator {
         int lineHeight = font.lineHeight + 1;
 
         // 子角色详情按钮尺寸
-        int subBtnW = Math.min(80, textMaxW);
+        int subBtnW = 40;
         int subBtnH = 16;
         int subBtnMargin = 4;
 
@@ -778,7 +777,6 @@ public class Operator {
 
         // 滚动范围
         int visibleH = introTextPanelH - INTRO_PANEL_PADDING * 2;
-        if (visibleH <= 0 || textMaxW <= 0) return;
         introMaxScroll = Math.max(0, totalContentH - visibleH);
         if (introScrollOffset > introMaxScroll) introScrollOffset = introMaxScroll;
         if (introScrollOffset < 0) introScrollOffset = 0;
@@ -839,7 +837,7 @@ public class Operator {
             int btnColor = btnHovered ? INTRO_BTN_HOVER : INTRO_BTN_BG;
             graphics.fill(btnX, btnY, btnX + subBtnW, btnY + subBtnH, btnColor);
 
-            String btnText = Component.translatable(expanded ? "screen.deltaforce.operator.collapse" : "screen.deltaforce.operator.details").getString();
+            String btnText = expanded ? "收起" : "详情";
             int btnTextW = font.width(btnText);
             graphics.drawString(font, btnText,
                     btnX + (subBtnW - btnTextW) / 2,
@@ -883,12 +881,9 @@ public class Operator {
      * @return 是否命中按钮
      */
     public static boolean handleDetailButtonClick(int mouseX, int mouseY) {
-        if (!isInIntroPanel(mouseX, mouseY)) return false;
         // 先检查不死人子角色详情按钮
         for (UndeadDetailBtn btn : undeadDetailBtns) {
-            if (btn.y >= introTextPanelY + INTRO_PANEL_PADDING
-                    && btn.y + btn.h <= introTextPanelY + introTextPanelH - INTRO_PANEL_PADDING
-                    && mouseX >= btn.x && mouseX < btn.x + btn.w
+            if (mouseX >= btn.x && mouseX < btn.x + btn.w
                     && mouseY >= btn.y && mouseY < btn.y + btn.h) {
                 boolean current = undeadSubDetailExpanded.getOrDefault(btn.fileKey, false);
                 undeadSubDetailExpanded.put(btn.fileKey, !current);
@@ -945,41 +940,35 @@ public class Operator {
      * 加载并解析干员介绍文本
      */
     private static IntroText loadIntroText(String characterId) {
-        String name = introFileName(characterId);
-        if (name == null) return null;
-        return loadIntroResource(name);
-    }
-
-    private static IntroText loadIntroResource(String name) {
-        if (introCache.containsKey(name)) return introCache.get(name);
-        IntroText result = null;
-        ResourceLocation resource = new ResourceLocation(
-                "dealt_force_skills", "operator_introduction/" + name + ".json");
-        var source = Minecraft.getInstance().getResourceManager().getResource(resource);
-        if (source.isPresent()) {
-            try (var reader = source.get().openAsReader()) {
-                var json = com.google.gson.JsonParser.parseReader(reader).getAsJsonObject();
-                String brief = json.has("brief") ? json.get("brief").getAsString() : "";
-                String full = json.has("full") ? json.get("full").getAsString() : brief;
-                result = new IntroText(brief.isBlank() ? full : brief, full.isBlank() ? brief : full);
-            } catch (java.io.IOException | RuntimeException error) {
-                org.slf4j.LoggerFactory.getLogger(Operator.class).warn("Cannot read operator introduction {}", resource, error);
-            }
+        if (introCache.containsKey(characterId)) {
+            return introCache.get(characterId);
         }
-        introCache.put(name, result);
-        return result;
-    }
-
-    public static void resetIntroduction() {
-        introCache.clear();
-        undeadSubIntros = null;
-        lastDetailCharacterId = null;
-        introScrollOffset = 0;
-        introMaxScroll = 0;
-        detailBtnX = 0;
-        introTextPanelW = 0;
-        introTextPanelH = 0;
-        undeadDetailBtns.clear();
+        String fileName = introFileName(characterId);
+        if (fileName == null) {
+            introCache.put(characterId, null);
+            return null;
+        }
+        try {
+            ResourceLocation res = ResourceLocation.fromNamespaceAndPath(
+                    "dealt_force_skills", "operator_introduction/" + fileName + ".txt");
+            var opt = Minecraft.getInstance().getResourceManager().getResource(res);
+            if (opt.isEmpty()) {
+                introCache.put(characterId, null);
+                return null;
+            }
+            String content;
+            try (var reader = new BufferedReader(new InputStreamReader(opt.get().open(), StandardCharsets.UTF_8))) {
+                content = reader.lines().collect(Collectors.joining("\n"));
+            }
+            String brief = extractTag(content, "introduction");
+            String full = extractTag(content, "introduction_all");
+            IntroText result = new IntroText(brief, full);
+            introCache.put(characterId, result);
+            return result;
+        } catch (Exception e) {
+            introCache.put(characterId, null);
+            return null;
+        }
     }
 
     /**
@@ -992,10 +981,18 @@ public class Operator {
         List<SubIntroText> result = new ArrayList<>();
         for (String fileKey : UNDEAD_SUB_FILES) {
             try {
-                IntroText intro = loadIntroResource("undead/" + fileKey);
-                if (intro == null) continue;
-                String briefRaw = intro.brief();
-                String fullRaw = intro.full();
+                ResourceLocation res = ResourceLocation.fromNamespaceAndPath(
+                        "dealt_force_skills", "operator_introduction/undead/" + fileKey + ".txt");
+                var opt = Minecraft.getInstance().getResourceManager().getResource(res);
+                if (opt.isEmpty()) {
+                    continue;
+                }
+                String content;
+                try (var reader = new BufferedReader(new InputStreamReader(opt.get().open(), StandardCharsets.UTF_8))) {
+                    content = reader.lines().collect(Collectors.joining("\n"));
+                }
+                String briefRaw = extractTag(content, "introduction");
+                String fullRaw = extractTag(content, "introduction_all");
                 if (briefRaw == null && fullRaw == null) {
                     continue;
                 }
@@ -1060,6 +1057,20 @@ public class Operator {
             sb.append(line);
         }
         return sb.toString().trim();
+    }
+
+    /**
+     * 从XML标签中提取内容
+     */
+    private static String extractTag(String content, String tag) {
+        String open = "<" + tag + ">";
+        String close = "</" + tag + ">";
+        int start = content.indexOf(open);
+        int end = content.indexOf(close);
+        if (start >= 0 && end > start) {
+            return content.substring(start + open.length(), end).trim();
+        }
+        return null;
     }
 
     /**

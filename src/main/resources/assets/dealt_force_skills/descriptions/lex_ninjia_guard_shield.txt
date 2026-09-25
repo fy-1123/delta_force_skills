@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_1")
+.level(1);
 蕾忍的守卫之盾，用于防御和格挡。

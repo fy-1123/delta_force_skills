@@ -6,6 +6,7 @@ import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.client.character.ClientCharacterSkinState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.PlayerModel;
+import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -15,6 +16,7 @@ import net.minecraft.client.renderer.entity.player.PlayerRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.client.event.RenderArmEvent;
@@ -51,7 +53,16 @@ public final class CharacterSkinOverrideVisuals {
             int packedLight,
             AbstractClientPlayer player
     ) {
-        renderHand(poseStack, buffer, packedLight, player, HumanoidArm.RIGHT);
+        CharacterSkinArmRenderer override = ClientCharacterSkinState.skinFor(player).isPresent()
+                ? ARM_RENDERERS.getOrDefault(player.getModelName(), ARM_RENDERERS.get("default"))
+                : null;
+        if (override != null) {
+            override.renderDirectRightHand(poseStack, buffer, packedLight, player);
+            return;
+        }
+        if (Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(player) instanceof PlayerRenderer renderer) {
+            renderer.renderRightHand(poseStack, buffer, packedLight, player);
+        }
     }
 
     public static void renderLeftHand(
@@ -60,33 +71,15 @@ public final class CharacterSkinOverrideVisuals {
             int packedLight,
             AbstractClientPlayer player
     ) {
-        renderHand(poseStack, buffer, packedLight, player, HumanoidArm.LEFT);
-    }
-
-    private static void renderHand(
-            PoseStack poseStack,
-            MultiBufferSource buffer,
-            int packedLight,
-            AbstractClientPlayer player,
-            HumanoidArm arm
-    ) {
         CharacterSkinArmRenderer override = ClientCharacterSkinState.skinFor(player).isPresent()
                 ? ARM_RENDERERS.getOrDefault(player.getModelName(), ARM_RENDERERS.get("default"))
                 : null;
         if (override != null) {
-            if (arm == HumanoidArm.RIGHT) {
-                override.renderRightHand(poseStack, buffer, packedLight, player);
-            } else {
-                override.renderLeftHand(poseStack, buffer, packedLight, player);
-            }
+            override.renderDirectLeftHand(poseStack, buffer, packedLight, player);
             return;
         }
         if (Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(player) instanceof PlayerRenderer renderer) {
-            if (arm == HumanoidArm.RIGHT) {
-                renderer.renderRightHand(poseStack, buffer, packedLight, player);
-            } else {
-                renderer.renderLeftHand(poseStack, buffer, packedLight, player);
-            }
+            renderer.renderLeftHand(poseStack, buffer, packedLight, player);
         }
     }
 
@@ -120,9 +113,9 @@ public final class CharacterSkinOverrideVisuals {
 
         event.setCanceled(true);
         if (event.getArm() == HumanoidArm.RIGHT) {
-            renderer.renderRightHand(event.getPoseStack(), event.getMultiBufferSource(), event.getPackedLight(), player);
+            renderer.renderDirectRightHand(event.getPoseStack(), event.getMultiBufferSource(), event.getPackedLight(), player);
         } else {
-            renderer.renderLeftHand(event.getPoseStack(), event.getMultiBufferSource(), event.getPackedLight(), player);
+            renderer.renderDirectLeftHand(event.getPoseStack(), event.getMultiBufferSource(), event.getPackedLight(), player);
         }
     }
 
@@ -168,6 +161,55 @@ public final class CharacterSkinOverrideVisuals {
         @Override
         public ResourceLocation getTextureLocation(AbstractClientPlayer player) {
             return ClientCharacterSkinState.skinFor(player).orElseGet(() -> super.getTextureLocation(player));
+        }
+
+        private void renderDirectRightHand(
+                PoseStack poseStack,
+                MultiBufferSource buffer,
+                int packedLight,
+                AbstractClientPlayer player
+        ) {
+            renderDirectHand(poseStack, buffer, packedLight, player, model.rightArm, model.rightSleeve, PlayerModelPart.RIGHT_SLEEVE);
+        }
+
+        private void renderDirectLeftHand(
+                PoseStack poseStack,
+                MultiBufferSource buffer,
+                int packedLight,
+                AbstractClientPlayer player
+        ) {
+            renderDirectHand(poseStack, buffer, packedLight, player, model.leftArm, model.leftSleeve, PlayerModelPart.LEFT_SLEEVE);
+        }
+
+        private void renderDirectHand(
+                PoseStack poseStack,
+                MultiBufferSource buffer,
+                int packedLight,
+                AbstractClientPlayer player,
+                ModelPart arm,
+                ModelPart sleeve,
+                PlayerModelPart sleevePart
+        ) {
+            if (player.isSpectator()) {
+                return;
+            }
+
+            PlayerModel<AbstractClientPlayer> playerModel = getModel();
+            playerModel.setAllVisible(false);
+            arm.visible = true;
+            sleeve.visible = player.isModelPartShown(sleevePart);
+            playerModel.attackTime = 0.0F;
+            playerModel.crouching = false;
+            playerModel.swimAmount = 0.0F;
+            playerModel.setupAnim(player, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
+
+            ResourceLocation texture = getTextureLocation(player);
+            arm.xRot = 0.0F;
+            arm.render(poseStack, buffer.getBuffer(RenderType.entitySolid(texture)), packedLight, OverlayTexture.NO_OVERLAY);
+            if (sleeve.visible) {
+                sleeve.xRot = 0.0F;
+                sleeve.render(poseStack, buffer.getBuffer(RenderType.entityTranslucent(texture)), packedLight, OverlayTexture.NO_OVERLAY);
+            }
         }
     }
 

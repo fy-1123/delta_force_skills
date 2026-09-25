@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_1")
+.level(1);
 使用后15秒内免疫除近战与TaCZ枪械伤害外的伤害，冷却60秒。

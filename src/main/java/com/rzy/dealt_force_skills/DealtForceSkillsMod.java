@@ -71,6 +71,7 @@ public class DealtForceSkillsMod {
         ModEffects.EFFECTS.register(modBus);
         ModEntities.ENTITIES.register(modBus);
         ModParticles.PARTICLES.register(modBus);
+        com.rzy.dealt_force_skills.recipe.PotionIngredient.register();
         ModRecipeSerializers.RECIPE_SERIALIZERS.register(modBus);
         ModGameRules.register();
 
@@ -98,6 +99,7 @@ public class DealtForceSkillsMod {
             GhrothArmoryCatalog.entries();
             UndeadShopEntry.values();
             SpecialOperationsBaseManager.populateConfigDefaults();
+            com.rzy.dealt_force_skills.compat.SophisticatedBackpackCompat.register();
             RarityCoreCompat.registerRarities();
             DealtForceConfig.finishInitialPopulation();
             DealtBaseConfig.flush();

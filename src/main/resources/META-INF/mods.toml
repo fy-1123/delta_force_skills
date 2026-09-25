@@ -30,12 +30,6 @@ versionRange="[1.20.1,1.20.2)"
 ordering="NONE"
 side="BOTH"
 
-[[dependencies.${dfmod_id}]]
-modId="${mod_id}"
-mandatory=true
-versionRange="[${mod_version},)"
-ordering="AFTER"
-side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="forge"
@@ -88,3 +82,16 @@ side="BOTH"
 
 [[mixins]]
 config="${mod_id}.mixins.json"
+[[dependencies.${mod_id}]]
+modId="sophisticatedcore"
+mandatory=false
+versionRange="[0,)"
+ordering="AFTER"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="sophisticatedbackpacks"
+mandatory=false
+versionRange="[0,)"
+ordering="AFTER"
+side="BOTH"

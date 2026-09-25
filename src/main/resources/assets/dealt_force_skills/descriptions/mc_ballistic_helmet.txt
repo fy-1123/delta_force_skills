@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_2")
+.level(2);
 能一定程度上阻挡子弹穿透。

@@ -2,6 +2,7 @@ package com.rzy.dealt_force_skills.character.rover;
 
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.entity.RoverFieldEntity;
+import com.rzy.dealt_force_skills.entity.RoverWolfEntity;
 import com.rzy.dealt_force_skills.registry.ModEffects;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectCategory;
@@ -41,11 +42,20 @@ public final class RoverEvents {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST) public static void fatalDamage(LivingDamageEvent event) {
+        if (event.getEntity() instanceof RoverWolfEntity wolf
+                && event.getAmount() >= wolf.getHealth() && wolf.preventLethalDamage()) {
+            event.setAmount(0);
+            return;
+        }
         if (event.getAmount() > 0 && event.getAmount() >= event.getEntity().getHealth()
                 && RoverStateManager.preventDeath(event.getEntity(), event.getSource())) event.setAmount(0);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST) public static void death(LivingDeathEvent event) {
+        if (event.getEntity() instanceof RoverWolfEntity wolf && wolf.preventLethalDamage()) {
+            event.setCanceled(true);
+            return;
+        }
         if (RoverStateManager.preventDeath(event.getEntity(), event.getSource())) event.setCanceled(true);
     }
 

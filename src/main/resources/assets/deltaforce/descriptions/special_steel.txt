@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_1")
+.level(1);
 护甲与头盔系统预留材料。

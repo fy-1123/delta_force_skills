@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 电子物品，存储加密数据，可为军用，带自毁功能。

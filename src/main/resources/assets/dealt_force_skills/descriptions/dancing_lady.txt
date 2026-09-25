@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_3")
+.level(3);
 机械装备预留材料。

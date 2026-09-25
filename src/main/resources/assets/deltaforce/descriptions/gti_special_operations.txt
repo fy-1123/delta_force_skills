@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_1")
+.level(1);
 GTI特勤处设施方块，用于建设你的特勤处基地。

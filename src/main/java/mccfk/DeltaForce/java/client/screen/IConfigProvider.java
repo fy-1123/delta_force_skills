@@ -73,21 +73,33 @@ public interface IConfigProvider {
     boolean isDirty();
 
     /**
+     * 判断指定路径的配置项是客户端本地（C）还是服务端同步（S）
+     * 默认返回 true（客户端），DfsConfigProvider 会覆盖此方法区分
+     */
+    default boolean isClientLocal(String path) { return true; }
+
+    /**
+     * 判断当前用户是否有权编辑指定路径的配置项
+     * 默认：客户端本地配置（C）始终可编辑，服务端配置（S）需 OP 或本地世界
+     */
+    default boolean canEdit(String path) { return isClientLocal(path); }
+
+    /**
      * 配置项数据类
      * nestLevel: 嵌套层级，0=顶层，1=一级子项，2=二级子项
      * parentPath: 父配置项路径，null=无父项（顶层）
      */
     record ConfigEntry(String path, String key, String currentValue, String defaultValue,
                        String description, ConfigValueKind kind, String category, String subCategory,
-                       int nestLevel, String parentPath) {
+                       int nestLevel, String parentPath, boolean wip) {
 
         public ConfigEntry(String path, String key, String currentValue, String defaultValue,
                            String description, ConfigValueKind kind, String category, String subCategory) {
-            this(path, key, currentValue, defaultValue, description, kind, category, subCategory, 0, null);
+            this(path, key, currentValue, defaultValue, description, kind, category, subCategory, 0, null, false);
         }
 
         public ConfigEntry(String path, String key, String currentValue, String defaultValue, String description) {
-            this(path, key, currentValue, defaultValue, description, ConfigValueKind.STRING, "", "", 0, null);
+            this(path, key, currentValue, defaultValue, description, ConfigValueKind.STRING, "", "", 0, null, false);
         }
 
         public boolean isModified() {
@@ -108,6 +120,6 @@ public interface IConfigProvider {
      * 配置值类型
      */
     enum ConfigValueKind {
-        BOOLEAN, INTEGER, LONG, FLOAT, DOUBLE, STRING
+        BOOLEAN, INTEGER, LONG, FLOAT, DOUBLE, STRING, BUTTON
     }
 }

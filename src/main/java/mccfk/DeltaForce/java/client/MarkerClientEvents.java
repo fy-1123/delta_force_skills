@@ -89,7 +89,7 @@ public final class MarkerClientEvents {
     @SubscribeEvent
     public static void onRenderLevel(RenderLevelStageEvent event) {
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
-            MarkerRenderer.renderAllMarkers(event.getPoseStack(), event.getCamera());
+            MarkerRenderer.renderAllMarkers(event.getPoseStack(), event.getCamera(), event.getPartialTick());
         }
     }
 

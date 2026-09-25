@@ -1,0 +1,147 @@
+package mccfk.DeltaForce.java.client;
+
+import mccfk.DeltaForce.java.DeltaForce;
+import mccfk.DeltaForce.java.client.dfgame.DFGameDamageEventHandler;
+import mccfk.DeltaForce.java.client.dfgame.DFGameGuiEventHandler;
+import mccfk.DeltaForce.java.client.screen.ClientScreenRegistry;
+import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
+import mccfk.DeltaForce.java.client.screen.DFGameHudScreen;
+import mccfk.DeltaForce.java.client.screen.DFInventoryScreen;
+import mccfk.DeltaForce.java.client.screen.DfsConfigProvider;
+import mccfk.DeltaForce.java.client.screen.DfsSkillHudScreen;
+import mccfk.DeltaForce.java.client.screen.GameModeSelectionScreen;
+import mccfk.DeltaForce.java.client.screen.GroundItemHudScreen;
+import mccfk.DeltaForce.java.client.screen.HudElementType;
+import mccfk.DeltaForce.java.client.screen.LayoutEntry;
+import mccfk.DeltaForce.java.client.screen.OperatorSwitchConfirmScreen;
+import mccfk.DeltaForce.java.client.screen.SettingsScreen;
+import mccfk.DeltaForce.java.client.screen.StaminaBarHudScreen;
+import mccfk.DeltaForce.java.item.creative.DeltaForceCreativeTabs;
+import net.minecraft.network.chat.Component;
+import net.minecraftforge.client.ConfigScreenHandler;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.ModLoadingContext;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * DeltaForce 客户端专用初始化
+ * 与 DeltaForce 主类隔离，避免服务端类加载时触发 RuntimeDistCleaner
+ */
+public final class DeltaForceClientSetup {
+
+    private DeltaForceClientSetup() {
+    }
+
+    public static void init(IEventBus modEventBus) {
+        // 注册配置界面入口（Forge 模组列表"Config"按钮 → 打开设置界面）
+        ModLoadingContext.get().registerExtensionPoint(
+            ConfigScreenHandler.ConfigScreenFactory.class,
+            () -> new ConfigScreenHandler.ConfigScreenFactory(
+                (minecraft, parent) -> new SettingsScreen(parent)));
+
+        // 注册自定义掉落物配置
+        CustomDropConfig.bootstrap();
+        DeltaForce.registerConfigProvider(DeltaForce.MODID, new CustomDropConfigProvider());
+
+        // 注册核心模组配置（dealt_force_skills），联网时同步服务端配置
+        DeltaForce.registerConfigProvider("dealt_force_skills", new DfsConfigProvider());
+
+        // 注册设置界面UI状态配置（独立配置，不显示在设置界面中）
+        SettingsUIConfig.bootstrap();
+
+        // 注册DF创造模式标签页
+        DeltaForceCreativeTabs.register(modEventBus);
+
+        // 注册客户端 DFGAME 事件
+        MinecraftForge.EVENT_BUS.register(DFGameGuiEventHandler.class);
+        MinecraftForge.EVENT_BUS.register(DFGameDamageEventHandler.class);
+
+        // 从配置文件恢复 df main 开关状态
+        DeltaForce.setDFMain(DFClientConfig.getInstance().isDfMainEnabled());
+
+        // 注册布局配置系统的可编辑界面
+        registerLayoutScreens();
+    }
+
+    /** 向布局配置系统注册所有可编辑的界面/HUD条目及其预定义元素 */
+    private static void registerLayoutScreens() {
+        // 仅注册有真实视觉对应、可编辑位置的HUD元素
+        // Screen类界面（主界面/设置/背包等）由Screen自身渲染，无需编辑器占位
+
+        // DFGame HUD: 屏幕血量条（真实渲染）
+        // entryId 必须用点号分隔 modId.screenName，编辑器才能正确匹配游戏端路径
+        ClientScreenRegistry.register("dfgame.hud",
+                Component.translatable("screen.deltaforce.dfgame_hud"),
+                DFGameHudScreen.class,
+                makeElements(
+                        el("health", "health_bar", 0.02f, 0.92f, 0f, 0f, 0.22f, 0.04f)));
+
+        // DFS 技能按钮（真实渲染）
+        ClientScreenRegistry.register("dfs.skill_hud",
+                Component.translatable("screen.deltaforce.dfs_skill_buttons"),
+                DfsSkillHudScreen.class,
+                makeElements(
+                        el("custom_box", "skill_buttons", 0.25f, 0.90f, 0f, 0f, 0.22f, 0.06f)));
+
+        // DFS 体力条（真实渲染）
+        ClientScreenRegistry.register("dfs.stamina_hud",
+                Component.translatable("screen.deltaforce.dfs_stamina_bar"),
+                StaminaBarHudScreen.class,
+                makeElements(
+                        el("health", "stamina_bar", 0.55f, 0.91f, 0f, 0f, 0.085f, 0.013f)));
+
+        // 地面物品信息面板（真实渲染）
+        ClientScreenRegistry.register("deltaforce.ground_item_hud",
+                Component.translatable("screen.deltaforce.ground_item_panel"),
+                GroundItemHudScreen.class,
+                makeElements(
+                        el("custom_box", "ground_item_panel", 0.72f, 0.11f, 0f, 0f, 0.18f, 0.15f)));
+    }
+
+    /** 创建单个默认布局元素 */
+    private static LayoutEntry el(String typeId, String suffix,
+            float anchorX, float anchorY,
+            float offsetX, float offsetY,
+            float relW, float relH) {
+        HudElementType ht = HudElementType.fromId(typeId);
+        LayoutEntry e = new LayoutEntry();
+        e.id = typeId + "_" + suffix;
+        // 直接用中文名称，避免语言管理器未加载时显示翻译键
+        e.displayName = switch (typeId) {
+            case "health" -> "血量条";
+            case "custom_box" -> "区域";
+            case "title_label" -> "标题";
+            case "player_inventory" -> "背包";
+            default -> ht.displayName().getString();
+        };
+        e.anchorX = anchorX;
+        e.anchorY = anchorY;
+        e.offsetX = offsetX;
+        e.offsetY = offsetY;
+        e.relWidth = relW;
+        e.relHeight = relH;
+        e.enabled = true;
+        e.scaleX = 1.0f;
+        e.scaleY = 1.0f;
+        return e;
+    }
+
+    /** 创建默认元素列表 */
+    @SafeVarargs
+    private static List<LayoutEntry> makeElements(LayoutEntry... entries) {
+        List<LayoutEntry> list = new ArrayList<>();
+        for (LayoutEntry e : entries)
+            list.add(e);
+        return list;
+    }
+
+    /** 由 DeltaForce.setDFMain 通过反射调用，持久化开关状态到客户端配置文件 */
+    @SuppressWarnings("unused")
+    public static void onDfMainChanged(boolean enabled) {
+        DFClientConfig.getInstance().setDfMainEnabled(enabled);
+        DFClientConfig.getInstance().save();
+    }
+}

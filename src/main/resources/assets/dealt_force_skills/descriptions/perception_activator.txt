@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_4")
+.level(4);
 360 秒 2 级听力增幅；头盔听力系统可叠加。

@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 对激活的原版信标使用以召唤信标Boss。

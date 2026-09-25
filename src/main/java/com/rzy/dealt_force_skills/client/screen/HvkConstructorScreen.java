@@ -641,6 +641,11 @@ public class HvkConstructorScreen extends Screen {
 
     private void renderHoveredTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         RecipeView selected = selectedRecipe();
+        if (!disassembler && selected != null && isMissingSummaryHovered(mouseX, mouseY)
+                && detail != null && detail.status() == CraftabilityStatus.TRUNCATED) {
+            graphics.renderTooltip(font, font.split(Component.translatable(screenKey("truncated_help")), 260), mouseX, mouseY);
+            return;
+        }
         if (selected != null && isMissingSummaryHovered(mouseX, mouseY)
                 && detail != null && detail.id().equals(selected.id())
                 && detail.status() == CraftabilityStatus.MISSING && !detail.missing().isEmpty()) {
@@ -779,6 +784,12 @@ public class HvkConstructorScreen extends Screen {
     }
 
     private List<RecipeTreeLine> detailLines(RecipeView selected) {
+        if (!disassembler && detail != null && detail.id().equals(selected.id()) && !detail.missing().isEmpty()) {
+            List<RecipeTreeLine> missing = new ArrayList<>();
+            missing.add(new RecipeTreeLine(selected.result(), 0, false, false));
+            for (ItemStack stack : detail.missing()) missing.add(new RecipeTreeLine(stack, 0, true, true));
+            return missing;
+        }
         if (detail != null && detail.id().equals(selected.id()) && !detail.tree().isEmpty()) {
             List<RecipeTreeLine> ordered = new ArrayList<>();
             for (RecipeTreeLine line : detail.tree()) {

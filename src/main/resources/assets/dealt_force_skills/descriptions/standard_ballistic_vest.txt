@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_3")
+.level(3);
 阿萨拉高级士兵才能选择的高品质防弹衣。

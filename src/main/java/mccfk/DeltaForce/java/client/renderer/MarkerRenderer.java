@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -31,16 +32,19 @@ public class MarkerRenderer {
     /** 标点竖线高度（格） */
     private static final double MARKER_HEIGHT = 3.5;
 
+    // 线条渲染类型（Forge 1.20.1兼容：使用内置RenderType.lines()）
+    private static final RenderType GLOWING_LINES = RenderType.lines();
+
     /**
      * 渲染所有标点（在 RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS 阶段调用）
      */
-    public static void renderAllMarkers(PoseStack poseStack, Camera camera) {
+    public static void renderAllMarkers(PoseStack poseStack, Camera camera, float partialTick) {
         MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
-        VertexConsumer lines = bufferSource.getBuffer(MarkerRenderTypes.GLOWING_LINES);
+        VertexConsumer lines = bufferSource.getBuffer(GLOWING_LINES);
         for (Marker marker : ClientMarkerStorage.getAllMarkers()) {
             renderMarker(poseStack, camera, marker, lines);
         }
-        bufferSource.endBatch(MarkerRenderTypes.GLOWING_LINES);
+        bufferSource.endBatch(GLOWING_LINES);
     }
 
     /**
@@ -54,7 +58,7 @@ public class MarkerRenderer {
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
         switch (marker.type()) {
-            case ENTITY -> renderEntityMarker(poseStack, pos, lines);
+            case ENTITY -> renderEntityMarker(poseStack, marker, lines);
             case CONTAINER -> renderContainerMarker(poseStack, marker, lines);
             case POSITION -> renderPositionMarker(poseStack, pos, marker.precisePosition(), lines);
         }
@@ -63,12 +67,21 @@ public class MarkerRenderer {
     }
 
     /**
-     * 渲染实体标点：红色竖线 + 底部红色圆圈
+     * 渲染实体标点：线 + 底部圆圈，优先使用精确实体坐标
      */
-    private static void renderEntityMarker(PoseStack poseStack, BlockPos pos, VertexConsumer lines) {
-        double x = pos.getX() + 0.5;
-        double y = pos.getY();
-        double z = pos.getZ() + 0.5;
+    private static void renderEntityMarker(PoseStack poseStack, Marker marker, VertexConsumer lines) {
+        BlockPos pos = marker.position();
+        double x, y, z;
+        if (marker.precisePosition().isPresent()) {
+            Vec3 p = marker.precisePosition().get();
+            x = p.x;
+            y = p.y;
+            z = p.z;
+        } else {
+            x = pos.getX() + 0.5;
+            y = pos.getY();
+            z = pos.getZ() + 0.5;
+        }
 
         drawVerticalLine(poseStack, lines, x, y, z, MARKER_HEIGHT, ENTITY_LINE_COLOR);
         drawCircle(poseStack, lines, x, y + 0.01, z, CIRCLE_RADIUS, ENTITY_LINE_COLOR);

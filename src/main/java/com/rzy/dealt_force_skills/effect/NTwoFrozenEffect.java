@@ -19,6 +19,7 @@ public class NTwoFrozenEffect extends MobEffect {
 
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
+        NTwoStateManager.onFrozenTick(entity);
         entity.setDeltaMovement(0.0D, Math.min(0.0D, entity.getDeltaMovement().y), 0.0D);
         entity.hurtMarked = true;
         if (entity instanceof Mob mob) {
@@ -29,9 +30,6 @@ public class NTwoFrozenEffect extends MobEffect {
     @Override
     public void removeAttributeModifiers(LivingEntity entity, AttributeMap map, int amplifier) {
         super.removeAttributeModifiers(entity, map, amplifier);
-        if (entity instanceof Mob mob) {
-            mob.setNoAi(false);
-        }
         NTwoStateManager.onFreezeEnded(entity);
     }
 }

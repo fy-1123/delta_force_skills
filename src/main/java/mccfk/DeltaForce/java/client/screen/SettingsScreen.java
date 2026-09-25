@@ -1,29 +1,38 @@
 package mccfk.DeltaForce.java.client.screen;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.rzy.dealt_force_skills.item.DfsItemQuality;
-import mccfk.DeltaForce.java.client.CustomDropConfigProvider;
+import com.rzy.dealt_force_skills.client.ClientHudLayout;
+import com.rzy.dealt_force_skills.client.StaminaBarRenderer;
+import com.rzy.dealt_force_skills.client.config.ConfigLabelHelper;
+import com.rzy.dealt_force_skills.config.ConfigAccess;
 import com.rzy.dealt_force_skills.config.ConfigEntryData;
-import java.util.LinkedHashMap;
+import com.rzy.dealt_force_skills.item.DfsItemQuality;
+import com.rzy.dealt_force_skills.network.C2S_RequestConfigSnapshot;
+import com.rzy.dealt_force_skills.network.NetworkHandler;
+import mccfk.DeltaForce.java.DeltaForce;
 import mccfk.DeltaForce.java.client.SettingsUIConfig;
 import mccfk.DeltaForce.java.client.DFClientConfig;
 import mccfk.DeltaForce.java.client.overlay.GroundItemOverlay;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.fml.ModList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 
 /**
@@ -114,6 +123,9 @@ public class SettingsScreen extends Screen {
 
     // 拖拽锁定：记录当前正在拖拽的滑块路径，拖拽期间只响应此滑块
     private String draggingSliderPath = null;
+    // 滑块拖拽起始值：拖拽过程中用起始值计算range，避免实时值变化导致range膨胀（正反馈溢出）
+    private double sliderDragStartValue = 0;
+    private boolean hasSliderDragStart = false;
 
     // 按键捕获（独立按键设置）
     private String capturingKeyPath = null;
@@ -148,62 +160,42 @@ public class SettingsScreen extends Screen {
     private boolean isPreviewing = false;
     private int previewBtnX, previewBtnY, previewBtnW, previewBtnH;
     private long previewStartTime = 0; // 预览开始时间（用于品质/模型循环）
-    private long lastModelCycle = -1; // 上次模型切换的秒数
+    private ItemStack currentPreviewItem = null;
     private List<ItemStack> previewItemPool = null; // 预览物品池（创造标签页物品）
-    private ItemStack currentPreviewItem = null; // 当前预览物品
+    private long lastModelCycle = -1;
     private final Random previewRandom = new Random();
+
+    // HUD布局拖拽（在预览模式下拖动技能按钮/体力条）
+    private static final int HUD_DRAG_NONE = 0;
+    private static final int HUD_DRAG_SKILLS = 1;
+    private static final int HUD_DRAG_STAMINA = 2;
+    private int hudDragTarget = HUD_DRAG_NONE;
+    private double hudDragStartMouseX, hudDragStartMouseY;
+    private int hudDragStartAnchorX, hudDragStartAnchorY;
+    // 元素视觉边界（屏幕坐标），在renderHudLayoutPreview中计算
+    private int hudSkillsVisX, hudSkillsVisY, hudSkillsVisW, hudSkillsVisH;
+    private int hudStaminaVisX, hudStaminaVisY, hudStaminaVisW, hudStaminaVisH;
 
     // 底栏按钮
     private int saveBtnX, saveBtnY, saveBtnW, saveBtnH;
     private int cancelBtnX, cancelBtnY, cancelBtnW, cancelBtnH;
     private int exitBtnX, exitBtnY, exitBtnW, exitBtnH;
+    private int undoBtnX, undoBtnY, undoBtnW, undoBtnH;
+    private int redoBtnX, redoBtnY, redoBtnW, redoBtnH;
+
+    // 撤销/重做历史（记录每次配置变更，用于逐步撤销）
+    private final Deque<ChangeRecord> undoStack = new ArrayDeque<>();
+    private final Deque<ChangeRecord> redoStack = new ArrayDeque<>();
 
     private boolean showUnsavedDialog = false;
 
-    private EditBox textEditor;
-    private String editorTarget;
-
-    private String focusedTarget() {
-        return globalSearchFocused ? "#global" : searchFocused ? "#search" : focusedEditKey;
-    }
-
-    private EditBox textEditor() {
-        String target = focusedTarget();
-        if (target == null) return null;
-        if (!target.equals(editorTarget)) {
-            editorTarget = target;
-            textEditor = new EditBox(font, 0, 0, 80, 16, Component.empty());
-            textEditor.setMaxLength(1024);
-            textEditor.setBordered(false);
-            String value = target.equals("#global") ? globalSearchText : target.equals("#search")
-                    ? searchText : dirtyValues.getOrDefault(target, getCurrentProvider().getValue(target));
-            textEditor.setValue(value);
-            textEditor.setResponder(text -> {
-                if (target.equals("#global")) { globalSearchText = text; scrollOffset = 0; }
-                else if (target.equals("#search")) { searchText = text; scrollOffset = 0; }
-                else {
-                    dirtyValues.put(target, text);
-                    getCurrentProvider().setValue(target, text);
-                }
-                invalidateEntriesCache();
-            });
-            textEditor.setFocused(true);
-        }
-        return textEditor;
-    }
-
-    private void renderEditor(GuiGraphics graphics, int x, int y, int width, int mouseX, int mouseY) {
-        EditBox editor = textEditor();
-        if (editor == null) return;
-        editor.setX(x);
-        editor.setY(y);
-        editor.setWidth(width);
-        editor.render(graphics, mouseX, mouseY, 0.0F);
-    }
-
+    // 网络快照接收
     private static SettingsScreen active;
     private final Screen parent;
-    private final Map<String, IConfigProvider> providers = new LinkedHashMap<>();
+
+    public SettingsScreen() {
+        this(null);
+    }
 
     public SettingsScreen(Screen parent) {
         super(Component.translatable("screen.deltaforce.settings"));
@@ -215,61 +207,33 @@ public class SettingsScreen extends Screen {
     }
 
     public static void acceptServerSnapshot(List<ConfigEntryData> entries, boolean canEdit) {
-        if (active != null && active.providers.get("dealt_force_skills") instanceof DfsConfigProvider provider) {
-            provider.acceptSnapshot(entries, canEdit);
+        var provider = DeltaForce.getConfigProvider("dealt_force_skills");
+        if (provider instanceof DfsConfigProvider dfs) {
+            // 无论设置界面是否打开，都应更新DfsConfigProvider的权限状态
+            // 防止玩家登录时设置界面未打开导致权限信息丢失
+            dfs.acceptSnapshot(entries, canEdit);
+        }
+        if (active != null) {
             active.refreshCategories();
             active.invalidateEntriesCache();
         }
     }
 
     public static void acceptApplyResult(boolean success, int count, String code) {
-        if (active != null && active.providers.get("dealt_force_skills") instanceof DfsConfigProvider provider) {
-            provider.acceptApplyResult(success, count, code);
+        var provider = DeltaForce.getConfigProvider("dealt_force_skills");
+        if (provider instanceof DfsConfigProvider dfs) {
+            dfs.acceptApplyResult(success, count, code);
+        }
+        if (active != null) {
             active.dirtyValues.clear();
             active.invalidateEntriesCache();
         }
-    }
-
-    private boolean isBusy() {
-        return providers.values().stream().anyMatch(IConfigProvider::isBusy);
-    }
-
-    private void resetInputFocus() {
-        textEditor = null;
-        editorTarget = null;
-        focusedEditKey = null;
-        globalSearchFocused = false;
-        searchFocused = false;
-        capturingKeyPath = null;
-        capturedKeys.clear();
-        draggingSliderPath = null;
-    }
-
-    private void saveProviders() {
-        if (providers.values().stream().filter(IConfigProvider::isDirty).allMatch(IConfigProvider::validate)) {
-            providers.values().stream().filter(IConfigProvider::isDirty).forEach(IConfigProvider::save);
-            dirtyValues.clear();
-            resetInputFocus();
-            invalidateEntriesCache();
-        }
-    }
-
-    private void cancelProviders() {
-        providers.values().forEach(IConfigProvider::cancel);
-        dirtyValues.clear();
-        resetInputFocus();
-        invalidateEntriesCache();
     }
 
     @Override
     protected void init() {
         super.init();
         active = this;
-        boolean firstOpen = providers.isEmpty();
-        if (firstOpen) {
-            providers.put("deltaforce", new CustomDropConfigProvider());
-            providers.put("dealt_force_skills", new DfsConfigProvider());
-        }
         this.uiScale = Math.min(this.width / REFERENCE_WIDTH, this.height / REFERENCE_HEIGHT);
         this.offsetX = (int)((this.width - REFERENCE_WIDTH * this.uiScale) / 2);
         this.offsetY = (int)((this.height - REFERENCE_HEIGHT * this.uiScale) / 2);
@@ -283,17 +247,19 @@ public class SettingsScreen extends Screen {
         this.tabStartY = TAB_START_Y + cfg.getTabYOffset();
 
         // 恢复上次的界面状态
-        if (firstOpen) {
-            this.selectedModTab = SettingsUIConfig.settingsTabIndex();
-            this.scrollOffset = SettingsUIConfig.settingsScrollOffset();
-            entryRowHeight = SettingsUIConfig.settingsRowHeight();
-        }
+        this.selectedModTab = SettingsUIConfig.settingsTabIndex();
+        this.scrollOffset = SettingsUIConfig.settingsScrollOffset();
+        entryRowHeight = SettingsUIConfig.settingsRowHeight();
 
         loadedModIds.clear();
         loadedModNames.clear();
-        for (String modId : providers.keySet()) {
-            loadedModIds.add(modId);
-            loadedModNames.add(Component.translatable("mod." + modId));
+        ModList modList = ModList.get();
+
+        for (String modId : DeltaForce.getConfigWhitelist()) {
+            if (modList.isLoaded(modId)) {
+                loadedModIds.add(modId);
+                loadedModNames.add(Component.translatable("mod." + modId));
+            }
         }
 
         if (selectedModTab >= loadedModNames.size()) {
@@ -305,9 +271,7 @@ public class SettingsScreen extends Screen {
         this.contentTop = subcatBarY + subcatBarH + 4;
         this.contentBottom = this.refH - BOTTOM_BAR_HEIGHT - 4;
 
-        int retainedScroll = scrollOffset;
         refreshCategories();
-        scrollOffset = retainedScroll;
 
         int barY = this.refH - BOTTOM_BAR_HEIGHT;
         int btnW = 60;
@@ -316,14 +280,26 @@ public class SettingsScreen extends Screen {
         exitBtnX = this.refW - rightMargin - btnW; exitBtnY = barY; exitBtnW = btnW; exitBtnH = btnH;
         cancelBtnX = exitBtnX - 6 - btnW; cancelBtnY = barY; cancelBtnW = btnW; cancelBtnH = btnH;
         saveBtnX = cancelBtnX - 6 - btnW; saveBtnY = barY; saveBtnW = btnW; saveBtnH = btnH;
+        // 撤销/重做按钮（小按钮，放在保存按钮左侧）
+        int smallBtnW = 24;
+        redoBtnX = saveBtnX - 4 - smallBtnW; redoBtnY = barY; redoBtnW = smallBtnW; redoBtnH = btnH;
+        undoBtnX = redoBtnX - 2 - smallBtnW; undoBtnY = barY; undoBtnW = smallBtnW; undoBtnH = btnH;
         previewBtnW = 50; previewBtnH = btnH;
-        previewBtnX = saveBtnX - 6 - previewBtnW; previewBtnY = barY;
+        previewBtnX = undoBtnX - 6 - previewBtnW; previewBtnY = barY;
 
         showUnsavedDialog = false;
+        // 每次进入设置界面清空撤销历史
+        undoStack.clear();
+        redoStack.clear();
+
+        // 每次打开设置界面时向服务端请求最新配置权限快照
+        // 确保玩家获得/失去OP后立即反映，无需重进服务器
+        if (Minecraft.getInstance().getConnection() != null) {
+            NetworkHandler.sendToServer(new C2S_RequestConfigSnapshot());
+        }
     }
 
     private void refreshCategories() {
-        invalidateEntriesCache();
         categories.clear();
         subCategories.clear();
         IConfigProvider provider = getCurrentProvider();
@@ -372,13 +348,14 @@ public class SettingsScreen extends Screen {
         renderSubCategoryBar(guiGraphics, smx, smy);
         renderEntries(guiGraphics, smx, smy);
         renderBottomBar(guiGraphics, smx, smy);
-        String status = getCurrentProvider() == null ? "" : getCurrentProvider().status();
-        if (status.isBlank()) {
-            status = providers.values().stream().map(IConfigProvider::status)
-                    .filter(value -> !value.isBlank()).findFirst().orElse("");
+
+        // 状态信息（保存成功/失败/校验错误等）
+        IConfigProvider currentProvider = getCurrentProvider();
+        String status = currentProvider != null ? currentProvider.status() : "";
+        if (!status.isBlank()) {
+            guiGraphics.drawString(font, font.plainSubstrByWidth(status, Math.max(20, previewBtnX - 20)),
+                    10, refH - 14, 0xFFE2B86C, false);
         }
-        guiGraphics.drawString(font, font.plainSubstrByWidth(status, Math.max(20, previewBtnX - 20)),
-                10, refH - 14, 0xFFE2B86C, false);
 
         if (showSettingsOverlay) {
             renderSettingsOverlay(guiGraphics, smx, smy);
@@ -392,7 +369,7 @@ public class SettingsScreen extends Screen {
 
         // 预览HUD（在屏幕坐标中渲染，与游戏内HUD一致）
         if (isPreviewing) {
-            renderPreviewHud(guiGraphics);
+            renderPreviewHud(guiGraphics, mouseX, mouseY);
         }
     }
 
@@ -419,7 +396,7 @@ public class SettingsScreen extends Screen {
             int x = tabStartOffset + i * tabWidth;
             guiGraphics.blit(tex, x, tabStartY, 0, 0, tabWidth, tabHeight, tabWidth, tabHeight);
 
-            Component tabTitle = Component.literal(font.plainSubstrByWidth(loadedModNames.get(i).getString(), tabWidth - 6));
+            Component tabTitle = loadedModNames.get(i);
             int textWidth = this.font.width(tabTitle);
             int textX = x + (tabWidth - textWidth) / 2;
             int textY = tabStartY + (tabHeight - this.font.lineHeight) / 2;
@@ -539,6 +516,8 @@ public class SettingsScreen extends Screen {
             if (searchText.isEmpty() && globalSearchText.isEmpty()) {
                 entries = filterByParentVisibility(entries);
             }
+            // 权限过滤：无编辑权限的配置项直接不显示，避免用户尝试修改后保存失败
+            entries = filterByPermission(entries);
             cachedEntries = entries;
             cachedModTab = selectedModTab;
             cachedCat = selectedCat;
@@ -559,13 +538,18 @@ public class SettingsScreen extends Screen {
         int gBorderColor = globalSearchFocused ? 0xFFFFFFFF : INPUT_BORDER;
         guiGraphics.renderOutline(searchBoxX, globalSearchY, searchBoxW, searchBoxH, gBorderColor);
 
+        Component globalLabel = globalSearchText.isEmpty()
+                ? Component.translatable("screen.deltaforce.settings.search_global")
+                : Component.literal(globalSearchText);
+        int gLabelColor = globalSearchText.isEmpty() ? 0x60FFFFFF : 0xFFFFFFFF;
+        guiGraphics.drawString(this.font, globalLabel, searchBoxX + 4, globalSearchY + 5, gLabelColor, false);
+
         if (globalSearchFocused) {
-            renderEditor(guiGraphics, searchBoxX + 4, globalSearchY + 5, searchBoxW - 8, mouseX, mouseY);
-        } else {
-            Component label = globalSearchText.isEmpty()
-                    ? Component.translatable("screen.deltaforce.settings.search_global") : Component.literal(globalSearchText);
-            guiGraphics.drawString(font, font.plainSubstrByWidth(label.getString(), searchBoxW - 8),
-                    searchBoxX + 4, globalSearchY + 5, 0xFFAAAAAA, false);
+            int textW = this.font.width(Component.literal(globalSearchText));
+            long t = System.currentTimeMillis() / 500 % 2;
+            if (t == 0) {
+                guiGraphics.fill(searchBoxX + 4 + textW, globalSearchY + 3, searchBoxX + 5 + textW, globalSearchY + searchBoxH - 3, 0xFFFFFFFF);
+            }
         }
 
         // 本地搜索框（搜索当前分类/子分类）- 与全局搜索同一行
@@ -577,13 +561,18 @@ public class SettingsScreen extends Screen {
         int lBorderColor = searchFocused ? 0xFFFFFFFF : INPUT_BORDER;
         guiGraphics.renderOutline(localSearchX, localSearchY, localSearchW, searchBoxH, lBorderColor);
 
+        Component localLabel = searchText.isEmpty()
+                ? Component.translatable("screen.deltaforce.settings.search_local")
+                : Component.literal(searchText);
+        int lLabelColor = searchText.isEmpty() ? 0x60FFFFFF : 0xFFFFFFFF;
+        guiGraphics.drawString(this.font, localLabel, localSearchX + 4, localSearchY + 5, lLabelColor, false);
+
         if (searchFocused) {
-            renderEditor(guiGraphics, localSearchX + 4, localSearchY + 5, localSearchW - 8, mouseX, mouseY);
-        } else {
-            Component label = searchText.isEmpty()
-                    ? Component.translatable("screen.deltaforce.settings.search_local") : Component.literal(searchText);
-            guiGraphics.drawString(font, font.plainSubstrByWidth(label.getString(), localSearchW - 8),
-                    localSearchX + 4, localSearchY + 5, 0xFFAAAAAA, false);
+            int textW = this.font.width(Component.literal(searchText));
+            long t = System.currentTimeMillis() / 500 % 2;
+            if (t == 0) {
+                guiGraphics.fill(localSearchX + 4 + textW, localSearchY + 3, localSearchX + 5 + textW, localSearchY + searchBoxH - 3, 0xFFFFFFFF);
+            }
         }
 
         int listTop = localSearchY + searchBoxH + 4;
@@ -640,15 +629,20 @@ public class SettingsScreen extends Screen {
             if (desc == null || desc.isBlank()) {
                 desc = buildAutoDescription(hoveredEntry);
             }
+            // 构建tooltip行列表
+            List<Component> tooltipLines = new ArrayList<>();
             if (desc != null && !desc.isBlank()) {
-                // 按 \n 分割为多行 Component，避免 Minecraft 自动换行导致特殊字符处断开
                 String[] lines = desc.split("\n");
-                List<Component> tooltipLines = new ArrayList<>();
                 for (String line : lines) {
                     tooltipLines.add(Component.literal(line));
                 }
-                guiGraphics.renderComponentTooltip(this.font, tooltipLines, mouseX, mouseY);
             }
+            // 开发者（MC_CaoFangKuai）对WIP条目追加黄A悬浮提示
+            if (isDeveloper() && hoveredEntry.wip()) {
+                tooltipLines.add(Component.literal("功能开发中-仅对开发本功能的开发者显示的配置项")
+                        .withStyle(style -> style.withColor(0xFFFFCC00)));
+            }
+            guiGraphics.renderComponentTooltip(this.font, tooltipLines, mouseX, mouseY);
         }
 
         // 滚动条
@@ -710,6 +704,16 @@ public class SettingsScreen extends Screen {
         if (!visited.add(parent)) return true; // 防止循环引用
         if (!boolValues.getOrDefault(parent, false)) return false;
         return isAncestorChainEnabled(parent, boolValues, parentMap, visited);
+    }
+
+    /** 权限过滤：移除当前用户无权编辑的配置项（无权限时不显示，避免修改失败）<br>开发者可查看所有配置项但无权限时淡灰显示仅查看模式 */
+    private List<IConfigProvider.ConfigEntry> filterByPermission(List<IConfigProvider.ConfigEntry> entries) {
+        if (isDeveloper()) return entries;
+        IConfigProvider provider = getCurrentProvider();
+        if (provider == null) return entries;
+        return entries.stream()
+                .filter(e -> provider.canEdit(e.path()))
+                .toList();
     }
 
     /** 当配置项没有注释时，自动生成完整描述信息（移植自DFS ConfigLabelHelper） */
@@ -776,10 +780,6 @@ public class SettingsScreen extends Screen {
     }
 
     /** 获取路径的最后一段 */
-    private static String displayPath(String path) {
-        return path.substring(path.indexOf('|') + 1);
-    }
-
     private static String getLeaf(String path) {
         int index = path.lastIndexOf('.');
         return index < 0 ? path : path.substring(index + 1);
@@ -814,9 +814,8 @@ public class SettingsScreen extends Screen {
             return "单位: 生命值（2点=1心）";
         }
         if (leaf.endsWith("_amplifier")) return "单位: 效果等级（0=I级）";
-        if (leaf.equals("x_offset") || leaf.equals("y_offset")
-                || leaf.equals("stamina_x_offset") || leaf.equals("stamina_y_offset")) return "单位: 像素";
-        if (leaf.equals("button_scale") || leaf.equals("stamina_scale")) return "单位: 倍率（0.25~3.0）";
+        if (leaf.equals("x_offset") || leaf.equals("y_offset")) return "单位: 像素";
+        if (leaf.equals("button_scale")) return "单位: 倍率（0.25~3.0）";
         return "";
     }
 
@@ -883,12 +882,6 @@ public class SettingsScreen extends Screen {
         if (lower.equals("button_scale")) {
             return "技能按钮缩放倍率";
         }
-        if (lower.equals("stamina_x_offset") || lower.equals("stamina_y_offset")) {
-            return "体力条位置偏移（通用偏移与角色偏移相加）";
-        }
-        if (lower.equals("stamina_scale")) {
-            return "体力条缩放倍率（通用倍率与角色倍率相乘）";
-        }
         return "相关参数";
     }
 
@@ -906,20 +899,53 @@ public class SettingsScreen extends Screen {
         int mainY = rowY + (entryRowHeight - lineH * 2) / 2;
         // 根据嵌套层级缩进
         int indent = 14 + entry.nestLevel() * 16;
-        int textLimit = Math.max(20, (refW - SCROLL_BAR_WIDTH) / 2 - 160 - indent);
-        guiGraphics.drawString(this.font, font.plainSubstrByWidth(keyText.getString(), textLimit), indent, mainY, keyColor, false);
+        guiGraphics.drawString(this.font, keyText, indent, mainY, keyColor, false);
         if (!context.isEmpty()) {
-            guiGraphics.drawString(this.font, font.plainSubstrByWidth(context, textLimit), indent, mainY + lineH, 0x60AAAAAA, false);
+            guiGraphics.drawString(this.font, Component.literal(context), indent, mainY + lineH, 0x60AAAAAA, false);
         }
 
-        // 控件列位置固定，与点击及拖拽坐标保持一致
+        // 客户端/服务端标记：绿色C=客户端本地配置，红色S=服务端同步配置
+        // WIP条目追加黄色A标记（仅开发者可见），普通条目不显示
+        // 无权限时完全不显示标记，避免误触导致保存失败
+        IConfigProvider provider = getCurrentProvider();
+        boolean isClient = true;
+        boolean canEdit = true;
+        if (provider != null) {
+            isClient = provider.isClientLocal(path);
+            canEdit = provider.canEdit(path);
+            // 服务端配置且无权限 → 不显示 S 标记，避免用户误触后保存失败
+            // 开发者始终显示标记（包括WIP黄A），以便查看和调试
+            if (!isClient && !canEdit && !isDeveloper()) {
+                // 不绘制标记
+            } else {
+                String tag = isClient ? "C" : "S";
+                int tagColor = isClient ? 0xFF55FF55 : 0xFFFF5555;
+                int tagX = indent + this.font.width(keyText) + 4;
+                guiGraphics.drawString(this.font, Component.literal(tag), tagX, mainY, tagColor, false);
+                // 黄色A标记：仅对开发者MC_CaoFangKuai且标记为WIP的条目显示
+                if (isDeveloper() && entry.wip()) {
+                    int aX = tagX + this.font.width(Component.literal(tag)) + 1;
+                    guiGraphics.drawString(this.font, Component.literal("A"), aX, mainY, 0xFFFFCC00, false);
+                }
+            }
+        }
+
+        // 不可编辑的服务端条目不显示标记，避免用户困惑
+        // 右侧控件区域 - 固定居中位置，仅与文本冲突时后移
         int widgetW = 120;
         int maxRight = refW - SCROLL_BAR_WIDTH - 14;
         int fixedCenter = (14 + maxRight) / 2;
         int widgetLeft = fixedCenter - widgetW / 2;
         int widgetRight = widgetLeft + widgetW;
 
-
+        // 如果控件和名称重叠，将控件右移（取主名和上下文较宽者）
+        int nameWidth = this.font.width(keyText);
+        int contextWidth = context.isEmpty() ? 0 : this.font.width(Component.literal(context));
+        int nameEnd = indent + Math.max(nameWidth, contextWidth) + 14;
+        if (widgetLeft < nameEnd + 10) {
+            widgetLeft = nameEnd + 10;
+            widgetRight = widgetLeft + widgetW;
+        }
 
         // 快捷键独立按键设置：特殊渲染
         if ("customdrop.hud.hotkey".equals(path)) {
@@ -932,9 +958,24 @@ public class SettingsScreen extends Screen {
             case INTEGER, LONG -> renderIntegerWidget(guiGraphics, mouseX, mouseY, entry, rowY, widgetLeft, widgetRight, false);
             case FLOAT, DOUBLE -> renderIntegerWidget(guiGraphics, mouseX, mouseY, entry, rowY, widgetLeft, widgetRight, true);
             case STRING -> renderStringWidget(guiGraphics, mouseX, mouseY, entry, rowY, widgetLeft, widgetRight);
+            case BUTTON -> renderButtonWidget(guiGraphics, mouseX, mouseY, entry, rowY, widgetLeft, widgetRight);
         }
 
+        // 编辑光标（仅文本输入模式显示，滑块模式不显示）
+        if (focusedEditKey != null && focusedEditKey.equals(path)) {
+            boolean useSlider = sliderMode.getOrDefault(path, false);
+            if (!useSlider) {
+                // 数值型条目文本输入框右侧边界与widgetRight不同（需减去toggle按钮宽度22px），
+                // 字符串型则相同，统一传入正确的右边界确保光标与文本对齐
+                int cursorRight = entry.isNumeric() ? widgetRight - 18 - 4 : widgetRight;
+                renderCursor(guiGraphics, entry, rowY, widgetLeft, cursorRight);
+            }
+        }
 
+        // 开发者无权限时覆盖淡灰色半透明层，表示"仅查看不可编辑"
+        if (isDeveloper() && !canEdit) {
+            guiGraphics.fill(0, rowY, refW - SCROLL_BAR_WIDTH, rowY + entryRowHeight, 0x30666666);
+        }
     }
 
     // ======================== 布尔开关控件 ========================
@@ -958,7 +999,6 @@ public class SettingsScreen extends Screen {
         Component label = isOn
                 ? Component.translatable("screen.deltaforce.settings.on")
                 : Component.translatable("screen.deltaforce.settings.off");
-        label = Component.literal(font.plainSubstrByWidth(label.getString(), btnW - 6));
         int textW = this.font.width(label);
         guiGraphics.drawString(this.font, label, btnX + (btnW - textW) / 2,
                 btnY + (btnH - this.font.lineHeight) / 2, 0xFFFFFFFF, false);
@@ -1038,14 +1078,13 @@ public class SettingsScreen extends Screen {
         Component label;
         if (isCapturing) {
             if (capturedKeys.isEmpty()) {
-                label = Component.literal("> 按下按键 <");
+                label = Component.translatable("screen.deltaforce.settings.pressing_key");
             } else {
                 label = Component.literal("> " + glfwComboKeyName(capturedKeys) + " <");
             }
         } else {
             label = Component.literal(glfwComboKeyName(parseComboKeys(currentValue)));
         }
-        label = Component.literal(font.plainSubstrByWidth(label.getString(), btnW - 6));
         int textW = this.font.width(label);
         guiGraphics.drawString(this.font, label, btnX + (btnW - textW) / 2,
                 btnY + (btnH - this.font.lineHeight) / 2, 0xFFFFFFFF, false);
@@ -1100,8 +1139,11 @@ public class SettingsScreen extends Screen {
 
         double val;
         try { val = Double.parseDouble(currentValue); } catch (NumberFormatException e) { val = 0; }
-        double sliderMin = getSliderMin(entry, val);
-        double sliderMax = getSliderMax(entry, val);
+        // 拖拽过程中使用起始值计算范围，与handleSliderDrag保持范围一致，避免滑块视觉位置偏差
+        double rangeCalcValue = (hasSliderDragStart && path.equals(draggingSliderPath))
+            ? sliderDragStartValue : val;
+        double sliderMin = getSliderMin(entry, rangeCalcValue);
+        double sliderMax = getSliderMax(entry, rangeCalcValue);
         double sliderRange = sliderMax - sliderMin;
 
         // 滑块背景
@@ -1144,7 +1186,7 @@ public class SettingsScreen extends Screen {
             guiGraphics.fill(handleX, sliderY - 2, handleX + 6, sliderY + sliderH + 2, SLIDER_HANDLE);
         }
 
-        Component valText = Component.literal(font.plainSubstrByWidth(formatNumericValue(val, isFloat), 70));
+        Component valText = Component.literal(formatNumericValue(val, isFloat));
         int textW = this.font.width(valText);
         guiGraphics.drawString(this.font, valText, sliderX - textW - 6,
                 rowY + (entryRowHeight - this.font.lineHeight) / 2, 0xFFFFFFFF, false);
@@ -1156,9 +1198,8 @@ public class SettingsScreen extends Screen {
         try { defaultValue = Double.parseDouble(entry.defaultValue()); } catch (NumberFormatException e) { defaultValue = 0; }
         // 对于 scale 类型的配置项，范围固定为 -1.0 ~ 1.0
         String leaf = getLeaf(entry.path()).toLowerCase();
-        if (leaf.equals("stamina_scale")) return 0.25;
         if (leaf.equals("scale") || leaf.contains("scale")) {
-            return entry.path().equals("customdrop.hud.scale") ? -0.9 : 0.0;
+            return -1.0;
         }
         // 偏移量配置项，固定范围 ±240
         if (leaf.contains("offset") || leaf.contains("_offset")) {
@@ -1181,7 +1222,6 @@ public class SettingsScreen extends Screen {
                 || entry.kind() == IConfigProvider.ConfigValueKind.DOUBLE;
         // 对于 scale 类型的配置项，范围固定为 -1.0 ~ 1.0
         String leaf = getLeaf(entry.path()).toLowerCase();
-        if (leaf.equals("stamina_scale")) return 3.0;
         if (leaf.equals("scale") || leaf.contains("scale")) {
             return 1.0;
         }
@@ -1238,18 +1278,35 @@ public class SettingsScreen extends Screen {
         guiGraphics.fill(inputX, inputY, inputX + inputW, inputY + inputH, INPUT_BG);
         guiGraphics.renderOutline(inputX, inputY, inputW, inputH, borderColor);
 
-        if (isFocused) {
-            renderEditor(guiGraphics, inputX + 3, inputY + 4, inputW - 6, mouseX, mouseY);
-        } else {
-            guiGraphics.drawString(font, font.plainSubstrByWidth(currentValue, inputW - 6),
-                    inputX + 3, inputY + 4, 0xFFFFFFFF, false);
-        }
+        Component valText = Component.literal(currentValue);
+        guiGraphics.drawString(this.font, valText, inputX + 3, inputY + (inputH - this.font.lineHeight) / 2, 0xFFFFFFFF, false);
     }
 
     private void renderStringWidget(GuiGraphics guiGraphics, int mouseX, int mouseY,
                                     IConfigProvider.ConfigEntry entry, int rowY, int widgetLeft, int widgetRight) {
         renderTextInputWidget(guiGraphics, mouseX, mouseY, entry, rowY, widgetLeft, widgetRight);
     }
+
+    // ======================== 按钮控件 ========================
+
+    private void renderButtonWidget(GuiGraphics guiGraphics, int mouseX, int mouseY,
+                                     IConfigProvider.ConfigEntry entry, int rowY, int widgetLeft, int widgetRight) {
+        int btnW = 100;
+        int btnH = 16;
+        int btnX = widgetRight - btnW;
+        int btnY = rowY + (entryRowHeight - btnH) / 2;
+
+        boolean hoverBtn = mouseX >= btnX && mouseX < btnX + btnW && mouseY >= btnY && mouseY < btnY + btnH;
+        int bg = hoverBtn ? 0xFF4488FF : 0xFF3366CC;
+        guiGraphics.fill(btnX, btnY, btnX + btnW, btnY + btnH, bg);
+
+        Component label = Component.translatable("config.deltaforce.layout.go_to_config.button");
+        int textW = this.font.width(label);
+        guiGraphics.drawString(this.font, label, btnX + (btnW - textW) / 2,
+                btnY + (btnH - this.font.lineHeight) / 2, 0xFFFFFFFF, false);
+    }
+
+    // ======================== 编辑光标 ========================
 
     private void renderCursor(GuiGraphics guiGraphics, IConfigProvider.ConfigEntry entry, int rowY,
                               int widgetLeft, int widgetRight) {
@@ -1277,8 +1334,8 @@ public class SettingsScreen extends Screen {
 
         boolean hasChanges = hasUnsavedChanges();
 
-        // 预览按钮（仅在自定义掉落物HUD标签页显示）
-        if ("deltaforce".equals(getCurrentModId())) {
+        // 预览按钮（自定义掉落物HUD / HUD布局 标签页显示）
+        if ("deltaforce".equals(getCurrentModId()) || "dealt_force_skills".equals(getCurrentModId())) {
             boolean hoverPreview = mouseX >= previewBtnX && mouseX < previewBtnX + previewBtnW
                     && mouseY >= previewBtnY && mouseY < previewBtnY + previewBtnH;
             int previewBg = isPreviewing ? 0xCC2288FF : hoverPreview ? 0xFF555555 : 0xFF444444;
@@ -1296,6 +1353,14 @@ public class SettingsScreen extends Screen {
                 Component.translatable("screen.deltaforce.settings.cancel"), hasChanges);
         drawBottomButton(guiGraphics, mouseX, mouseY, exitBtnX, exitBtnY, exitBtnW, exitBtnH,
                 Component.translatable("screen.deltaforce.settings.exit"), true);
+
+        // 撤销/重做按钮（带工具提示）
+        boolean canUndo = !undoStack.isEmpty();
+        boolean canRedo = !redoStack.isEmpty();
+        drawBottomButton(guiGraphics, mouseX, mouseY, undoBtnX, undoBtnY, undoBtnW, undoBtnH,
+                Component.literal("↩"), canUndo);
+        drawBottomButton(guiGraphics, mouseX, mouseY, redoBtnX, redoBtnY, redoBtnW, redoBtnH,
+                Component.literal("↪"), canRedo);
     }
 
     private void drawBottomButton(GuiGraphics guiGraphics, int mouseX, int mouseY,
@@ -1333,20 +1398,23 @@ public class SettingsScreen extends Screen {
         };
     }
 
-    /** 开始预览：构建物品池，预加载当前配置 */
+    /** 开始预览：HUD布局标签页仅切换状态，自定义掉落物标签页构建物品池 */
     private void startPreview() {
+        if ("dealt_force_skills".equals(getCurrentModId())) {
+            return;
+        }
         previewStartTime = System.currentTimeMillis();
         lastModelCycle = -1;
         buildPreviewItemPool();
         pickNextPreviewItem();
     }
 
-    /** 停止预览：卸载预览配置 */
+    /** 停止预览：清空物品池 */
     private void stopPreview() {
-        isPreviewing = false;
         previewItemPool = null;
         currentPreviewItem = null;
         previewStartTime = 0;
+        hudDragTarget = HUD_DRAG_NONE;
     }
 
     /** 构建预览物品池（所有创意标签页的全部物品） */
@@ -1391,12 +1459,12 @@ public class SettingsScreen extends Screen {
         return qualities[idx];
     }
 
-    private String renderStackDescription() {
-        return currentPreviewItem == null ? null
-                : mccfk.DeltaForce.java.client.overlay.ItemDescriptionLoader.getDescription(currentPreviewItem);
-    }
+    private void renderPreviewHud(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if ("dealt_force_skills".equals(getCurrentModId())) {
+            renderHudLayoutPreview(guiGraphics, mouseX, mouseY);
+            return;
+        }
 
-    private void renderPreviewHud(GuiGraphics guiGraphics) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
 
@@ -1421,18 +1489,269 @@ public class SettingsScreen extends Screen {
         }
 
         DfsItemQuality previewQuality = getPreviewQuality();
-        Component itemName = currentPreviewItem == null ? Component.empty() : currentPreviewItem.getHoverName();
+        Component itemName = Component.translatable("screen.deltaforce.settings.preview_item");
         Component qualityLine = Component.translatable("tooltip.dealt_force_skills.quality",
                 Component.translatable("quality.dealt_force_skills." + previewQuality.key()));
-        String description = simpleMode ? null : renderStackDescription();
+        String description = Component.translatable("screen.deltaforce.settings.preview_description").getString();
 
         ItemStack renderStack = (currentPreviewItem != null && !currentPreviewItem.isEmpty())
                 ? currentPreviewItem : ItemStack.EMPTY;
 
         // 直接调用自定义掉落物屏幕HUD渲染
         GroundItemOverlay.renderItemHud(guiGraphics, mc, renderStack, previewQuality,
-                itemName, qualityLine, description, 0.8f, scale, xOffset, yOffset,
+                itemName, qualityLine, description, 0.8f, scale, scale, xOffset, yOffset,
                 simpleMode, false);
+    }
+
+    // ======================== HUD布局预览（体力条 + 技能按钮 + 原版HUD） ========================
+
+    private void renderHudLayoutPreview(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+
+        int screenW = guiGraphics.guiWidth();
+        int screenH = guiGraphics.guiHeight();
+
+        // 绘制原版HUD模拟（快捷栏、血量、饥饿、护甲）
+        renderMockVanillaHud(guiGraphics, mc, screenW, screenH);
+
+        // 绘制体力条预览（含拖拽虚影）
+        renderPreviewStamina(guiGraphics, screenW, screenH, mouseX, mouseY);
+
+        // 绘制技能按钮占位（含拖拽虚影）
+        renderPreviewSkillButtons(guiGraphics, mouseX, mouseY);
+    }
+
+    /** 模拟原版HUD：快捷栏、血量、饥饿、护甲、氧气 */
+    private void renderMockVanillaHud(GuiGraphics guiGraphics, Minecraft mc, int screenW, int screenH) {
+        int centerX = screenW / 2;
+        int barBottom = screenH;
+
+        // 快捷栏（9格，总宽182px，底部对齐）
+        int hotbarW = 182;
+        int hotbarH = 22;
+        int hotbarX = centerX - hotbarW / 2;
+        int hotbarY = barBottom - hotbarH;
+        guiGraphics.fill(hotbarX, hotbarY, hotbarX + hotbarW, hotbarY + hotbarH, 0xAA101010);
+        for (int i = 0; i < 9; i++) {
+            int slotX = hotbarX + i * 20 + 1;
+            int slotY = hotbarY + 3;
+            guiGraphics.fill(slotX, slotY, slotX + 18, slotY + 16, 0x40FFFFFF);
+        }
+        // 高亮选中格
+        int selX = hotbarX + 4 * 20 + 1;
+        guiGraphics.renderOutline(selX - 1, hotbarY + 2, 20, 18, 0xFFDDDDDD);
+
+        // 血量条（10颗心，在快捷栏上方左侧）
+        int heartY = hotbarY - 12;
+        int armorY = heartY - 10;
+        int heartsStartX = centerX - 91;
+        for (int i = 0; i < 10; i++) {
+            int hx = heartsStartX + i * 8;
+            guiGraphics.fill(hx, heartY, hx + 7, heartY + 9, 0xFFFF3344); // 红心
+        }
+        // 护甲（半行，在心上方）
+        for (int i = 0; i < 5; i++) {
+            int ax = heartsStartX + i * 8;
+            guiGraphics.fill(ax, armorY, ax + 7, armorY + 9, 0xFFAAAAAA);
+        }
+
+        // 饥饿条（在快捷栏上方右侧）
+        int hungerY = hotbarY - 12;
+        int hungerStartX = centerX + 91 - 80;
+        for (int i = 0; i < 10; i++) {
+            int hx = hungerStartX + i * 8;
+            guiGraphics.fill(hx, hungerY, hx + 7, hungerY + 9, 0xFFBB7722);
+        }
+
+        // 模拟氧气条（水下气泡）
+        int airY = hungerY - 10;
+        for (int i = 0; i < 10; i++) {
+            int ax = hungerStartX + i * 8;
+            guiGraphics.fill(ax, airY, ax + 7, airY + 9, 0xFF4488FF);
+        }
+    }
+
+    /** 体力条预览：模拟满体力状态，使用ClientHudLayout偏移/缩放 */
+    private void renderPreviewStamina(GuiGraphics guiGraphics, int screenW, int screenH, int mouseX, int mouseY) {
+        try {
+            float scale = ClientHudLayout.staminaScale();
+            float x = screenW / 2f + 91f - StaminaBarRenderer.WIDTH * scale + ClientHudLayout.staminaXOffset();
+            float y = screenH - 48f + ClientHudLayout.staminaYOffset();
+
+            // 记录视觉边界（屏幕坐标，用于命中检测）
+            hudStaminaVisX = (int) x;
+            hudStaminaVisY = (int) (y + StaminaBarRenderer.HEIGHT * (1.0F - scale));
+            hudStaminaVisW = Math.round(StaminaBarRenderer.WIDTH * scale);
+            hudStaminaVisH = Math.round(StaminaBarRenderer.HEIGHT * scale);
+
+            // 拖拽时绘制半透明虚影
+            if (hudDragTarget == HUD_DRAG_STAMINA) {
+                int deltaX = mouseX - (int) hudDragStartMouseX;
+                int deltaY = mouseY - (int) hudDragStartMouseY;
+                int ghostX = hudDragStartAnchorX + deltaX;
+                int ghostY = hudDragStartAnchorY + deltaY;
+                guiGraphics.fill(ghostX, ghostY, ghostX + hudStaminaVisW, ghostY + hudStaminaVisH, 0x60FFFF44);
+            }
+
+            guiGraphics.pose().pushPose();
+            try {
+                guiGraphics.pose().translate(x, y + StaminaBarRenderer.HEIGHT * (1.0F - scale), 0.0F);
+                guiGraphics.pose().scale(scale, scale, 1.0F);
+                StaminaBarRenderer.render(guiGraphics, 80.0, false);
+            } finally {
+                guiGraphics.pose().popPose();
+            }
+        } catch (Exception e) {
+            LOGGER.warn("预览体力条渲染失败", e);
+        }
+    }
+
+    /** 技能按钮预览：绘制3个占位框，使用ClientHudLayout坐标 */
+    private void renderPreviewSkillButtons(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        try {
+            int slot = 46;
+            int gap = 4;
+            int baseX = 8;
+            int baseY = Math.max(8, guiGraphics.guiHeight() - 68);
+
+            int x = ClientHudLayout.x(baseX);
+            int y = ClientHudLayout.y(baseY);
+            float bScale = ClientHudLayout.buttonScale();
+
+            // 记录视觉边界（屏幕坐标，用于命中检测）
+            // scaleButton的锚点变换：visualX = x(8) + (x - x(8)) * scale, visualY = y + 46*(1-scale)
+            int anchorX = ClientHudLayout.x(8);
+            hudSkillsVisX = Math.round(anchorX + (x - anchorX) * bScale);
+            hudSkillsVisY = Math.round(y + 46 * (1.0F - bScale));
+            hudSkillsVisW = Math.round((46 + gap) * 3 * bScale);
+            hudSkillsVisH = Math.round(46 * bScale);
+
+            // 拖拽时绘制半透明虚影
+            if (hudDragTarget == HUD_DRAG_SKILLS) {
+                int deltaX = mouseX - (int) hudDragStartMouseX;
+                int deltaY = mouseY - (int) hudDragStartMouseY;
+                int ghostX = hudDragStartAnchorX + deltaX;
+                int ghostY = hudDragStartAnchorY + deltaY;
+                int ghostSlotW = Math.round(46 * bScale);
+                int ghostSlotH = Math.round(46 * bScale);
+                int ghostSpacing = Math.round((46 + gap) * bScale);
+                int[] colors = { 0x6067D6FF, 0x60FFC857, 0x608EE36A };
+                for (int i = 0; i < 3; i++) {
+                    int sx = ghostX + ghostSpacing * i;
+                    guiGraphics.fill(sx, ghostY, sx + ghostSlotW, ghostY + ghostSlotH, colors[i]);
+                }
+            }
+
+            int[] colors = { 0xAA67D6FF, 0xAAFFC857, 0xAA8EE36A };
+            Component[] labels = {
+                    Component.translatable("screen.deltaforce.settings.skill_core"),
+                    Component.translatable("screen.deltaforce.settings.skill_2"),
+                    Component.translatable("screen.deltaforce.settings.skill_1")
+            };
+
+            // 使用ClientHudLayout.buttonScale()缩放绘制
+            ClientHudLayout.ButtonScale scaleObj = ClientHudLayout.scaleButton(guiGraphics, x, y, slot);
+            try {
+                for (int i = 0; i < 3; i++) {
+                    int sx = x + (slot + gap) * i;
+                    guiGraphics.fill(sx, y, sx + slot, y + slot, 0xAA101216);
+                    guiGraphics.renderOutline(sx, y, slot, slot, colors[i]);
+                    // 居中文字
+                    Font font = Minecraft.getInstance().font;
+                    int tw = font.width(labels[i]);
+                    guiGraphics.drawString(font, labels[i],
+                            sx + (slot - tw) / 2, y + (slot - 8) / 2, 0xFFCCCCCC, false);
+                }
+            } finally {
+                scaleObj.close();
+            }
+        } catch (Exception e) {
+            LOGGER.warn("预览技能按钮渲染失败", e);
+        }
+    }
+
+    // ======================== HUD拖拽映射 ========================
+
+    /** 拖拽松手时将屏幕像素偏移直接映射为配置偏移量并写入内存 */
+    private void applyHudDrag(double mouseX, double mouseY) {
+        if (hudDragTarget == HUD_DRAG_NONE) return;
+
+        // 像素偏移直接=配置偏移量（x/y和stamina均已改用GUI坐标系，与体力条一致）
+        int deltaX = (int) (mouseX - hudDragStartMouseX);
+        int deltaY = (int) (mouseY - hudDragStartMouseY);
+        int offsetDeltaX = deltaX;
+        int offsetDeltaY = deltaY;
+
+        int target = hudDragTarget;
+        hudDragTarget = HUD_DRAG_NONE;
+
+        if (offsetDeltaX == 0 && offsetDeltaY == 0) return;
+
+        String xPath, yPath;
+        int defaultX, defaultY;
+        if (target == HUD_DRAG_SKILLS) {
+            xPath = "HUD|global.x_offset";
+            yPath = "HUD|global.y_offset";
+            defaultX = 208;
+            defaultY = -10;
+        } else {
+            xPath = "HUD|global.stamina_x_offset";
+            yPath = "HUD|global.stamina_y_offset";
+            defaultX = 0;
+            defaultY = 0;
+        }
+
+        IConfigProvider provider = getCurrentProvider();
+        if (provider == null) return;
+
+        // 读取当前有效值（脏值优先，其次取provider实际值）
+        String curX = dirtyValues.containsKey(xPath) ? dirtyValues.get(xPath) : provider.getValue(xPath);
+        String curY = dirtyValues.containsKey(yPath) ? dirtyValues.get(yPath) : provider.getValue(yPath);
+        int curXi = curX.isEmpty() ? defaultX : safeParseInt(curX, defaultX);
+        int curYi = curY.isEmpty() ? defaultY : safeParseInt(curY, defaultY);
+
+        String newX = String.valueOf(curXi + offsetDeltaX);
+        String newY = String.valueOf(curYi + offsetDeltaY);
+
+        // oldValue兜底用默认值，确保永不为null（否则applyRecord里null走dirty回读路径撤销失效）
+        String oldX = curX.isEmpty() ? String.valueOf(defaultX) : curX;
+        String oldY = curY.isEmpty() ? String.valueOf(defaultY) : curY;
+
+        boolean changedX = !Objects.equals(oldX, newX);
+        boolean changedY = !Objects.equals(oldY, newY);
+
+        if (changedX) {
+            undoStack.push(new ChangeRecord(xPath, oldX, newX));
+        }
+        if (changedY) {
+            undoStack.push(new ChangeRecord(yPath, oldY, newY));
+        }
+        if (changedX || changedY) {
+            redoStack.clear();
+        }
+
+        dirtyValues.put(xPath, newX);
+        dirtyValues.put(yPath, newY);
+        provider.setValue(xPath, newX);
+        provider.setValue(yPath, newY);
+        invalidateEntriesCache();
+    }
+
+    /** 将字符串安全解析为int，失败返回默认值 */
+    private static int safeParseInt(String s, int defaultVal) {
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+
+    /** 判断当前玩家是否为开发者MC_CaoFangKuai */
+    private static boolean isDeveloper() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getUser() == null) return false;
+        return "MC_CaoFangKuai".equals(mc.getUser().getName());
     }
 
     // ======================== 未保存弹窗 ========================
@@ -1581,7 +1900,7 @@ public class SettingsScreen extends Screen {
             return fullTranslated;
         }
         // 没有完整翻译：逐段翻译每级路径，显示所有层级
-        String[] parts = displayPath(path).split("\\.");
+        String[] parts = path.split("\\.");
         if (parts.length <= 2) {
             // 1-2段：全部显示
             StringBuilder sb = new StringBuilder();
@@ -1655,7 +1974,7 @@ public class SettingsScreen extends Screen {
             }
         }
         // 未找到翻译，调试模式下记录日志（每个翻译仅输出一次）
-        if (LOGGER.isDebugEnabled()) {
+        if (DeltaForce.isDebugMode()) {
             String logKey = modId + ":" + segment;
             if (loggedMissingTranslations.add(logKey)) {
                 if (loggedMissingTranslations.size() > 500) {
@@ -1742,10 +2061,12 @@ public class SettingsScreen extends Screen {
 
     /** 只翻译路径的叶子段（最后一段），返回主名（结果缓存） */
     private Component localizeLeaf(String modId, String path) {
-        if (providers.get(modId) instanceof DfsConfigProvider provider && provider.entry(path) != null) {
-            return com.rzy.dealt_force_skills.client.config.ConfigLabelHelper.entryLabel(provider.entry(path));
+        if ("dealt_force_skills".equals(modId)) {
+            IConfigProvider provider = DeltaForce.getConfigProvider(modId);
+            if (provider instanceof DfsConfigProvider dfs && dfs.entry(path) != null) {
+                return ConfigLabelHelper.entryLabel(dfs.entry(path));
+            }
         }
-        path = displayPath(path);
         String cacheKey = modId + "::leaf:" + path;
         Component cached = leafTranslationCache.get(cacheKey);
         if (cached != null) {
@@ -1774,14 +2095,16 @@ public class SettingsScreen extends Screen {
 
     /** 返回路径的上下文（除最后一段外的层级），用于小字描述（结果缓存） */
     private String localizeContext(String modId, String path) {
-        if (providers.get(modId) instanceof DfsConfigProvider provider && provider.entry(path) != null) {
-            ConfigEntryData entry = provider.entry(path);
-            return com.rzy.dealt_force_skills.client.config.ConfigLabelHelper.fileBadge(entry.file()).getString()
-                    + " / " + com.rzy.dealt_force_skills.client.config.ConfigLabelHelper.subcategoryTitle(
-                            com.rzy.dealt_force_skills.config.ConfigAccess.categoryKey(entry),
-                            com.rzy.dealt_force_skills.config.ConfigAccess.subcategoryKey(entry)).getString();
+        if ("dealt_force_skills".equals(modId)) {
+            IConfigProvider provider = DeltaForce.getConfigProvider(modId);
+            if (provider instanceof DfsConfigProvider dfs && dfs.entry(path) != null) {
+                ConfigEntryData entry = dfs.entry(path);
+                return ConfigLabelHelper.fileBadge(entry.file()).getString()
+                        + " / " + ConfigLabelHelper.subcategoryTitle(
+                                ConfigAccess.categoryKey(entry),
+                                ConfigAccess.subcategoryKey(entry)).getString();
+            }
         }
-        path = displayPath(path);
         String cacheKey = modId + "::ctx:" + path;
         String cached = contextTranslationCache.get(cacheKey);
         if (cached != null) {
@@ -1804,7 +2127,7 @@ public class SettingsScreen extends Screen {
 
     private Component localizeCategory(String modId, String cat) {
         if ("dealt_force_skills".equals(modId)) {
-            return com.rzy.dealt_force_skills.client.config.ConfigLabelHelper.categoryTitle(cat);
+            return ConfigLabelHelper.categoryTitle(cat);
         }
         String cacheKey = modId + "::cat:" + cat;
         String cached = segmentTranslationCache.get(cacheKey);
@@ -1825,7 +2148,7 @@ public class SettingsScreen extends Screen {
 
     private Component localizeSubCategory(String modId, String sub) {
         if ("dealt_force_skills".equals(modId)) {
-            return com.rzy.dealt_force_skills.client.config.ConfigLabelHelper.subcategoryTitle(
+            return ConfigLabelHelper.subcategoryTitle(
                     categories.isEmpty() ? "" : categories.get(selectedCat), sub);
         }
         String cacheKey = modId + "::subcat:" + sub;
@@ -1881,7 +2204,7 @@ public class SettingsScreen extends Screen {
 
     private IConfigProvider getCurrentProvider() {
         if (selectedModTab >= 0 && selectedModTab < loadedModIds.size()) {
-            return providers.get(loadedModIds.get(selectedModTab));
+            return DeltaForce.getConfigProvider(loadedModIds.get(selectedModTab));
         }
         return null;
     }
@@ -1894,11 +2217,11 @@ public class SettingsScreen extends Screen {
     }
 
     private boolean hasUnsavedChanges() {
-        return providers.values().stream().anyMatch(IConfigProvider::isDirty);
+        IConfigProvider provider = getCurrentProvider();
+        return provider != null && provider.isDirty();
     }
 
     private void tryExit() {
-        if (isBusy()) return;
         if (hasUnsavedChanges()) {
             showUnsavedDialog = true;
         } else {
@@ -1907,7 +2230,9 @@ public class SettingsScreen extends Screen {
     }
 
     private void discardAndExit() {
-        cancelProviders();
+        IConfigProvider provider = getCurrentProvider();
+        if (provider != null) provider.cancel();
+        dirtyValues.clear();
         openMainScreen();
     }
 
@@ -1915,7 +2240,30 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (isBusy()) return true;
+        // HUD布局拖拽优先处理（预览模式 + DFS标签页，使用屏幕坐标）
+        if (isPreviewing && button == 0 && "dealt_force_skills".equals(getCurrentModId())) {
+            // 检测是否点击了技能按钮区域
+            if (mouseX >= hudSkillsVisX && mouseX < hudSkillsVisX + hudSkillsVisW
+                    && mouseY >= hudSkillsVisY && mouseY < hudSkillsVisY + hudSkillsVisH) {
+                hudDragTarget = HUD_DRAG_SKILLS;
+                hudDragStartMouseX = mouseX;
+                hudDragStartMouseY = mouseY;
+                hudDragStartAnchorX = hudSkillsVisX;
+                hudDragStartAnchorY = hudSkillsVisY;
+                return true;
+            }
+            // 检测是否点击了体力条区域
+            if (mouseX >= hudStaminaVisX && mouseX < hudStaminaVisX + hudStaminaVisW
+                    && mouseY >= hudStaminaVisY && mouseY < hudStaminaVisY + hudStaminaVisH) {
+                hudDragTarget = HUD_DRAG_STAMINA;
+                hudDragStartMouseX = mouseX;
+                hudDragStartMouseY = mouseY;
+                hudDragStartAnchorX = hudStaminaVisX;
+                hudDragStartAnchorY = hudStaminaVisY;
+                return true;
+            }
+        }
+
         float inv = 1.0f / this.uiScale;
         int mx = (int)((mouseX - this.offsetX) * inv);
         int my = (int)((mouseY - this.offsetY) * inv);
@@ -1951,8 +2299,9 @@ public class SettingsScreen extends Screen {
 
             // 设置浮层内的点击
             if (showSettingsOverlay) {
-                handleSettingsOverlayClick(mx, my);
-                return true;
+                if (handleSettingsOverlayClick(mx, my)) {
+                    return true;
+                }
             }
 
             // 顶栏
@@ -1961,10 +2310,6 @@ public class SettingsScreen extends Screen {
                 int x = tabStartOffset + i * tabWidth;
                 if (mx >= x && mx < x + tabWidth && my >= tabStartY && my < tabStartY + tabHeight) {
                     if (selectedModTab != i) {
-                        resetInputFocus();
-                        stopPreview();
-                        selectedCat = 0;
-                        selectedSubcat = 0;
                         selectedModTab = i;
                         refreshCategories();
                         saveScreenState();
@@ -1989,7 +2334,6 @@ public class SettingsScreen extends Screen {
                             if (provider != null) {
                                 subCategories.addAll(provider.getSubCategories(categories.get(selectedCat)));
                             }
-                            resetInputFocus();
                             selectedSubcat = 0;
                             scrollOffset = 0;
                         }
@@ -2038,7 +2382,6 @@ public class SettingsScreen extends Screen {
                     int tabY = subcatBarY + 1;
                     if (mx >= sx && mx < sx + textW && my >= tabY && my < tabY + tabH) {
                         if (selectedSubcat != i) {
-                            resetInputFocus();
                             selectedSubcat = i;
                             scrollOffset = 0;
                         }
@@ -2049,8 +2392,8 @@ public class SettingsScreen extends Screen {
             }
 
             // 底栏
-            // 预览按钮（仅在自定义掉落物HUD标签页显示，开关模式）
-            if ("deltaforce".equals(getCurrentModId())
+            // 预览按钮（自定义掉落物HUD / HUD布局 标签页显示，开关模式）
+            if (("deltaforce".equals(getCurrentModId()) || "dealt_force_skills".equals(getCurrentModId()))
                     && mx >= previewBtnX && mx < previewBtnX + previewBtnW
                     && my >= previewBtnY && my < previewBtnY + previewBtnH) {
                 isPreviewing = !isPreviewing;
@@ -2063,15 +2406,33 @@ public class SettingsScreen extends Screen {
             }
 
             if (hasUnsavedChanges() && mx >= saveBtnX && mx < saveBtnX + saveBtnW && my >= saveBtnY && my < saveBtnY + saveBtnH) {
-                saveProviders();
+                IConfigProvider provider = getCurrentProvider();
+                if (provider != null) provider.save();
+                dirtyValues.clear();
+                focusedEditKey = null;
+                invalidateEntriesCache();
                 return true;
             }
             if (hasUnsavedChanges() && mx >= cancelBtnX && mx < cancelBtnX + cancelBtnW && my >= cancelBtnY && my < cancelBtnY + cancelBtnH) {
-                cancelProviders();
+                IConfigProvider provider = getCurrentProvider();
+                if (provider != null) provider.cancel();
+                dirtyValues.clear();
+                focusedEditKey = null;
+                invalidateEntriesCache();
                 return true;
             }
             if (mx >= exitBtnX && mx < exitBtnX + exitBtnW && my >= exitBtnY && my < exitBtnY + exitBtnH) {
                 tryExit();
+                return true;
+            }
+            // 撤销按钮
+            if (!undoStack.isEmpty() && mx >= undoBtnX && mx < undoBtnX + undoBtnW && my >= undoBtnY && my < undoBtnY + undoBtnH) {
+                undo();
+                return true;
+            }
+            // 重做按钮
+            if (!redoStack.isEmpty() && mx >= redoBtnX && mx < redoBtnX + redoBtnW && my >= redoBtnY && my < redoBtnY + redoBtnH) {
+                redo();
                 return true;
             }
 
@@ -2115,8 +2476,6 @@ public class SettingsScreen extends Screen {
                 return true;
             }
 
-            if (my < listTop || my >= contentBottom) return true;
-
             // 配置项点击
             int maxRight = w - SCROLL_BAR_WIDTH - 14;
             int widgetW = 120;
@@ -2137,7 +2496,14 @@ public class SettingsScreen extends Screen {
 
                 // 根据嵌套层级缩进
                 int indent = 14 + entry.nestLevel() * 16;
-        
+                // 如果控件和名称重叠，将控件右移（取主名和上下文较宽者）
+                int nameWidth = this.font.width(keyText);
+                int contextWidth = context.isEmpty() ? 0 : this.font.width(Component.literal(context));
+                int nameEnd = indent + Math.max(nameWidth, contextWidth) + 14;
+                if (adjLeft < nameEnd + 10) {
+                    adjLeft = nameEnd + 10;
+                    adjRight = adjLeft + widgetW;
+                }
 
                 // 切换按钮区域
                 int toggleW = 18;
@@ -2163,12 +2529,14 @@ public class SettingsScreen extends Screen {
                 }
 
                 if (mx >= adjLeft && mx < adjLeft + widgetW) {
+                    IConfigProvider provider = getCurrentProvider();
                     switch (entry.kind()) {
                         case BOOLEAN -> {
                             toggleBoolean(entry);
                             return true;
                         }
                         case INTEGER, LONG, FLOAT, DOUBLE -> {
+                            if (provider != null && !provider.canEdit(path)) return true;
                             boolean useSlider = sliderMode.getOrDefault(path, false);
                             int contentRight = toggleX - 4;
                             if (useSlider && mx >= contentRight - 80 && mx < contentRight) {
@@ -2181,9 +2549,14 @@ public class SettingsScreen extends Screen {
                             return true;
                         }
                         case STRING -> {
+                            if (provider != null && !provider.canEdit(path)) return true;
                             focusedEditKey = path;
                             searchFocused = false;
                             globalSearchFocused = false;
+                            return true;
+                        }
+                        case BUTTON -> {
+                            handleButtonClick(entry);
                             return true;
                         }
                     }
@@ -2196,15 +2569,29 @@ public class SettingsScreen extends Screen {
 
     private void toggleBoolean(IConfigProvider.ConfigEntry entry) {
         String path = entry.path();
+        IConfigProvider provider = getCurrentProvider();
+        if (provider != null && !provider.canEdit(path)) return;
         String currentValue = dirtyValues.getOrDefault(path, entry.currentValue());
         String newValue = "true".equalsIgnoreCase(currentValue) ? "false" : "true";
-        dirtyValues.put(path, newValue);
-        IConfigProvider provider = getCurrentProvider();
+        putDirty(path, newValue);
         if (provider != null) provider.setValue(path, newValue);
         invalidateEntriesCache();
     }
 
+    /** 处理按钮点击 */
+    private void handleButtonClick(IConfigProvider.ConfigEntry entry) {
+        String path = entry.path();
+        if ("layout.go_to_config".equals(path)) {
+            LayoutConfigScreen.open();
+        }
+        invalidateEntriesCache();
+    }
+
     private void handleSliderClick(double mouseX, IConfigProvider.ConfigEntry entry, int widgetRight) {
+        String path = entry.path();
+        IConfigProvider provider = getCurrentProvider();
+        if (provider != null && !provider.canEdit(path)) return;
+
         int sliderW = 80;
         int sliderX = widgetRight - sliderW - 4;
         double ratio = (mouseX - sliderX) / sliderW;
@@ -2212,7 +2599,6 @@ public class SettingsScreen extends Screen {
 
         boolean isFloat = entry.kind() == IConfigProvider.ConfigValueKind.FLOAT
                 || entry.kind() == IConfigProvider.ConfigValueKind.DOUBLE;
-        String path = entry.path();
         String currentValue = dirtyValues.getOrDefault(path, entry.currentValue());
         double val;
         try { val = Double.parseDouble(currentValue); } catch (NumberFormatException e) { val = 0; }
@@ -2222,16 +2608,21 @@ public class SettingsScreen extends Screen {
         double newVal = sliderMin + ratio * sliderRange;
         String newValue = formatNumericValue(newVal, isFloat);
 
-        dirtyValues.put(path, newValue);
-        IConfigProvider provider = getCurrentProvider();
+        putDirty(path, newValue);
         if (provider != null) provider.setValue(path, newValue);
 
-        // 设置拖拽锁定
+        // 设置拖拽锁定，并保存起始值用于后续range计算
         draggingSliderPath = path;
+        sliderDragStartValue = val;
+        hasSliderDragStart = true;
     }
 
     /** 滑块拖拽更新（不检查鼠标位置，直接根据X坐标计算值） */
     private void handleSliderDrag(double mouseX, IConfigProvider.ConfigEntry entry, int widgetRight) {
+        String path = entry.path();
+        IConfigProvider provider = getCurrentProvider();
+        if (provider != null && !provider.canEdit(path)) return;
+
         int sliderW = 80;
         int sliderX = widgetRight - sliderW - 4;
         double ratio = (mouseX - sliderX) / sliderW;
@@ -2239,18 +2630,20 @@ public class SettingsScreen extends Screen {
 
         boolean isFloat = entry.kind() == IConfigProvider.ConfigValueKind.FLOAT
                 || entry.kind() == IConfigProvider.ConfigValueKind.DOUBLE;
-        String path = entry.path();
-        String currentValue = dirtyValues.getOrDefault(path, entry.currentValue());
-        double val;
-        try { val = Double.parseDouble(currentValue); } catch (NumberFormatException e) { val = 0; }
-        double sliderMin = getSliderMin(entry, val);
-        double sliderMax = getSliderMax(entry, val);
+        // 用拖拽起始值计算range（而非实时变动值），避免正反馈导致range膨胀溢出
+        double baseVal = hasSliderDragStart ? sliderDragStartValue : 0;
+        if (!hasSliderDragStart) {
+            String currentValue = dirtyValues.getOrDefault(path, entry.currentValue());
+            try { baseVal = Double.parseDouble(currentValue); } catch (NumberFormatException e) { baseVal = 0; }
+        }
+        double sliderMin = getSliderMin(entry, baseVal);
+        double sliderMax = getSliderMax(entry, baseVal);
         double sliderRange = sliderMax - sliderMin;
         double newVal = sliderMin + ratio * sliderRange;
         String newValue = formatNumericValue(newVal, isFloat);
 
-        dirtyValues.put(path, newValue);
-        IConfigProvider provider = getCurrentProvider();
+        putDirtyQuiet(path, newValue);
+        updateTopUndoTarget(path, newValue);
         if (provider != null) provider.setValue(path, newValue);
     }
 
@@ -2261,7 +2654,6 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (isBusy()) return true;
         if (showUnsavedDialog) return true;
 
         float inv = 1.0f / this.uiScale;
@@ -2331,7 +2723,13 @@ public class SettingsScreen extends Screen {
                             int adjRight = adjLeft + widgetW;
 
                             int indent = 14 + entry.nestLevel() * 16;
-
+                            int nameWidth = this.font.width(keyText);
+                            int contextWidth = context.isEmpty() ? 0 : this.font.width(Component.literal(context));
+                            int nameEnd = indent + Math.max(nameWidth, contextWidth) + 14;
+                            if (adjLeft < nameEnd + 10) {
+                                adjLeft = nameEnd + 10;
+                                adjRight = adjLeft + widgetW;
+                            }
                             int toggleW = 18;
                             int contentRight = adjRight - toggleW - 4;
                             handleSliderDrag(mx, entry, contentRight);
@@ -2359,7 +2757,14 @@ public class SettingsScreen extends Screen {
 
                         // 根据嵌套层级缩进
                         int indent = 14 + entry.nestLevel() * 16;
-                
+                        // 如果控件和名称重叠，将控件右移（取主名和上下文较宽者）
+                        int nameWidth = this.font.width(keyText);
+                        int contextWidth = context.isEmpty() ? 0 : this.font.width(Component.literal(context));
+                        int nameEnd = indent + Math.max(nameWidth, contextWidth) + 14;
+                        if (adjLeft < nameEnd + 10) {
+                            adjLeft = nameEnd + 10;
+                            adjRight = adjLeft + widgetW;
+                        }
                         int toggleW = 18;
                         int contentRight = adjRight - toggleW - 4;
                         handleSliderClick(mx, entry, contentRight);
@@ -2373,6 +2778,11 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // HUD布局拖拽松手：计算偏移差值并写入内存
+        if (hudDragTarget != HUD_DRAG_NONE) {
+            applyHudDrag(mouseX, mouseY);
+            return true;
+        }
         if (isDraggingSubcatBar) {
             isDraggingSubcatBar = false;
             return true;
@@ -2383,13 +2793,14 @@ public class SettingsScreen extends Screen {
         }
         if (draggingSliderPath != null) {
             draggingSliderPath = null;
+            hasSliderDragStart = false;
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (showUnsavedDialog) return true;
         if (showSettingsOverlay) return true;
 
@@ -2398,12 +2809,12 @@ public class SettingsScreen extends Screen {
 
         // 子分类栏滚动
         if (my >= subcatBarY && my < subcatBarY + subcatBarH && subcatMaxScroll > 0) {
-            subcatScrollOffset = Math.max(0, Math.min(subcatScrollOffset - (int) (scrollY * 30), subcatMaxScroll));
+            subcatScrollOffset = Math.max(0, Math.min(subcatScrollOffset - (int) (delta * 30), subcatMaxScroll));
             return true;
         }
 
         // 配置项列表滚动
-        scrollOffset = Math.max(0, Math.min(scrollOffset - (int) (scrollY * entryRowHeight), maxScroll));
+        scrollOffset = Math.max(0, Math.min(scrollOffset - (int) (delta * entryRowHeight), maxScroll));
         return true;
     }
 
@@ -2423,6 +2834,11 @@ public class SettingsScreen extends Screen {
     private void commitKeyBinding() {
         if (capturingKeyPath == null) return;
         IConfigProvider provider = getCurrentProvider();
+        if (provider != null && !provider.canEdit(capturingKeyPath)) {
+            capturedKeys.clear();
+            capturingKeyPath = null;
+            return;
+        }
         if (provider != null) {
             String keyStr;
             if (capturedKeys.isEmpty()) {
@@ -2435,7 +2851,7 @@ public class SettingsScreen extends Screen {
                 }
                 keyStr = sb.toString();
             }
-            dirtyValues.put(capturingKeyPath, keyStr);
+            putDirty(capturingKeyPath, keyStr);
             provider.setValue(capturingKeyPath, keyStr);
         }
         capturedKeys.clear();
@@ -2444,12 +2860,21 @@ public class SettingsScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (isBusy()) return true;
         if (showUnsavedDialog) {
             if (keyCode == InputConstants.KEY_ESCAPE) {
                 showUnsavedDialog = false;
                 return true;
             }
+            return true;
+        }
+
+        // Ctrl+Z 撤销 / Ctrl+Y 重做（全局快捷键）
+        if ((modifiers & 2) != 0 && !undoStack.isEmpty() && keyCode == InputConstants.KEY_Z) {
+            undo();
+            return true;
+        }
+        if ((modifiers & 2) != 0 && !redoStack.isEmpty() && keyCode == InputConstants.KEY_Y) {
+            redo();
             return true;
         }
 
@@ -2469,40 +2894,155 @@ public class SettingsScreen extends Screen {
             return true;
         }
 
-        if (showSettingsOverlay) {
-            if (keyCode == InputConstants.KEY_ESCAPE) showSettingsOverlay = false;
-            return true;
+        if (globalSearchFocused) {
+            return handleSearchKey(keyCode, scanCode, modifiers, true);
         }
-        if (focusedTarget() != null) {
-            if (keyCode == InputConstants.KEY_ESCAPE || keyCode == InputConstants.KEY_RETURN
-                    || keyCode == InputConstants.KEY_NUMPADENTER) {
-                resetInputFocus();
+
+        if (searchFocused) {
+            return handleSearchKey(keyCode, scanCode, modifiers, false);
+        }
+
+        if (focusedEditKey != null) {
+            IConfigProvider provider = getCurrentProvider();
+            if (provider != null && !provider.canEdit(focusedEditKey)) {
+                focusedEditKey = null; // 不可编辑时退出编辑模式
                 return true;
             }
-            textEditor().keyPressed(keyCode, scanCode, modifiers);
+            if (keyCode == InputConstants.KEY_ESCAPE || keyCode == InputConstants.KEY_RETURN
+                    || keyCode == InputConstants.KEY_NUMPADENTER) {
+                focusedEditKey = null;
+                return true;
+            }
+
+            if (keyCode == InputConstants.KEY_BACKSPACE) {
+                if (provider != null) {
+                    String current = dirtyValues.getOrDefault(focusedEditKey, provider.getValue(focusedEditKey));
+                    if (current == null) current = "";
+                    if (!current.isEmpty()) {
+                        String newValue = current.substring(0, current.length() - 1);
+                        putDirty(focusedEditKey, newValue);
+                        provider.setValue(focusedEditKey, newValue);
+                    }
+                }
+                return true;
+            }
+
+            // 光标移动等导航键
+            if (keyCode == InputConstants.KEY_LEFT || keyCode == InputConstants.KEY_RIGHT
+                    || keyCode == InputConstants.KEY_HOME || keyCode == InputConstants.KEY_END) {
+                return true;
+            }
+
+            // 可打印字符不在此处理，返回false让GLFW触发charTyped事件（避免双字符）
+            if (provider != null) {
+                int key = -1;
+                if (keyCode >= InputConstants.KEY_0 && keyCode <= InputConstants.KEY_9) key = keyCode;
+                if (keyCode >= InputConstants.KEY_NUMPAD0 && keyCode <= InputConstants.KEY_NUMPAD9) key = keyCode;
+                if (keyCode >= InputConstants.KEY_A && keyCode <= InputConstants.KEY_Z) key = keyCode;
+                if (keyCode == InputConstants.KEY_PERIOD || keyCode == InputConstants.KEY_MINUS
+                        || keyCode == InputConstants.KEY_APOSTROPHE || keyCode == InputConstants.KEY_SEMICOLON
+                        || keyCode == InputConstants.KEY_SPACE || keyCode == InputConstants.KEY_EQUALS
+                        || keyCode == InputConstants.KEY_SLASH || keyCode == InputConstants.KEY_BACKSLASH) {
+                    key = keyCode;
+                }
+                if (key != -1) {
+                    return false; // 让charTyped处理，避免双字符
+                }
+            }
             return true;
         }
 
         if (keyCode == InputConstants.KEY_ESCAPE) {
+            // 仅从DFGUI_MAIN进入时才允许ESC返回；从NeoForge模组列表等外部进入时禁止ESC，避免回退到不存在的主界面导致崩溃
+            if (!(parent instanceof DFGUI_MAIN)) return true;
             tryExit();
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    private char getCharFromKey(int keyCode, int modifiers) {
+        boolean shift = (modifiers & 1) != 0;
+        if (keyCode >= InputConstants.KEY_0 && keyCode <= InputConstants.KEY_9) {
+            if (shift) return ")!@#$%^&*(".charAt(keyCode - InputConstants.KEY_0);
+            return (char) ('0' + (keyCode - InputConstants.KEY_0));
+        }
+        if (keyCode >= InputConstants.KEY_NUMPAD0 && keyCode <= InputConstants.KEY_NUMPAD9) {
+            return (char) ('0' + (keyCode - InputConstants.KEY_NUMPAD0));
+        }
+        if (keyCode >= InputConstants.KEY_A && keyCode <= InputConstants.KEY_Z) {
+            char c = (char) ('a' + (keyCode - InputConstants.KEY_A));
+            return shift ? Character.toUpperCase(c) : c;
+        }
+        if (keyCode == InputConstants.KEY_PERIOD) return shift ? '>' : '.';
+        if (keyCode == InputConstants.KEY_MINUS) return shift ? '_' : '-';
+        if (keyCode == InputConstants.KEY_APOSTROPHE) return shift ? '"' : '\'';
+        if (keyCode == InputConstants.KEY_SEMICOLON) return shift ? ':' : ';';
+        if (keyCode == InputConstants.KEY_SPACE) return ' ';
+        if (keyCode == InputConstants.KEY_EQUALS) return shift ? '+' : '=';
+        if (keyCode == InputConstants.KEY_SLASH) return shift ? '?' : '/';
+        if (keyCode == InputConstants.KEY_BACKSLASH) return shift ? '|' : '\\';
+        return 0;
+    }
+
+    /** 处理搜索框键盘输入（仅处理特殊键，可打印字符返回false让GLFW触发charTyped） */
+    private boolean handleSearchKey(int keyCode, int scanCode, int modifiers, boolean isGlobal) {
+        if (keyCode == InputConstants.KEY_ESCAPE || keyCode == InputConstants.KEY_RETURN
+                || keyCode == InputConstants.KEY_NUMPADENTER) {
+            if (isGlobal) globalSearchFocused = false;
+            else searchFocused = false;
+            return true;
+        }
+        if (keyCode == InputConstants.KEY_BACKSPACE) {
+            String text = isGlobal ? globalSearchText : searchText;
+            if (!text.isEmpty()) {
+                text = text.substring(0, text.length() - 1);
+                if (isGlobal) globalSearchText = text;
+                else searchText = text;
+            }
+            scrollOffset = 0;
+            return true;
+        }
+        if (keyCode == InputConstants.KEY_LEFT || keyCode == InputConstants.KEY_RIGHT
+                || keyCode == InputConstants.KEY_UP || keyCode == InputConstants.KEY_DOWN
+                || keyCode == InputConstants.KEY_HOME || keyCode == InputConstants.KEY_END) {
+            return true;
+        }
+        // 可打印字符：返回false让GLFW生成charTyped事件，实现即时响应
+        return false;
+    }
+
     /** 处理IME输入（中文等） */
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
-        if (isBusy() || showSettingsOverlay || capturingKeyPath != null) return true;
         if (showUnsavedDialog) return true;
 
-        if (focusedTarget() != null) return textEditor().charTyped(codePoint, modifiers);
+        if (globalSearchFocused) {
+            globalSearchText += codePoint;
+            scrollOffset = 0;
+            return true;
+        }
+        if (searchFocused) {
+            searchText += codePoint;
+            scrollOffset = 0;
+            return true;
+        }
+        if (focusedEditKey != null) {
+            IConfigProvider provider = getCurrentProvider();
+            if (provider != null && !provider.canEdit(focusedEditKey)) {
+                focusedEditKey = null;
+                return true;
+            }
+            if (provider != null) {
+                String current = dirtyValues.getOrDefault(focusedEditKey, provider.getValue(focusedEditKey));
+                if (current == null) current = "";
+                String newValue = current + codePoint;
+                putDirty(focusedEditKey, newValue);
+                provider.setValue(focusedEditKey, newValue);
+            }
+            return true;
+        }
         return super.charTyped(codePoint, modifiers);
-    }
-
-    @Override
-    public void onClose() {
-        tryExit();
     }
 
     @Override
@@ -2512,11 +3052,12 @@ public class SettingsScreen extends Screen {
 
     @Override
     public void removed() {
-        // 清理预览资源，防止泄露
+        active = null;
+        // 清理预览和拖拽状态，防止泄露
         stopPreview();
+        hudDragTarget = HUD_DRAG_NONE;
         // 持久化界面状态
         saveScreenState();
-        if (active == this) active = null;
         super.removed();
     }
 
@@ -2529,6 +3070,70 @@ public class SettingsScreen extends Screen {
     }
 
     private void openMainScreen() {
-        Minecraft.getInstance().setScreen(parent);
+        undoStack.clear();
+        redoStack.clear();
+        Minecraft.getInstance().setScreen(new DFGUI_MAIN());
+    }
+
+    // ======================== 撤销/重做系统 ========================
+
+    /** 单次配置变更记录（路径, 变更前值, 变更后值）；变更前值为null表示修改前为原始保存值 */
+    private record ChangeRecord(String path, String oldValue, String newValue) {}
+
+    /** 带撤销记录地写入脏值（所有独立配置值修改都应通过此方法） */
+    private void putDirty(String path, String newValue) {
+        String oldValue = dirtyValues.get(path);
+        if (!Objects.equals(oldValue, newValue)) {
+            undoStack.push(new ChangeRecord(path, oldValue, newValue));
+            redoStack.clear();
+        }
+        dirtyValues.put(path, newValue);
+    }
+
+    /** 仅写入脏值，不记录撤销（用于滑块拖拽中间帧等连续操作） */
+    private void putDirtyQuiet(String path, String newValue) {
+        dirtyValues.put(path, newValue);
+    }
+
+    /** 更新撤销栈顶部记录的目标值（用于滑块拖拽中将整个拖拽会话合并为一步撤销） */
+    private void updateTopUndoTarget(String path, String newValue) {
+        if (!undoStack.isEmpty()) {
+            ChangeRecord top = undoStack.peek();
+            if (top.path().equals(path)) {
+                undoStack.pop();
+                undoStack.push(new ChangeRecord(path, top.oldValue(), newValue));
+            }
+        }
+    }
+
+    /** 应用一条变更记录到指定方向（undo=true恢复旧值，false恢复新值） */
+    private void applyRecord(ChangeRecord record, boolean undoing) {
+        String valueToApply = undoing ? record.oldValue() : record.newValue();
+        IConfigProvider provider = getCurrentProvider();
+        if (valueToApply == null) {
+            dirtyValues.remove(record.path());
+            if (provider != null) provider.setValue(record.path(), provider.getValue(record.path()));
+        } else {
+            dirtyValues.put(record.path(), valueToApply);
+            if (provider != null) provider.setValue(record.path(), valueToApply);
+        }
+    }
+
+    /** 撤销一步 */
+    private void undo() {
+        if (undoStack.isEmpty()) return;
+        ChangeRecord record = undoStack.pop();
+        redoStack.push(record);
+        applyRecord(record, true);
+        invalidateEntriesCache();
+    }
+
+    /** 重做一步 */
+    private void redo() {
+        if (redoStack.isEmpty()) return;
+        ChangeRecord record = redoStack.pop();
+        undoStack.push(record);
+        applyRecord(record, false);
+        invalidateEntriesCache();
     }
 }

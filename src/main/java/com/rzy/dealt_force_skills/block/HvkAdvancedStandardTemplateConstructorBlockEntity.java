@@ -69,6 +69,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     private static final String CRAFT_INTERVAL = "CraftInterval";
     private static final String QUEUED_RECIPE = "QueuedRecipe";
     private static final String QUEUED_CRAFTS = "QueuedCrafts";
+    private static final String QUEUED_TARGET_ITEMS = "QueuedTargetItems";
     private static final String QUEUED_COMPLETED = "QueuedCompleted";
     private static final String QUEUED_RAW_COST = "QueuedRawCost";
     private static final int CRAFT_INTERVAL_TICKS = 20;
@@ -95,12 +96,34 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     @SuppressWarnings("unused")
     private static final PlanLimits CONFIG_DEFAULTS = planLimits();
     private static RecipeIndex cachedRecipeIndex;
+    private static final Set<HvkAdvancedStandardTemplateConstructorBlockEntity> PLANNING_QUEUE = new java.util.LinkedHashSet<>();
+
+    public static void tickPlanningJobs(MinecraftServer server) {
+        long deadline = System.nanoTime() + DEFAULT_PLAN_TICK_BUDGET_MS * 1_000_000L;
+        int remaining = PLANNING_QUEUE.size();
+        while (remaining-- > 0 && !PLANNING_QUEUE.isEmpty() && System.nanoTime() < deadline) {
+            var iterator = PLANNING_QUEUE.iterator();
+            var block = iterator.next();
+            iterator.remove();
+            if (block.isRemoved() || block.level == null || block.level.getServer() != server) {
+                block.cancelPlanningJob("unloaded");
+                block.activePlanningJob = null;
+                continue;
+            }
+            block.tickPlanningJob(Math.min(deadline, System.nanoTime() + 500_000L));
+            if (block.activePlanningJob != null) PLANNING_QUEUE.add(block);
+        }
+    }
+
 
     private ItemStack template = ItemStack.EMPTY;
     private ItemStack output = ItemStack.EMPTY;
     private UUID ownerId;
     private ResourceLocation queuedRecipeId;
     private int queuedCrafts;
+    private int queuedTargetItems;
+    private int pendingCrafts;
+    private ResourceLocation pendingCraftRecipeId;
     private int queuedCompleted;
     private int craftTicks;
     private int queuedCraftIntervalTicks = CRAFT_INTERVAL_TICKS;
@@ -230,18 +253,31 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             int requestId = rememberedDetailRequestId(player, recipeId);
             BasicRecipeDetail basic = basicRecipeDetail(player, recipeId, requestId, null);
             NetworkHandler.sendToPlayer(new S2C_HvkConstructorDetail(worldPosition, requestId, basic.detail()), player);
+            pendingCrafts = maxCrafts;
+            pendingCraftRecipeId = recipeId;
             startPlanningJob(player, recipeId, requestId, basic);
             player.displayClientMessage(Component.translatable(
                     "message.dealt_force_skills.hvk_constructor.plan_checking", recipe.result.getHoverName()), true);
             return 0;
         }
-        int queued = estimateCraftsPossible(plan.rawCost(), sources, maxCrafts);
-        if (queued <= 0) {
-            queued = 1;
+        int queued = maxCrafts;
+        Map<Item, Integer> batchCost = scaleCost(plan.rawCost(), queued);
+        long outputCount = (long) recipe.result.getCount() * queued;
+        if (batchCost == null || outputCount > Integer.MAX_VALUE
+                || !canConsumeWithRedemption(player, batchCost, sources)) {
+            player.displayClientMessage(Component.translatable(
+                    "message.dealt_force_skills.hvk_constructor.not_enough_batch",
+                    queued, outputCount, recipe.result.getHoverName()), true);
+            pendingCrafts = 0;
+            pendingCraftRecipeId = null;
+            return 0;
         }
 
         queuedRecipeId = recipeId;
         queuedCrafts = queued;
+        queuedTargetItems = (int) outputCount;
+        pendingCrafts = 0;
+        pendingCraftRecipeId = null;
         queuedCompleted = 0;
         craftTicks = 0;
         queuedCraftIntervalTicks = craftIntervalFor(recipe, plan.rawCost(), plan.workUnits());
@@ -250,7 +286,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         sendRecipeDetail(player, recipeId);
         player.displayClientMessage(Component.translatable(
                 "message.dealt_force_skills.hvk_constructor.queued",
-                queued * recipe.result.getCount(), recipe.result.getHoverName()), true);
+                queuedCrafts, queuedTargetItems, recipe.result.getHoverName()), true);
         return queued;
     }
 
@@ -279,6 +315,12 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         if (server == null
                 || cachedRecipeIndex == null
                 || cachedRecipeIndex.server == server) {
+            for (var block : List.copyOf(PLANNING_QUEUE)) {
+                block.cancelPlanningJob("catalog_reload");
+                block.activePlanningJob = null;
+                block.cachedPlanResult = null;
+            }
+            PLANNING_QUEUE.clear();
             cachedRecipeIndex = null;
             RecipeIndex.markCleared();
         }
@@ -498,6 +540,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 recipeIndex, limits, cancelToken, stockFingerprint, basic.sourceStats(), player);
         activePlanningJob = new PlanningJob(player.getUUID(), recipeId, requestId, basic, limits,
                 cancelToken, planner);
+        PLANNING_QUEUE.add(this);
         NetworkHandler.sendToPlayer(new S2C_HvkConstructorDetail(
                 worldPosition, requestId, detailWithStatus(basic.detail(), CraftabilityStatus.PLANNING)), player);
         LOGGER.info("HVK plan queued recipe={} requestId={} sources={} rs={} directItems={} maxDepth={} maxNodes={} tickBudgetMs={} totalBudgetMs={}",
@@ -512,7 +555,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 detail.truncated(), detail.truncationReason(), status);
     }
 
-    private void tickPlanningJob() {
+    private void tickPlanningJob(long deadline) {
         PlanningJob job = activePlanningJob;
         if (job == null) {
             return;
@@ -530,7 +573,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             activePlanningJob = null;
             return;
         }
-        PlanResult result = job.planner().tick();
+        PlanResult result = job.planner().tick(deadline);
         if (result == null) {
             return;
         }
@@ -538,10 +581,11 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         if (job.cancelToken().cancelled()) {
             return;
         }
-        if ((result.status() == CraftabilityStatus.MISSING || result.status() == CraftabilityStatus.TRUNCATED)
-                && !result.rawCost().isEmpty()
-                && canConsumeWithRedemption(player, result.rawCost(), collectSources())) {
-            result = result.asCraftable();
+        if (result.status() == CraftabilityStatus.CRAFTABLE
+                && !canConsumeWithRedemption(player, result.rawCost(), collectSources())) {
+            cachedPlanResult = null;
+            sendRecipeDetail(player, job.recipeId(), job.requestId());
+            return;
         }
         if (result.status() == CraftabilityStatus.CRAFTABLE) {
             cachedPlanResult = result;
@@ -550,6 +594,14 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         }
         RecipeDetail detail = detailFromPlanResult(job, result);
         NetworkHandler.sendToPlayer(new S2C_HvkConstructorDetail(worldPosition, job.requestId(), detail), player);
+        if (job.recipeId().equals(pendingCraftRecipeId)) {
+            int targetItems = pendingCrafts;
+            pendingCrafts = 0;
+            pendingCraftRecipeId = null;
+            if (result.status() == CraftabilityStatus.CRAFTABLE && targetItems > 0) {
+                craftFromUi(player, job.recipeId(), targetItems);
+            }
+        }
     }
 
     private RecipeDetail detailFromPlanResult(PlanningJob job, PlanResult result) {
@@ -558,9 +610,15 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 || result.truncated();
         String reason = truncated ? result.reason() : "none";
         List<RecipeTreeLine> lines = withMissingFlag(job.basic().detail().tree(), false);
-        Map<Item, Integer> missing = status == CraftabilityStatus.MISSING
+        Map<Item, Integer> missing = status == CraftabilityStatus.MISSING || status == CraftabilityStatus.TRUNCATED
                 ? result.missing()
                 : Map.of();
+        if (!missing.isEmpty()) {
+            List<RecipeTreeLine> requirements = new ArrayList<>();
+            if (!lines.isEmpty()) requirements.add(lines.get(0));
+            for (ItemStack stack : stacksFromCounts(missing)) requirements.add(new RecipeTreeLine(stack, 1, true, true));
+            lines = requirements;
+        }
         return new RecipeDetail(result.recipeId(), trimLines(lines), stacksFromCounts(missing),
                 queuedTotalFor(result.recipeId()), queuedCompletedFor(result.recipeId()),
                 craftTicksFor(result.recipeId()), craftIntervalFor(result.recipeId()),
@@ -568,6 +626,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     }
 
     private void cancelPlanningJob(String reason) {
+        PLANNING_QUEUE.remove(this);
         PlanningJob job = activePlanningJob;
         if (job == null) {
             return;
@@ -613,7 +672,6 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             be.craftTicks = 0;
             be.markUpdated();
         }
-        be.tickPlanningJob();
         be.tickQueuedCraft();
     }
 
@@ -656,29 +714,33 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             return;
         }
 
-        if (!craftOne(owner, recipe, queuedRawCost)) {
-            sendRecipeDetail(owner, detailId);
+        int remainingCrafts = queuedCrafts - queuedCompleted;
+        // Keep saved pre-batch queues readable, including their optional exact-output target.
+        long remainingItems = queuedTargetItems > 0
+                ? (long) queuedTargetItems - (long) queuedCompleted * recipe.result.getCount()
+                : (long) remainingCrafts * recipe.result.getCount();
+        Map<Item, Integer> batchCost = scaleCost(queuedRawCost, remainingCrafts);
+        if (batchCost == null || remainingItems <= 0 || remainingItems > Integer.MAX_VALUE
+                || !craftBatch(owner, recipe, batchCost, (int) remainingItems)) {
             owner.displayClientMessage(Component.translatable(
-                    "message.dealt_force_skills.hvk_constructor.not_enough_materials", recipe.result.getHoverName()), true);
+                    "message.dealt_force_skills.hvk_constructor.not_enough_batch",
+                    remainingCrafts, remainingItems, recipe.result.getHoverName()), true);
             clearQueuedCraft();
+            sendRecipeDetail(owner, detailId);
             markUpdated();
             return;
         }
 
-        queuedCompleted++;
-        if (queuedCompleted >= queuedCrafts) {
-            int craftedItems = queuedCrafts * recipe.result.getCount();
-            clearQueuedCraft();
-            play(ModSounds.HVK_CONSTRUCTOR_CRAFT_FINISH.get());
-            owner.displayClientMessage(Component.translatable(
-                    "message.dealt_force_skills.hvk_constructor.crafted",
-                    craftedItems, recipe.result.getHoverName()), true);
-        }
+        clearQueuedCraft();
+        play(ModSounds.HVK_CONSTRUCTOR_CRAFT_FINISH.get());
+        owner.displayClientMessage(Component.translatable(
+                "message.dealt_force_skills.hvk_constructor.crafted",
+                remainingItems, recipe.result.getHoverName()), true);
         sendRecipeDetail(owner, detailId);
         markUpdated();
     }
 
-    private boolean craftOne(ServerPlayer player, SelectedRecipe recipe, Map<Item, Integer> rawCost) {
+    private boolean craftBatch(ServerPlayer player, SelectedRecipe recipe, Map<Item, Integer> rawCost, int outputCount) {
         List<SourceSlot> sources = collectSources();
         if (!canConsume(rawCost, sources) && !canConsumeWithRedemption(player, rawCost, sources)) {
             return false;
@@ -686,13 +748,20 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         if (!consume(rawCost, sources, player)) {
             return false;
         }
-        deliverResult(player, recipe.result, 1);
+        // Payment/planning is aggregated; preserve the existing per-recipe bonus roll boundaries.
+        for (int remaining = outputCount; remaining > 0;) {
+            ItemStack result = recipe.result.copy();
+            result.setCount(Math.min(recipe.result.getCount(), remaining));
+            remaining -= result.getCount();
+            deliverResult(player, result, 1);
+        }
         return true;
     }
 
     private void clearQueuedCraft() {
         queuedRecipeId = null;
         queuedCrafts = 0;
+        queuedTargetItems = 0;
         queuedCompleted = 0;
         craftTicks = 0;
         queuedCraftIntervalTicks = CRAFT_INTERVAL_TICKS;
@@ -742,6 +811,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             tag.putString(QUEUED_RECIPE, queuedRecipeId.toString());
         }
         tag.putInt(QUEUED_CRAFTS, queuedCrafts);
+        tag.putInt(QUEUED_TARGET_ITEMS, queuedTargetItems);
         tag.putInt(QUEUED_COMPLETED, queuedCompleted);
         tag.putInt(CRAFT_TICKS, craftTicks);
         tag.putInt(CRAFT_INTERVAL, queuedCraftIntervalTicks);
@@ -767,6 +837,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 ? parseResourceLocation(tag.getString(QUEUED_RECIPE))
                 : null;
         queuedCrafts = Math.max(0, tag.getInt(QUEUED_CRAFTS));
+        queuedTargetItems = Math.max(0, tag.getInt(QUEUED_TARGET_ITEMS));
         queuedCompleted = Math.max(0, Math.min(queuedCrafts, tag.getInt(QUEUED_COMPLETED)));
         craftTicks = tag.getInt(CRAFT_TICKS);
         queuedCraftIntervalTicks = tag.contains(CRAFT_INTERVAL, Tag.TAG_INT)
@@ -853,58 +924,63 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
 
     private static boolean canConsumeWithRedemption(ServerPlayer player, Map<Item, Integer> rawCost,
                                                     List<SourceSlot> sources) {
-        Map<Item, Integer> available = collectStock(sources);
-        long totalRedemptionCost = 0L;
+        long cost = batchRedemptionCost(player, rawCost, collectStock(sources));
+        return cost >= 0L && SpecialOperationsBaseManager.havocCoins(player) >= cost;
+    }
+
+    private static long batchRedemptionCost(ServerPlayer player, Map<Item, Integer> rawCost,
+                                           Map<Item, Integer> available) {
+        long total = 0L;
         for (Map.Entry<Item, Integer> entry : rawCost.entrySet()) {
             int missing = entry.getValue() - available.getOrDefault(entry.getKey(), 0);
-            if (missing > 0) {
-                long cost = SpecialOperationsBaseManager.redemptionCostMatching(
-                        player, stack -> stack.getItem() == entry.getKey(), missing);
-                if (cost < 0L || totalRedemptionCost > Long.MAX_VALUE - cost) {
-                    return false;
-                }
-                totalRedemptionCost += cost;
-            }
+            if (missing <= 0) continue;
+            // Work-block batches are not limited by the shop's per-click 9999-item limit.
+            long unit = SpecialOperationsBaseManager.redemptionCostMatching(
+                    player, stack -> stack.getItem() == entry.getKey(), 1);
+            if (unit < 0L || (unit > 0L && missing > (Long.MAX_VALUE - total) / unit)) return -1L;
+            total += unit * missing;
         }
-        return SpecialOperationsBaseManager.havocCoins(player) >= totalRedemptionCost;
+        return total;
     }
 
     private static boolean consume(Map<Item, Integer> rawCost, List<SourceSlot> sources, ServerPlayer player) {
         Map<Item, Integer> available = collectStock(sources);
-        long totalRedemptionCost = 0L;
-        for (Map.Entry<Item, Integer> entry : rawCost.entrySet()) {
-            int missing = entry.getValue() - available.getOrDefault(entry.getKey(), 0);
-            if (missing <= 0) {
-                continue;
-            }
-            long cost = SpecialOperationsBaseManager.redemptionCostMatching(
-                    player, stack -> stack.getItem() == entry.getKey(), missing);
-            if (cost < 0L || totalRedemptionCost > Long.MAX_VALUE - cost) {
-                return false;
-            }
-            totalRedemptionCost += cost;
-        }
-        if (SpecialOperationsBaseManager.havocCoins(player) < totalRedemptionCost) {
-            return false;
-        }
-        for (Map.Entry<Item, Integer> entry : rawCost.entrySet()) {
-            int remaining = entry.getValue();
-            for (SourceSlot source : sources) {
-                if (remaining <= 0) {
-                    break;
+        long coins = batchRedemptionCost(player, rawCost, available);
+        if (coins < 0L || SpecialOperationsBaseManager.havocCoins(player) < coins) return false;
+        List<ItemStack> extracted = new ArrayList<>();
+        boolean paid = false;
+        try {
+            for (Map.Entry<Item, Integer> entry : rawCost.entrySet()) {
+                int remaining = Math.min(entry.getValue(), available.getOrDefault(entry.getKey(), 0));
+                for (SourceSlot source : sources) {
+                    if (remaining <= 0) break;
+                    ItemStack removed = source.extract(entry.getKey(), remaining);
+                    if (!removed.isEmpty()) {
+                        extracted.add(removed.copy());
+                        if (removed.getItem() != entry.getKey() || removed.getCount() > remaining) return false;
+                        remaining -= removed.getCount();
+                    }
                 }
-                remaining -= source.extract(entry.getKey(), remaining);
+                if (remaining > 0) return false;
             }
-            if (remaining > 0) {
-                ItemStack purchased = SpecialOperationsBaseManager.redeemCheapestMatching(player,
-                        stack -> stack.getItem() == entry.getKey(), remaining);
-                remaining -= purchased.isEmpty() ? 0 : purchased.getCount();
-            }
-            if (remaining > 0) {
-                return false;
-            }
+            paid = coins == 0L || SpecialOperationsBaseManager.spendHavocCoins(player, coins);
+            return paid;
+        } finally {
+            // An external handler may refuse real extraction after advertising stock.
+            // Restore actual extracted stacks (including metadata) instead of losing a partial payment.
+            if (!paid) for (ItemStack stack : extracted) giveOrDrop(player, stack);
         }
-        return true;
+    }
+
+    private static Map<Item, Integer> scaleCost(Map<Item, Integer> unitCost, int crafts) {
+        if (crafts <= 0) return null;
+        Map<Item, Integer> scaled = new HashMap<>();
+        for (Map.Entry<Item, Integer> entry : unitCost.entrySet()) {
+            long count = (long) entry.getValue() * crafts;
+            if (count <= 0L || count > Integer.MAX_VALUE) return null;
+            scaled.put(entry.getKey(), (int) count);
+        }
+        return scaled;
     }
 
     private static Map<Item, Integer> copyCost(Map<Item, Integer> rawCost) {
@@ -942,93 +1018,6 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             }
         }
         return rawCost;
-    }
-
-    private static List<CraftingOption> prioritizedOptions(List<CraftingOption> options, PlanState state,
-                                                           PlanningContext context) {
-        // The advanced template constructor deliberately keeps recipe order.  Recursive
-        // availability/Havoc-cost scoring makes redemption planning branch too deeply;
-        // each missing item is handled by processItem's per-level redemption fallback.
-        return options;
-    }
-
-    private static int scoreRecipeDeep(CraftingOption recipe, PlanState state, PlanningContext context,
-                                       Set<Item> visiting, int depth, Map<String, Integer> scoreCache) {
-        // Limit to depth 3 to balance accuracy and performance
-        if (depth >= 3) {
-            return 10_000;
-        }
-
-        // Cache key includes the recipe output item and depth
-        String cacheKey = itemKey(recipe.result().getItem()) + ":" + depth;
-        Integer cached = scoreCache.get(cacheKey);
-        if (cached != null) {
-            return cached;
-        }
-
-        int availableInputCount = 0;
-        int totalInputCount = recipe.inputs().size();
-        int totalAvailability = 0;
-        int minInputScore = Integer.MAX_VALUE;
-
-        for (RecipeInput input : recipe.inputs()) {
-            ItemStack[] choices = input.ingredient().getItems();
-            int bestChoiceScore = 0;
-
-            for (ItemStack choice : choices) {
-                if (!isCraftableStack(choice)) {
-                    continue;
-                }
-
-                int needed = saturatedMultiply(Math.max(1, choice.getCount()), input.count());
-                int available = state.availableCount(choice.getItem());
-                int choiceScore = 0;
-
-                if (available >= needed) {
-                    // Have enough directly in inventory
-                    choiceScore = 1_000_000 + available;
-                    bestChoiceScore = Math.max(bestChoiceScore, choiceScore);
-                    break;
-                } else if (available > 0) {
-                    // Have some in inventory
-                    choiceScore = 500_000 + available;
-                    bestChoiceScore = Math.max(bestChoiceScore, choiceScore);
-                } else if (!visiting.contains(choice.getItem())) {
-                    // Try to craft from sub-recipes
-                    visiting.add(choice.getItem());
-                    List<CraftingOption> subRecipes = context.recipeOptions(choice.getItem());
-                    if (!subRecipes.isEmpty()) {
-                        int bestSubScore = 0;
-                        for (CraftingOption subRecipe : subRecipes) {
-                            int subScore = scoreRecipeDeep(subRecipe, state, context, visiting, depth + 1, scoreCache);
-                            bestSubScore = Math.max(bestSubScore, subScore);
-                        }
-                        choiceScore = bestSubScore / 10;
-                        bestChoiceScore = Math.max(bestChoiceScore, choiceScore);
-                    }
-                    visiting.remove(choice.getItem());
-                }
-            }
-
-            if (bestChoiceScore >= 100_000) {
-                availableInputCount++;
-            }
-            totalAvailability += bestChoiceScore;
-            minInputScore = Math.min(minInputScore, bestChoiceScore);
-        }
-
-        // Pure inventory-driven scoring
-        int recipeScore;
-        if (availableInputCount == totalInputCount) {
-            recipeScore = 1_000_000 + totalAvailability;
-        } else if (availableInputCount > 0) {
-            recipeScore = 100_000 + totalAvailability;
-        } else {
-            recipeScore = 10_000 + minInputScore;
-        }
-
-        scoreCache.put(cacheKey, recipeScore);
-        return recipeScore;
     }
 
     private static List<CraftingOption> recipeOptions(Level level, Item item) {
@@ -1493,7 +1482,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
     private interface SourceSlot {
         ItemStack stack();
 
-        int extract(Item item, int max);
+        ItemStack extract(Item item, int max);
 
         default boolean refinedStorage() {
             return false;
@@ -1521,13 +1510,12 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         }
 
         @Override
-        public int extract(Item item, int max) {
+        public ItemStack extract(Item item, int max) {
             ItemStack stack = inventory.getItem(slot);
             if (stack.isEmpty() || stack.getItem() != item) {
-                return 0;
+                return ItemStack.EMPTY;
             }
-            int removed = Math.min(max, stack.getCount());
-            stack.shrink(removed);
+            ItemStack removed = inventory.removeItem(slot, Math.min(max, stack.getCount()));
             inventory.setChanged();
             return removed;
         }
@@ -1550,12 +1538,12 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         }
 
         @Override
-        public int extract(Item item, int max) {
+        public ItemStack extract(Item item, int max) {
             ItemStack stack = handler.getStackInSlot(slot);
             if (stack.isEmpty() || stack.getItem() != item) {
-                return 0;
+                return ItemStack.EMPTY;
             }
-            return handler.extractItem(slot, max, false).getCount();
+            return handler.extractItem(slot, max, false);
         }
 
         @Override
@@ -1581,13 +1569,13 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         }
 
         @Override
-        public int extract(Item item, int max) {
+        public ItemStack extract(Item item, int max) {
             if (cached.isEmpty() || cached.getItem() != item) {
-                return 0;
+                return ItemStack.EMPTY;
             }
             ItemStack removed = SpecialOperationsBaseManager.extractWarehouse(owner, slot, max);
             cached.shrink(removed.getCount());
-            return removed.getCount();
+            return removed;
         }
     }
 
@@ -1597,7 +1585,9 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         private final List<IndexedRecipe> recipes;
         private final List<RecipeView> recipeViews;
         private final Map<ResourceLocation, SelectedRecipe> recipesById;
+        private final Map<Ingredient, List<ItemStack>> preparedIngredients = new IdentityHashMap<>();
         private final Map<Item, List<CraftingOption>> optionsByItem;
+        private final RecipeGraph graph;
         private final Map<String, List<RecipeView>> queryCache = new LinkedHashMap<>(16, 0.75F, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, List<RecipeView>> eldest) {
@@ -1615,10 +1605,15 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             List<RecipeView> views = new ArrayList<>(recipes.size());
             for (IndexedRecipe recipe : recipes) {
                 views.add(recipe.view);
+                for (RecipeInput input : recipe.selected.inputs()) {
+                    preparedIngredients.computeIfAbsent(input.ingredient(), ingredient ->
+                            ingredientChoices(ingredient.getItems(), 1, Integer.MAX_VALUE));
+                }
             }
             this.recipeViews = List.copyOf(views);
             this.recipesById = recipesById;
             this.optionsByItem = optionsByItem;
+            this.graph = new RecipeGraph(optionsByItem, preparedIngredients);
         }
 
         private static synchronized RecipeIndex forLevel(Level level) {
@@ -1781,19 +1776,196 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         return !result.isEmpty() && result.getCount() > 0 ? new SelectedRecipe(result.copy(), inputs) : null;
     }
 
+    private record RouteEdge(int recipe, int input) {
+    }
+
+    private record RouteEntry(Item item, long distance) {
+    }
+
+    private static final class RecipeGraph {
+        private final List<Item> items;
+        private final List<CraftingOption> options = new ArrayList<>();
+        private final Map<Item, List<CraftingOption>> byOutput = new HashMap<>();
+        private final Map<Item, Set<Item>> dependencies = new HashMap<>();
+        private final Map<Item, List<RouteEdge>> users = new HashMap<>();
+
+        private RecipeGraph(Map<Item, List<CraftingOption>> source,
+                            Map<Ingredient, List<ItemStack>> ingredients) {
+            Set<Item> all = new HashSet<>();
+            Set<String> signatures = new HashSet<>();
+            for (List<CraftingOption> choices : source.values()) {
+                for (CraftingOption option : choices) {
+                    StringBuilder signature = new StringBuilder(itemKey(option.result().getItem()))
+                            .append(':').append(option.result().getCount());
+                    for (RecipeInput input : option.inputs()) {
+                        List<ItemStack> stacks = ingredients.computeIfAbsent(input.ingredient(),
+                                ingredient -> ingredientChoices(ingredient.getItems(), 1, Integer.MAX_VALUE));
+                        signature.append('|').append(input.count()).append(':');
+                        for (ItemStack stack : stacks) signature.append(itemKey(stack.getItem()))
+                                .append('*').append(stack.getCount()).append(',');
+                    }
+                    if (!signatures.add(signature.toString())) continue;
+                    int id = options.size();
+                    options.add(option);
+                    byOutput.computeIfAbsent(option.result().getItem(), ignored -> new ArrayList<>()).add(option);
+                    all.add(option.result().getItem());
+                    for (int slot = 0; slot < option.inputs().size(); slot++) {
+                        Set<Item> seen = new HashSet<>();
+                        for (ItemStack stack : ingredients.get(option.inputs().get(slot).ingredient())) {
+                            if (!seen.add(stack.getItem())) continue;
+                            all.add(stack.getItem());
+                            dependencies.computeIfAbsent(option.result().getItem(), ignored -> new HashSet<>()).add(stack.getItem());
+                            users.computeIfAbsent(stack.getItem(), ignored -> new ArrayList<>())
+                                    .add(new RouteEdge(id, slot));
+                        }
+                    }
+                }
+            }
+            items = List.copyOf(all);
+        }
+    }
+
+    // AND/OR Dijkstra: an ingredient accepts its cheapest item; a recipe needs
+    // every ingredient. Positive recipe distance prevents cycles becoming sources.
+    private static final class RouteEstimates {
+        private static final long MISSING = 1_000_000_000L;
+        private final RecipeGraph graph;
+        private final PlanningContext context;
+        private final Map<Item, Integer> stock;
+        private final long coins;
+        private final java.util.PriorityQueue<RouteEntry> queue =
+                new java.util.PriorityQueue<>(Comparator.comparingLong(RouteEntry::distance));
+        private final Map<Item, Long> distances = new HashMap<>();
+        private final Map<CraftingOption, Long> costs = new IdentityHashMap<>();
+        private final Map<Item, List<CraftingOption>> ordered = new HashMap<>();
+        private final boolean[][] resolved;
+        private final Set<Item> relevant = new HashSet<>();
+        private final ArrayDeque<Item> discover = new ArrayDeque<>();
+        private java.util.Iterator<Item> dependencyIterator = java.util.Collections.emptyIterator();
+        private java.util.Iterator<Item> seedIterator;
+        private boolean discovered;
+        private final int[] remaining;
+        private final long[] maximum;
+        private RouteEntry current;
+        private List<RouteEdge> edges = List.of();
+        private int edgeIndex;
+
+        private RouteEstimates(RecipeGraph graph, PlanningContext context, Map<Item, Integer> stock, long coins,
+                               SelectedRecipe target) {
+            this.graph = graph;
+            this.context = context;
+            this.stock = stock;
+            this.coins = coins;
+            remaining = new int[graph.options.size()];
+            maximum = new long[graph.options.size()];
+            resolved = new boolean[graph.options.size()][];
+            for (RecipeInput input : target.inputs()) {
+                for (ItemStack stack : context.ingredientCandidates(input)) {
+                    if (relevant.add(stack.getItem())) discover.addLast(stack.getItem());
+                }
+            }
+        }
+
+        private boolean step() {
+            if (!discovered) {
+                if (dependencyIterator.hasNext()) {
+                    Item dependency = dependencyIterator.next();
+                    if (relevant.add(dependency)) discover.addLast(dependency);
+                } else if (!discover.isEmpty()) {
+                    dependencyIterator = graph.dependencies.getOrDefault(discover.removeFirst(), Set.of()).iterator();
+                } else {
+                    discovered = true;
+                    seedIterator = relevant.iterator();
+                }
+                return false;
+            }
+            if (seedIterator.hasNext()) {
+                Item item = seedIterator.next();
+                long quote = stock.getOrDefault(item, 0) > 0 ? 0L : context.redemptionCost(item, 1);
+                if (quote >= 0L && quote <= coins) queue.add(new RouteEntry(item, 0L));
+                else if (!graph.byOutput.containsKey(item)) queue.add(new RouteEntry(item, MISSING));
+                return false;
+            }
+            if (edgeIndex < edges.size()) {
+                RouteEdge edge = edges.get(edgeIndex++);
+                CraftingOption option = graph.options.get(edge.recipe());
+                if (!relevant.contains(option.result().getItem())) return false;
+                if (resolved[edge.recipe()] == null) {
+                    resolved[edge.recipe()] = new boolean[option.inputs().size()];
+                    remaining[edge.recipe()] = option.inputs().size();
+                }
+                boolean[] inputs = resolved[edge.recipe()];
+                if (!inputs[edge.input()]) {
+                    inputs[edge.input()] = true;
+                    maximum[edge.recipe()] = Math.max(maximum[edge.recipe()], current.distance());
+                    if (--remaining[edge.recipe()] == 0) {
+                        long cost = maximum[edge.recipe()] + 1L;
+                        costs.put(option, cost);
+                        queue.add(new RouteEntry(option.result().getItem(), cost));
+                    }
+                }
+                return false;
+            }
+            current = queue.poll();
+            if (current == null) return true;
+            if (distances.putIfAbsent(current.item(), current.distance()) != null) return false;
+            edges = graph.users.getOrDefault(current.item(), List.of());
+            edgeIndex = 0;
+            return false;
+        }
+
+        private long distance(Item item) {
+            return distances.getOrDefault(item, stock.getOrDefault(item, 0) > 0 ? 0L : MISSING);
+        }
+
+        private List<CraftingOption> options(Item item) {
+            return ordered.computeIfAbsent(item, key -> {
+                List<CraftingOption> result = new ArrayList<>(graph.byOutput.getOrDefault(key, List.of()));
+                result.sort(Comparator.comparingLong(option -> costs.getOrDefault(option, MISSING + 1L)));
+                return List.copyOf(result);
+            });
+        }
+    }
+
+    private record SearchGoal(PlanGoalKind kind, RecipeInput input, Item item, int count, int depth,
+                              boolean allowStock, Set<Item> path, int surplus) {
+        private static SearchGoal of(PlanGoal goal) {
+            return new SearchGoal(goal.kind(), goal.input(), goal.item(), goal.count(), goal.depth(),
+                    goal.allowStock(), goal.path(), goal.surplus());
+        }
+    }
+
+    private record SearchState(Map<Item, Integer> stock, Map<Item, Integer> surplus,
+                               Map<Item, Integer> paid, List<SearchGoal> goals) {
+        private static SearchState of(PlanState plan, ArrayDeque<PlanGoal> goals) {
+            return new SearchState(Map.copyOf(plan.stock), Map.copyOf(plan.surplus), Map.copyOf(plan.rawCost),
+                    goals.stream().map(SearchGoal::of).toList());
+        }
+    }
+
     private static final class SlicedPlanner {
+        // Lazy continuations retain alternatives without copying every branch up front.
+        private static final int MAX_PENDING_STEPS = 4096;
         private final ResourceLocation recipeId;
         private final int requestId;
         private final PlanLimits limits;
-        private final PlanCancelToken cancelToken;
         private final long stockFingerprint;
-        private final SourceStats sourceStats;
         private final PlanningContext context;
-        private final ArrayDeque<PlannerSearchState> frontier = new ArrayDeque<>();
-        private final Set<String> visitedStates = new HashSet<>();
-        private final Map<PlannerMemoKey, CraftabilityStatus> memo = new HashMap<>();
-        private final Map<Item, Integer> aggregateMissing = new HashMap<>();
+        private final Map<Item, Integer> initialStock;
+        private final long coins;
+        private final SelectedRecipe target;
+        private final RouteEstimates routes;
+        private boolean routesReady;
+        private boolean diagnosing;
+        private final Map<SearchState, Boolean> visited = new LinkedHashMap<>(16, 0.75F, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<SearchState, Boolean> eldest) {
+                return size() > 8192;
+            }
+        };
+        private final ArrayDeque<Runnable> frontier = new ArrayDeque<>();
         private PlanState bestMissing;
+        private PlanState solution;
         private boolean finished;
 
         private SlicedPlanner(ResourceLocation recipeId, int requestId, SelectedRecipe recipe,
@@ -1803,457 +1975,292 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
             this.recipeId = recipeId;
             this.requestId = requestId;
             this.limits = limits == null ? planLimits() : limits;
-            this.cancelToken = cancelToken;
             this.stockFingerprint = stockFingerprint;
-            this.sourceStats = sourceStats == null ? SourceStats.empty() : sourceStats;
             this.context = new PlanningContext(recipeIndex, this.limits, cancelToken, redemptionPlayer);
+            this.initialStock = Map.copyOf(stock);
+            this.coins = redemptionPlayer == null ? 0L : SpecialOperationsBaseManager.havocCoins(redemptionPlayer);
+            this.target = recipe;
+            this.routes = new RouteEstimates(this.context.recipeIndex.graph, context, initialStock, coins, recipe);
             ArrayDeque<PlanGoal> goals = new ArrayDeque<>();
             appendRecipeInputs(goals, recipe.inputs(), this.limits.maxDepth(), Set.of());
-            frontier.add(new PlannerSearchState(new PlanState(new HashMap<>(stock)), goals));
+            push(new PlanState(new HashMap<>(stock)), goals);
         }
 
         private PlanResult tick() {
-            if (finished) {
-                return null;
-            }
-            long tickStarted = System.nanoTime();
-            long tickDeadline = tickStarted + limits.tickBudgetNanos();
+            return tick(System.nanoTime() + limits.tickBudgetNanos());
+        }
+
+        private PlanResult tick(long deadline) {
+            if (finished) return null;
+            context.sliceStartedNanos = System.nanoTime();
+            long tickDeadline = Math.min(deadline, context.sliceStartedNanos + limits.tickBudgetNanos());
             try {
                 while (System.nanoTime() < tickDeadline) {
-                    if (!context.checkBudget("tick", 0)) {
-                        return finish(CraftabilityStatus.TRUNCATED, null, "budget", true);
+                    if (!context.enterNode("search", 0)) {
+                        return finish(CraftabilityStatus.TRUNCATED, null, context.truncatedReason());
                     }
-                    PlannerSearchState state = frontier.pollLast();
-                    if (state == null) {
-                        if (context.truncated()) {
-                            return finish(CraftabilityStatus.TRUNCATED, null, context.truncatedReason(), true);
-                        }
-                        return finish(CraftabilityStatus.MISSING, bestMissing, "missing_materials", false);
-                    }
-                    if (!rememberVisitedState(state)) {
+                    if (!routesReady) {
+                        routesReady = routes.step();
                         continue;
                     }
-                    if (state.goals().isEmpty()) {
-                        if (state.plan().missingTotal() > 0) {
-                            rememberMissing(state.plan());
+                    Runnable step = frontier.pollLast();
+                    if (step == null) {
+                        if (!diagnosing) {
+                            diagnosing = true;
+                            visited.clear();
+                            ArrayDeque<PlanGoal> goals = new ArrayDeque<>();
+                            appendRecipeInputs(goals, target.inputs(), limits.maxDepth(), Set.of());
+                            push(new PlanState(new HashMap<>(initialStock)), goals);
                             continue;
                         }
-                        return finish(CraftabilityStatus.CRAFTABLE, state.plan(), "none", false);
+                        return finish(context.truncated() ? CraftabilityStatus.TRUNCATED : CraftabilityStatus.MISSING,
+                                bestMissing, context.truncated() ? context.truncatedReason() : "missing_materials");
                     }
-                    PlanGoal goal = state.goals().pollFirst();
-                    switch (goal.kind()) {
-                        case INGREDIENT -> processIngredient(state, goal);
-                        case ITEM -> processItem(state, goal);
-                        case COMPLETE_ITEM -> processCompleteItem(state, goal);
+                    step.run();
+                    if (solution != null) {
+                        if (!diagnosing || solution.missingTotal() == 0 && !context.truncated()) {
+                            return finish(CraftabilityStatus.CRAFTABLE, solution, "none");
+                        }
+                        return finish(context.truncated() ? CraftabilityStatus.TRUNCATED : CraftabilityStatus.MISSING,
+                                solution, context.truncated() ? context.truncatedReason() : "missing_materials");
                     }
-                    if (context.aborted()) {
-                        return finish(CraftabilityStatus.TRUNCATED, null, context.truncatedReason(), true);
-                    }
+                    if (context.aborted()) return finish(CraftabilityStatus.TRUNCATED, null, context.truncatedReason());
                 }
                 return null;
             } catch (RuntimeException error) {
                 context.abort("exception");
-                LOGGER.warn("HVK sliced plan failed recipe={} requestId={} nodes={} maxDepth={} elapsedMs={} reason={}",
-                        recipeId, requestId, context.nodes(), context.maxObservedDepth(),
-                        context.elapsedNanos() / 1_000_000L, context.truncatedReason(), error);
-                return finish(CraftabilityStatus.ERROR, null, context.truncatedReason(), true);
+                LOGGER.warn("HVK sliced plan failed recipe={} requestId={}", recipeId, requestId, error);
+                return finish(CraftabilityStatus.ERROR, null, "exception");
+            } finally {
+                context.activeNanos += System.nanoTime() - context.sliceStartedNanos;
+                context.sliceStartedNanos = 0L;
             }
         }
 
-        private void processIngredient(PlannerSearchState state, PlanGoal goal) {
-            int observedDepth = context.maxDepth() - goal.depth();
-            if (!context.enterNode("ingredient", observedDepth)) {
+        private void visit(PlanState plan, ArrayDeque<PlanGoal> goals) {
+            if (!diagnosing && visited.putIfAbsent(SearchState.of(plan, goals), Boolean.TRUE) != null) return;
+            if (goals.isEmpty()) {
+                solution = plan;
                 return;
             }
-            List<ItemStack> choices = prioritizedIngredientChoices(
-                    context.ingredientCandidates(goal.input()), state.plan(), context, goal.input());
-            if (choices.isEmpty()) {
-                PlanState failed = state.plan().copy();
-                ItemStack[] rawChoices = goal.input().ingredient().getItems();
-                if (rawChoices.length > 0 && isCraftableStack(rawChoices[0])) {
-                    int needed = saturatedMultiply(Math.max(1, rawChoices[0].getCount()), goal.input().count());
-                    failed.addMissing(rawChoices[0].getItem(), needed);
+            PlanGoal goal = goals.pollFirst();
+            if (goal.kind() != PlanGoalKind.COMPLETE_ITEM) {
+                context.maxObservedDepth = Math.max(context.maxObservedDepth, context.maxDepth() - goal.depth());
+            }
+            switch (goal.kind()) {
+                case INGREDIENT -> {
+                    List<ItemStack> choices = orderedIngredients(goal.input(), plan);
+                    if (choices.isEmpty()) {
+                        context.noteTruncated("unsupported_ingredient");
+                        if (diagnosing) push(plan, goals);
+                    } else if (diagnosing) {
+                        ItemStack choice = choices.get(0);
+                        int units = plan.availableCount(choice.getItem()) / Math.max(1, choice.getCount());
+                        int take = units > 0 ? Math.min(units, goal.input().count()) : goal.input().count();
+                        if (take < goal.input().count()) goals.addFirst(PlanGoal.ingredient(
+                                new RecipeInput(goal.input().ingredient(), goal.input().count() - take), goal.depth(), goal.path()));
+                        goals.addFirst(PlanGoal.item(choice.getItem(), saturatedMultiply(take, choice.getCount()),
+                                goal.depth(), true, goal.path()));
+                        push(plan, goals);
+                    } else {
+                        ingredientAlternative(plan, goals, goal, choices, 0, 0);
+                    }
                 }
-                push(failed, copyGoals(state.goals()));
-                return;
-            }
-
-            // AE2 strategy: only pursue the single best choice to avoid exponential state explosion
-            ItemStack bestChoice = choices.get(0);
-            if (bestChoice.isEmpty()) {
-                PlanState failed = state.plan().copy();
-                ItemStack[] rawChoices = goal.input().ingredient().getItems();
-                if (rawChoices.length > 0 && isCraftableStack(rawChoices[0])) {
-                    int needed = saturatedMultiply(Math.max(1, rawChoices[0].getCount()), goal.input().count());
-                    failed.addMissing(rawChoices[0].getItem(), needed);
+                case ITEM -> processItem(plan, goals, goal);
+                case COMPLETE_ITEM -> {
+                    if (goal.surplus() > 0) plan.addSurplus(goal.item(), goal.surplus());
+                    push(plan, goals);
                 }
-                push(failed, copyGoals(state.goals()));
+            }
+        }
+
+        private void ingredientAlternative(PlanState plan, ArrayDeque<PlanGoal> goals, PlanGoal goal,
+                                           List<ItemStack> choices, int index, int tier) {
+            int limit = Math.min(choices.size(), limits.maxIngredientCandidates());
+            if (choices.size() > limit) context.noteTruncated("ingredient_limit");
+            if (index >= limit) {
+                if (tier < 2) enqueue(() -> ingredientAlternative(plan, goals, goal, choices, 0, tier + 1));
                 return;
             }
+            // Each scan and branch is a resumable step, including large ore/tag lists.
+            enqueue(() -> ingredientAlternative(plan, goals, goal, choices, index + 1, tier));
+            ItemStack choice = choices.get(index);
+            int needed = saturatedMultiply(Math.max(1, choice.getCount()), goal.input().count());
+            int available = plan.availableCount(choice.getItem());
+            int choiceTier = available >= needed ? 0
+                    : context.redemptionCost(choice.getItem(), needed - available) >= 0L ? 1 : 2;
+            if (choiceTier != tier) return;
+            int units = available / Math.max(1, choice.getCount());
+            if (units > 0 && units < goal.input().count()) {
+                PlanState partial = plan.copy();
+                partial.takeAvailable(choice.getItem(), saturatedMultiply(units, choice.getCount()));
+                ArrayDeque<PlanGoal> remaining = new ArrayDeque<>(goals);
+                remaining.addFirst(PlanGoal.ingredient(
+                        new RecipeInput(goal.input().ingredient(), goal.input().count() - units), goal.depth(), goal.path()));
+                push(partial, remaining);
+            }
+            PlanState candidate = plan.copy();
+            ArrayDeque<PlanGoal> next = new ArrayDeque<>(goals);
+            next.addFirst(PlanGoal.item(choice.getItem(), needed, goal.depth(), true, goal.path()));
+            push(candidate, next);
+        }
 
-            int needed = saturatedMultiply(Math.max(1, bestChoice.getCount()), goal.input().count());
-            PlanState candidate = state.plan().copy();
-
-            if (blockedChoiceRequiresCraft(bestChoice, candidate, needed, goal.path())) {
-                // Best choice is blocked by circular dependency - mark as missing
-                candidate.addMissing(bestChoice.getItem(), needed);
-                push(candidate, copyGoals(state.goals()));
+        private void processItem(PlanState plan, ArrayDeque<PlanGoal> goals, PlanGoal goal) {
+            Item item = goal.item();
+            int missing = goal.allowStock() ? plan.takeAvailable(item, goal.count()) : goal.count();
+            if (missing <= 0) {
+                push(plan, goals);
                 return;
             }
-
-            ArrayDeque<PlanGoal> nextGoals = copyGoals(state.goals());
-            if (candidate.availableCount(bestChoice.getItem()) >= needed) {
-                candidate.takeAvailable(bestChoice.getItem(), needed);
+            if (diagnosing) {
+                diagnoseItem(plan, goals, goal, missing);
+                return;
+            }
+            // Keep the crafting alternative even when buying is possible: later inputs
+            // may need the same coins, or the cumulative purchase may exceed the limit.
+            if (!goal.path().contains(item) && goal.depth() > 0) {
+                List<CraftingOption> options = routes.distance(item) < RouteEstimates.MISSING
+                        ? routes.options(item) : List.of();
+                if (!options.isEmpty()) {
+                    enqueue(() -> recipeAlternative(plan, goals, goal, missing, options, 0));
+                } else {
+                    rememberMissing(plan, item, missing);
+                }
             } else {
-                nextGoals.addFirst(PlanGoal.item(bestChoice.getItem(), needed, goal.depth(),
-                        true, goal.path()));
+                if (!goal.path().contains(item)) context.noteTruncated("depth_limit");
+                rememberMissing(plan, item, missing);
             }
-            push(candidate, nextGoals);
+            if (context.redemptionCost(item, missing) >= 0L) {
+                PlanState purchased = plan.copy();
+                purchased.takeRedeemed(item, missing);
+                if (canPay(purchased)) push(purchased, new ArrayDeque<>(goals));
+                else rememberMissing(plan, item, missing);
+            }
         }
 
-        private static List<ItemStack> prioritizedIngredientChoices(List<ItemStack> choices, PlanState plan,
-                                                                    PlanningContext context, RecipeInput input) {
-            // Do not rank alternatives by stock or redemption cost for this block.  The
-            // first declared choice is explored, and missing leaves can redeem locally.
+        private void recipeAlternative(PlanState plan, ArrayDeque<PlanGoal> goals, PlanGoal goal,
+                                       int missing, List<CraftingOption> options, int index) {
+            int limit = Math.min(options.size(), limits.maxRecipesPerOutput());
+            if (options.size() > limit) context.noteTruncated("recipe_limit");
+            if (index >= limit) return;
+            enqueue(() -> recipeAlternative(plan, goals, goal, missing, options, index + 1));
+            CraftingOption option = options.get(index);
+            if (!isCraftableStack(option.result())) return;
+            if (routes.costs.getOrDefault(option, RouteEstimates.MISSING) >= RouteEstimates.MISSING) return;
+            int crafts = (int) Math.min(Integer.MAX_VALUE,
+                    ((long) missing + option.result().getCount() - 1L) / option.result().getCount());
+            Set<Item> path = new HashSet<>(goal.path());
+            path.add(goal.item());
+            ArrayDeque<PlanGoal> next = new ArrayDeque<>();
+            appendRecipeInputs(next, option.inputs(), goal.depth() - 1, path, crafts);
+            int extra = Math.max(0, saturatedMultiply(crafts, option.result().getCount()) - missing);
+            next.addLast(PlanGoal.completeItem(goal.item(), extra, option.result()));
+            next.addAll(goals);
+            push(plan.copy(), next);
+        }
+
+        private List<ItemStack> orderedIngredients(RecipeInput input, PlanState plan) {
+            List<ItemStack> prepared = context.ingredientCandidates(input);
+            // Large tags are scanned by the resumable tier iterator, never sorted
+            // or quoted en masse within one server slice.
+            if (prepared.size() > 256) return prepared;
+            List<ItemStack> choices = new ArrayList<>(prepared);
+            Map<Item, Long> scores = new HashMap<>();
+            for (ItemStack choice : choices) {
+                int needed = saturatedMultiply(choice.getCount(), input.count());
+                int available = plan.availableCount(choice.getItem());
+                long score = available >= needed ? 0L : available > 0 ? 1L
+                        : routes.distance(choice.getItem()) + 2L;
+                scores.put(choice.getItem(), score);
+            }
+            choices.sort(Comparator.comparingLong(choice -> scores.get(choice.getItem())));
             return choices;
         }
 
-        private static int ingredientChoiceScore(ItemStack stack, PlanState plan, PlanningContext context,
-                                                 RecipeInput input) {
-            if (stack == null || stack.isEmpty()) {
-                return Integer.MIN_VALUE;
-            }
-            int needed = saturatedMultiply(Math.max(1, stack.getCount()), input.count());
-            int available = plan.availableCount(stack.getItem());
-
-            // Base score: how much we have
-            int score = Math.min(available, needed);
-
-            // Highest priority: we already have enough of this item directly
-            if (available >= needed) {
-                return score + 10_000_000;
-            }
-
-            // Second priority: we have some of this item, prefer using what we have
-            if (available > 0) {
-                return score + 5_000_000;
-            }
-
-            // A directly redeemable alternative is preferable to descending into an
-            // unavailable recipe tree. Equal-tier alternatives are ordered by the
-            // actual Havoc Coin cost in prioritizedIngredientChoices.
-            long redemptionCost = context.redemptionCost(stack.getItem(), needed);
-            if (redemptionCost >= 0L) {
-                return score + 2_000_000;
-            }
-
-            // Third priority: we can craft this from materials we already have
-            List<CraftingOption> recipes = context.recipeOptions(stack.getItem());
-            if (!recipes.isEmpty()) {
-                int bestRecipeScore = scoreRecipesByAvailability(recipes, plan, context);
-                return score + bestRecipeScore;
-            }
-
-            // Lowest priority: we don't have it and can't craft it from what we have
-            return score;
-        }
-
-        private static int scoreRecipesByAvailability(List<CraftingOption> recipes, PlanState plan, PlanningContext context) {
-            int bestScore = 0;
-
-            for (CraftingOption recipe : recipes) {
-                int recipeScore = scoreRecipeAvailability(recipe, plan, context, new HashSet<>(), 0);
-                bestScore = Math.max(bestScore, recipeScore);
-            }
-
-            return bestScore;
-        }
-
-        private static int scoreRecipeAvailability(CraftingOption recipe, PlanState plan, PlanningContext context, Set<Item> visiting, int depth) {
-            // Limit scoring depth to 3 levels to prevent performance issues
-            // This is separate from maxDepth which is for actual planning
-            if (depth >= 3) {
-                return 10_000;
-            }
-
-            int availableInputCount = 0;
-            int totalInputCount = recipe.inputs().size();
-            int totalAvailability = 0;
-            int minInputScore = Integer.MAX_VALUE;
-            int totalInputCost = 0;
-
-            for (RecipeInput input : recipe.inputs()) {
-                ItemStack[] choices = input.ingredient().getItems();
-                int bestChoiceScore = 0;
-
-                for (ItemStack choice : choices) {
-                    if (!isCraftableStack(choice)) {
-                        continue;
-                    }
-
-                    int needed = saturatedMultiply(Math.max(1, choice.getCount()), input.count());
-                    int available = plan.availableCount(choice.getItem());
-                    int choiceScore = 0;
-
-                    if (available >= needed) {
-                        choiceScore = 1_000_000 + available;
-                        bestChoiceScore = Math.max(bestChoiceScore, choiceScore);
-                        totalInputCost += needed;
-                        break;
-                    } else if (available > 0) {
-                        choiceScore = 500_000 + available;
-                        bestChoiceScore = Math.max(bestChoiceScore, choiceScore);
-                        totalInputCost += needed;
-                    } else if (!visiting.contains(choice.getItem())) {
-                        visiting.add(choice.getItem());
-                        List<CraftingOption> subRecipes = context.recipeOptions(choice.getItem());
-                        if (!subRecipes.isEmpty()) {
-                            int bestSubScore = 0;
-                            for (CraftingOption subRecipe : subRecipes) {
-                                int subScore = scoreRecipeAvailability(subRecipe, plan, context, visiting, depth + 1);
-                                bestSubScore = Math.max(bestSubScore, subScore);
-                            }
-                            choiceScore = bestSubScore / 10;
-                            bestChoiceScore = Math.max(bestChoiceScore, choiceScore);
-                            totalInputCost += needed;
-                        }
-                        visiting.remove(choice.getItem());
-                    }
-                }
-
-                if (bestChoiceScore >= 100_000) {
-                    availableInputCount++;
-                }
-                totalAvailability += bestChoiceScore;
-                minInputScore = Math.min(minInputScore, bestChoiceScore);
-            }
-
-            // Pure inventory-driven scoring: no static bonuses for recipe types
-            // The score is determined entirely by material availability:
-            // - All inputs available: high score
-            // - Some inputs available: medium score
-            // - No inputs directly available but can be crafted: low score
-            int recipeScore;
-            if (availableInputCount == totalInputCount) {
-                recipeScore = 1_000_000 + totalAvailability;
-            } else if (availableInputCount > 0) {
-                recipeScore = 100_000 + totalAvailability;
-            } else {
-                recipeScore = 10_000 + minInputScore;
-            }
-
-            return recipeScore;
-        }
-
-        private static boolean blockedChoiceRequiresCraft(ItemStack choice, PlanState plan, int needed,
-                                                          Set<Item> blockedItems) {
-            return choice != null
-                    && isCraftableStack(choice)
-                    && blockedItems != null
-                    && blockedItems.contains(choice.getItem())
-                    && plan.availableCount(choice.getItem()) < needed;
-        }
-
-        private void processItem(PlannerSearchState state, PlanGoal goal) {
+        private void diagnoseItem(PlanState plan, ArrayDeque<PlanGoal> goals, PlanGoal goal, int missing) {
             Item item = goal.item();
-            int observedDepth = context.maxDepth() - goal.depth();
-            if (!context.enterNode("item:" + itemKey(item), observedDepth)) {
-                return;
-            }
-            PlannerMemoKey memoKey = PlannerMemoKey.of(goal, state.plan());
-            CraftabilityStatus memoStatus = memo.get(memoKey);
-            if (memoStatus == CraftabilityStatus.MISSING) {
-                PlanState failed = state.plan().copy();
-                int memoMissing = goal.allowStock() ? failed.takeAvailable(item, goal.count()) : goal.count();
-                if (memoMissing <= 0) {
-                    push(failed, copyGoals(state.goals()));
-                } else {
-                    pushMissing(state, failed, item, memoMissing, null);
-                }
-                return;
-            }
-            PlanState base = state.plan().copy();
-            int missing = goal.allowStock() ? base.takeAvailable(item, goal.count()) : goal.count();
-            if (missing <= 0) {
-                push(base, copyGoals(state.goals()));
-                return;
-            }
-            if (goal.path().contains(item)) {
-                if (context.redemptionCost(item, missing) >= 0L) {
-                    PlanState redeemed = base.copy();
-                    redeemed.takeRedeemed(item, missing);
-                    push(redeemed, copyGoals(state.goals()));
-                } else {
-                    pushMissing(state, base, item, missing, null);
-                }
-                return;
-            }
-
-            List<CraftingOption> options = prioritizedOptions(context.recipeOptions(item), base, context);
-            boolean pushed = false;
-            Set<Item> childPath = new HashSet<>(goal.path());
-            childPath.add(item);
-            // A missing item with a valid redemption entry is already a complete,
-            // bounded solution. Resolve it immediately instead of expanding a deep
-            // intermediate recipe chain that can exhaust the planning budget.
             if (context.redemptionCost(item, missing) >= 0L) {
-                PlanState redeemed = base.copy();
-                redeemed.takeRedeemed(item, missing);
-                push(redeemed, copyGoals(state.goals()));
-                return;
-            }
-            for (int i = options.size() - 1; i >= 0; i--) {
-                CraftingOption option = options.get(i);
-                if (option.result().isEmpty() || option.result().getCount() <= 0) {
-                    continue;
+                PlanState purchased = plan.copy();
+                purchased.takeRedeemed(item, missing);
+                if (canPay(purchased)) {
+                    push(purchased, goals);
+                    return;
                 }
-                int crafts = (int) Math.min(Integer.MAX_VALUE,
-                        ((long) missing + option.result().getCount() - 1L) / option.result().getCount());
-                if (crafts <= 0) {
-                    continue;
-                }
-                if (optionRequiresBlockedCraft(option, base, childPath, crafts)) {
-                    continue;
-                }
-                ArrayDeque<PlanGoal> nextGoals = new ArrayDeque<>();
-                appendRecipeInputs(nextGoals, option.inputs(), goal.depth() - 1, childPath, crafts);
-                int extra = Math.max(0, saturatedMultiply(crafts, option.result().getCount()) - missing);
-                nextGoals.addLast(PlanGoal.completeItem(item, extra, option.result()));
-                nextGoals.addAll(state.goals());
-                push(base.copy(), nextGoals);
-                pushed = true;
-                break; // CRITICAL FIX: Stop after first viable option
             }
-            if (!pushed && !context.truncated()) {
-                pushMissing(state, base, item, missing, memoKey);
+            if (!goal.path().contains(item) && goal.depth() > 0) {
+                Set<Item> path = new HashSet<>(goal.path());
+                path.add(item);
+                for (CraftingOption option : routes.options(item)) {
+                    boolean circular = false;
+                    for (RecipeInput input : option.inputs()) {
+                        if (context.ingredientCandidates(input).stream()
+                                .allMatch(stack -> path.contains(stack.getItem())
+                                        && plan.availableCount(stack.getItem()) == 0)) {
+                            circular = true;
+                            break;
+                        }
+                    }
+                    if (circular) continue;
+                    int crafts = (int) (((long) missing + option.result().getCount() - 1L) / option.result().getCount());
+                    ArrayDeque<PlanGoal> next = new ArrayDeque<>();
+                    appendRecipeInputs(next, option.inputs(), goal.depth() - 1, path, crafts);
+                    next.addLast(PlanGoal.completeItem(item,
+                            Math.max(0, saturatedMultiply(crafts, option.result().getCount()) - missing), option.result()));
+                    next.addAll(goals);
+                    push(plan, next);
+                    return;
+                }
+            } else if (!goal.path().contains(item)) {
+                context.noteTruncated("depth_limit");
             }
+            plan.addMissing(item, missing);
+            push(plan, goals);
         }
 
-        private static boolean optionRequiresBlockedCraft(CraftingOption option, PlanState plan,
-                                                          Set<Item> blockedItems, int crafts) {
-            for (RecipeInput input : option.inputs()) {
-                if (input.ingredient().isEmpty()
-                        || hasAllowedIngredientChoice(input, plan, blockedItems, crafts)) {
-                    continue;
-                }
-                return true;
+        private boolean canPay(PlanState plan) {
+            long total = 0L;
+            for (Map.Entry<Item, Integer> entry : plan.rawCost.entrySet()) {
+                int missing = entry.getValue() - initialStock.getOrDefault(entry.getKey(), 0);
+                if (missing <= 0) continue;
+                long cost = context.redemptionCost(entry.getKey(), missing);
+                if (cost < 0L || cost > coins - total) return false;
+                total += cost;
             }
-            return false;
-        }
-
-        private static boolean hasAllowedIngredientChoice(RecipeInput input, PlanState plan,
-                                                          Set<Item> blockedItems, int crafts) {
-            ItemStack[] choices = input.ingredient().getItems();
-            for (ItemStack choice : choices) {
-                if (!isCraftableStack(choice)) {
-                    continue;
-                }
-                int needed = saturatedMultiply(
-                        saturatedMultiply(Math.max(1, choice.getCount()), input.count()),
-                        crafts);
-                if (!blockedChoiceRequiresCraft(choice, plan, needed, blockedItems)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private void processCompleteItem(PlannerSearchState state, PlanGoal goal) {
-            PlanState next = state.plan().copy();
-            if (goal.surplus() > 0) {
-                next.addSurplus(goal.item(), goal.surplus());
-            }
-            push(next, copyGoals(state.goals()));
+            return true;
         }
 
         private void push(PlanState plan, ArrayDeque<PlanGoal> goals) {
-            frontier.add(new PlannerSearchState(plan, goals));
+            enqueue(() -> visit(plan, goals));
         }
 
-        private void pushMissing(PlannerSearchState state, PlanState plan, Item item, int count,
-                                 PlannerMemoKey memoKey) {
-            plan.addMissing(item, count);
-            if (memoKey != null) {
-                memo.put(memoKey, CraftabilityStatus.MISSING);
-            }
-            push(plan, copyGoals(state.goals()));
-        }
-
-        private void rememberMissing(PlanState candidate) {
-            if (candidate == null || candidate.missingTotal() <= 0) {
+        private void enqueue(Runnable step) {
+            if (frontier.size() >= MAX_PENDING_STEPS) {
+                context.abort("frontier_limit");
                 return;
             }
-            candidate.mergeMissingInto(aggregateMissing);
-            if (bestMissing == null || candidate.missingTotal() < bestMissing.missingTotal()
-                    || candidate.missingTotal() == bestMissing.missingTotal()
-                    && candidate.missingKinds() < bestMissing.missingKinds()) {
-                bestMissing = candidate.copy();
-            }
+            frontier.addLast(step);
         }
 
-        private boolean rememberVisitedState(PlannerSearchState state) {
-            return visitedStates.add(stateKey(state));
+        private void rememberMissing(PlanState plan, Item item, int count) {
+            PlanState failed = plan.copy();
+            failed.addMissing(item, count);
+            if (bestMissing == null || failed.missingTotal() < bestMissing.missingTotal()) bestMissing = failed;
+            // Dead branches end here. Never manufacture their outputs or combine
+            // mutually exclusive routes into an authoritative payment plan.
         }
 
-        private String stateKey(PlannerSearchState state) {
-            StringBuilder key = new StringBuilder();
-            key.append(state.plan().searchFingerprint());
-            for (PlanGoal goal : state.goals()) {
-                key.append('|').append(goal.key());
-            }
-            return key.toString();
-        }
-
-        private PlanResult finish(CraftabilityStatus status, PlanState plan, String reason, boolean truncated) {
+        private PlanResult finish(CraftabilityStatus status, PlanState plan, String reason) {
             finished = true;
-            boolean success = status == CraftabilityStatus.CRAFTABLE && plan != null;
-            CraftabilityStatus finalStatus = status;
-            boolean finalTruncated = !success && (truncated || context.truncated());
-            String finalReason = reason == null || reason.isBlank() ? context.truncatedReason() : reason;
-            if (success) {
-                finalReason = "none";
-            }
-            if (finalStatus == CraftabilityStatus.MISSING && finalTruncated) {
-                finalStatus = CraftabilityStatus.TRUNCATED;
-                finalReason = context.truncatedReason();
-            }
+            boolean success = status == CraftabilityStatus.CRAFTABLE;
+            boolean truncated = status == CraftabilityStatus.TRUNCATED || status == CraftabilityStatus.ERROR;
             logPlanStats("detail_sliced", recipeId, context, success);
-            LOGGER.info("HVK plan result recipe={} requestId={} status={} sources={} rs={} directItems={} nodes={} maxDepth={} elapsedMs={} truncated={} reason={} frontier={} visited={} memo={}",
-                    recipeId, requestId, finalStatus, sourceStats.slots(), sourceStats.refinedStorageSlots(),
-                    sourceStats.totalItems(), context.nodes(), context.maxObservedDepth(),
-                    context.elapsedNanos() / 1_000_000L, finalTruncated, finalReason,
-                    frontier.size(), visitedStates.size(), memo.size());
-            PlanState paymentPlan = plan != null ? plan
-                    : (finalStatus == CraftabilityStatus.TRUNCATED ? bestMissing : null);
-            Map<Item, Integer> rawCost = paymentPlan != null
-                    && (success || finalStatus == CraftabilityStatus.MISSING
-                    || finalStatus == CraftabilityStatus.TRUNCATED)
-                    ? paymentPlan.paymentCost()
-                    : Map.of();
-            Map<Item, Integer> missing = finalStatus == CraftabilityStatus.MISSING
-                    ? missingResult(plan)
-                    : Map.of();
-            return new PlanResult(recipeId, requestId, finalStatus, rawCost, context.workUnits(), missing,
-                    finalTruncated, finalReason, context.nodes(), context.maxObservedDepth(),
-                    context.elapsedNanos(), stockFingerprint);
-        }
-
-        private Map<Item, Integer> missingResult(PlanState plan) {
-            Map<Item, Integer> result = new HashMap<>();
-            if (!aggregateMissing.isEmpty()) {
-                result.putAll(aggregateMissing);
-            }
-            if (plan != null && !plan.missing().isEmpty()) {
-                for (Map.Entry<Item, Integer> entry : plan.missing().entrySet()) {
-                    result.merge(entry.getKey(), entry.getValue(), Math::max);
-                }
-            }
-            if (bestMissing != null && !bestMissing.missing().isEmpty()) {
-                for (Map.Entry<Item, Integer> entry : bestMissing.missing().entrySet()) {
-                    result.merge(entry.getKey(), entry.getValue(), Math::max);
-                }
-            }
-            return result.isEmpty() ? Map.of() : copyCost(result);
+            LOGGER.info("HVK plan result recipe={} requestId={} status={} nodes={} maxDepth={} elapsedMs={} reason={}",
+                    recipeId, requestId, status, context.nodes(), context.maxObservedDepth(),
+                    context.elapsedNanos() / 1_000_000L, reason);
+            frontier.clear();
+            return new PlanResult(recipeId, requestId, status, success ? plan.paymentCost() : Map.of(),
+                    context.workUnits(), !success && plan != null ? plan.missing() : Map.of(),
+                    truncated, reason, context.nodes(), context.maxObservedDepth(), context.elapsedNanos(), stockFingerprint);
         }
 
         private static void appendRecipeInputs(ArrayDeque<PlanGoal> goals, List<RecipeInput> inputs,
@@ -2264,14 +2271,10 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         private static void appendRecipeInputs(ArrayDeque<PlanGoal> goals, List<RecipeInput> inputs,
                                                int depth, Set<Item> path, int multiplier) {
             for (RecipeInput input : inputs) {
-                if (input != null && input.count() > 0 && hasCraftableItem(input.ingredient())) {
+                if (input != null && input.count() > 0) {
                     goals.addLast(PlanGoal.ingredient(input.scaled(multiplier), depth, path));
                 }
             }
-        }
-
-        private static ArrayDeque<PlanGoal> copyGoals(ArrayDeque<PlanGoal> goals) {
-            return new ArrayDeque<>(goals);
         }
     }
 
@@ -2342,6 +2345,8 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         private final PlanCancelToken cancelToken;
         private final ServerPlayer redemptionPlayer;
         private final long startedNanos = System.nanoTime();
+        private long activeNanos;
+        private long sliceStartedNanos;
         private final Map<Item, List<CraftingOption>> optionsByItem = new HashMap<>();
         private final Map<Ingredient, List<ItemStack>> ingredientCandidates = new IdentityHashMap<>();
         private final Map<Item, Map<Integer, Long>> redemptionCostCache = new HashMap<>();
@@ -2404,7 +2409,7 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 abort("node_limit:" + stage);
                 return false;
             }
-            if (System.nanoTime() - startedNanos > limits.timeBudgetNanos()) {
+            if (activeNanos + (sliceStartedNanos == 0L ? 0L : System.nanoTime() - sliceStartedNanos) > limits.timeBudgetNanos()) {
                 abort("time_budget:" + stage);
                 return false;
             }
@@ -2474,10 +2479,12 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
         }
 
         private List<ItemStack> loadIngredientCandidates(RecipeInput input, Ingredient ingredient) {
+            List<ItemStack> prepared = recipeIndex.preparedIngredients.get(ingredient);
+            if (prepared != null) return prepared;
             ItemStack[] rawChoices = ingredient.getItems();
             // Only recipe-declared alternatives are valid here. Recipes that produce an alternative
             // are traversed later by processItem and must not become direct ingredient substitutes.
-            return ingredientChoices(rawChoices, 1, MAX_RECIPE_TREE_ALTERNATIVES);
+            return ingredientChoices(rawChoices, 1, Integer.MAX_VALUE);
         }
     }
 
@@ -2541,7 +2548,6 @@ public class HvkAdvancedStandardTemplateConstructorBlockEntity extends BlockEnti
                 return;
             }
             rawCost.merge(item, count, Integer::sum);
-            surplus.merge(item, count, Integer::sum);
         }
 
         private void addSurplus(Item item, int count) {

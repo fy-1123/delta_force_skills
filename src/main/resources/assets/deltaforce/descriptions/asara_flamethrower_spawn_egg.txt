@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_1")
+.level(1);
 阿萨拉喷火兵刷怪蛋。

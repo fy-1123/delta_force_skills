@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 情报道具，实验数据。

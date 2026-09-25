@@ -41,6 +41,7 @@ public final class DfsJeiPlugin implements IModPlugin {
         registerInfusionCrafting(registration);
         for (Item item : List.of(
                 ModItems.SPECIAL_EQUIPMENT_SUPPLY.get(),
+                ModItems.BLUEPRINT.get(),
                 ModItems.DARK_ZONE_RAINBOW_INJECTION.get(),
                 ModItems.ANIMAL_GLAND.get(),
                 ModItems.PH_REGULATOR.get(),

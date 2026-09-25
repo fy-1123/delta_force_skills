@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_1")
+.level(1);
 从生物身上提取的基因样本，用于克隆实验。

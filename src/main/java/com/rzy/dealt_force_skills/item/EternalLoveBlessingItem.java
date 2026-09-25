@@ -253,6 +253,16 @@ public class EternalLoveBlessingItem extends QualityTooltipItem {
         if (value instanceof Supplier<?> supplier && supplier.get() instanceof MobEffectInstance instance) {
             return instance;
         }
+        if (value == null) {
+            return null;
+        }
+        for (String methodName : List.of("effect", "getEffect")) {
+            try {
+                java.lang.reflect.Method method = value.getClass().getMethod(methodName);
+                return foodEffectInstance(method.invoke(value));
+            } catch (ReflectiveOperationException | ClassCastException | LinkageError ignored) {
+            }
+        }
         return null;
     }
 
@@ -284,21 +294,14 @@ public class EternalLoveBlessingItem extends QualityTooltipItem {
             return;
         }
         ItemStack offhand = player.getOffhandItem();
-        if (offhand.isEmpty()) {
-            return;
-        }
-        ItemStack remainder = offhand.getCraftingRemainingItem();
-        offhand.shrink(1);
-        if (offhand.isEmpty()) {
-            player.setItemInHand(InteractionHand.OFF_HAND, remainder);
-        } else if (!remainder.isEmpty()) {
-            player.getInventory().placeItemBackInInventory(remainder);
+        if (!offhand.isEmpty()) {
+            offhand.shrink(1);
         }
     }
 
     public static void playObtainSound(ServerPlayer player) {
         markObtainSoundTick(player);
-        playInterruptingSound(player, ModSounds.ETERNAL_LOVE_BLESSING_OBTAIN.get(), 0.8F);
+        playInterruptingSound(player, ModSounds.ETERNAL_LOVE_BLESSING_OBTAIN.get(), 0.85F);
     }
 
     private static void playRecordSound(ServerPlayer player) {

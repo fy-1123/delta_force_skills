@@ -27,11 +27,17 @@ public class DFGUI_MAIN extends Screen {
 
     private static final int BG_COLOR = 0xFF0E1819;
 
+    // 参考分辨率（960x540），所有坐标以此为基础计算
+    private static final float REFERENCE_WIDTH = 960f;
+    private static final float REFERENCE_HEIGHT = 540f;
+
     // 标签页常量（基于原版UI缩放比例）
     private static final int TAB_COUNT = 7;
     private static final float UI_SCALE = 0.75F; // 相对于原版的缩放
     private static final int TAB_BASE_WIDTH = 91;
     private static final int TAB_BASE_HEIGHT = 32;
+    private static final int TAB_START_X_RATIO = 1;  // 标签栏距左边缘 = 屏幕宽度 * 1 / 100
+    private static final int TAB_START_Y = 10;        // 标签栏距上边缘（固定值）
     
     private int tabWidth;
     private int tabHeight;
@@ -88,7 +94,32 @@ public class DFGUI_MAIN extends Screen {
     }
 
     /**
+     * 接收U键监听结果，验证后申请开启三角洲主界面。
+     * 仅当dfMainEnabled=true时由DeltaForceClient的U键监听调用，
+     * 不应直接绕过此方法setScreen。
+     * 使用DeltaForce.isDFMainEnabled()（静态变量）与onClientTick保持同一数据源，
+     * 避免反射持久化失败导致配置文件与静态变量不一致拦截。
+     */
+    public static void requestOpen() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) {
+            return;
+        }
+        if (mc.screen != null) {
+            return;
+        }
+        // 与onClientTick保持一致，使用静态变量作为唯一数据源
+        // 避免DFClientConfig与DeltaForce.dfMainEnabled因反射失败而不同步
+        if (!mccfk.DeltaForce.java.DeltaForce.isDFMainEnabled()) {
+            return;
+        }
+        StartGameScreen.closeOverlayPanels();
+        mc.setScreen(new DFGUI_MAIN());
+    }
+
+    /**
      * 打开三角洲主界面并直接选中"特战干员"标签页（供外部按键/入口调用）
+     * /df main 开关仅控制 U 键是否打开主界面，不影响此入口
      */
     public static void openToOperator() {
         lastSelectedTab = OPERATOR_TAB_INDEX;
@@ -96,7 +127,9 @@ public class DFGUI_MAIN extends Screen {
         Minecraft.getInstance().setScreen(new DFGUI_MAIN());
     }
 
-    /** Opens the redesigned special-operations panel inside the Delta Force shell. */
+    /** Opens the redesigned special-operations panel inside the Delta Force shell.
+     * /df main 开关仅控制 U 键，不影响此入口
+     */
     public static void openToLogistics() {
         lastSelectedTab = LOGISTICS_TAB_INDEX;
         StartGameScreen.closeOverlayPanels();
@@ -189,20 +222,18 @@ public class DFGUI_MAIN extends Screen {
     @Override
     protected void init() {
         super.init();
-        // Match SettingsScreen: all layout coordinates use one fixed 960x540 reference canvas.
-        this.viewport = MainUiViewport.fit(this.width, this.height);
-        this.refW = this.viewport.canvasWidth();
-        this.refH = this.viewport.canvasHeight();
-        this.uiScale = this.viewport.scale();
-        this.offsetX = Math.round(this.viewport.offsetX());
-        this.offsetY = Math.round(this.viewport.offsetY());
-        Operator.resetIntroduction();
+        // 参考分辨率计算缩放及偏移（与1.21.1主版本一致）
+        this.refW = (int)REFERENCE_WIDTH;
+        this.refH = (int)REFERENCE_HEIGHT;
+        this.uiScale = Math.min(this.width / REFERENCE_WIDTH, this.height / REFERENCE_HEIGHT);
+        this.offsetX = (int)((this.width - REFERENCE_WIDTH * this.uiScale) / 2);
+        this.offsetY = (int)((this.height - REFERENCE_HEIGHT * this.uiScale) / 2);
         // 以 4x GUI 参考画布计算固定布局。
         DFClientConfig cfg = DFClientConfig.getInstance();
         this.tabWidth = (int) (TAB_BASE_WIDTH * UI_SCALE);
         this.tabHeight = (int) (TAB_BASE_HEIGHT * UI_SCALE);
-        this.tabStartX = this.refW / 100 + cfg.getTabXOffset();
-        this.tabStartY = 10 + cfg.getTabYOffset();
+        this.tabStartX = (int)(REFERENCE_WIDTH * TAB_START_X_RATIO / 100) + cfg.getTabXOffset();
+        this.tabStartY = TAB_START_Y + cfg.getTabYOffset();
         StartGameScreen.requestSnapshot();
         // 恢复仓库标签页时重新请求仓库快照（否则重开界面仓库内容显示为空）
         if (selectedTab == WAREHOUSE_TAB_INDEX) {
@@ -243,7 +274,7 @@ public class DFGUI_MAIN extends Screen {
         if (!hasEmbeddedPage) {
             // 如果选中"开始游戏"标签（索引0），调用子界面绘制玩家模型和模式面板
             if (selectedTab == 0) {
-                StartGameScreen.renderPlayerModel(guiGraphics, w / 2, h / 2 - 40, h);
+                StartGameScreen.renderPlayerModel(guiGraphics, w / 2, h / 2 - 40);
                 StartGameScreen.renderModePanels(guiGraphics, scaledMouseX, scaledMouseY, w, h);
             }
 
@@ -284,15 +315,15 @@ public class DFGUI_MAIN extends Screen {
             int textY = tabStartY + (tabHeight - this.font.lineHeight) / 2;
             int textColor = (i == selectedTab) ? 0xFFFFFFFF : 0xFFAAAAAA;
             guiGraphics.drawString(this.font, tabTitle, textX, textY, textColor, false);
-        }
 
-        if (hasEmbeddedPage && !(subScreen instanceof OperatorSwitchConfirmScreen)) {
-            StartGameScreen.renderSettingsIcon(guiGraphics, scaledMouseX, scaledMouseY, w, true);
-        }
-
-        // 绘制内嵌子面板（GTI交易行/特勤处）置于最上层，仍处于同一参考画布。
-        if (subScreen != null) {
-            subScreen.render(guiGraphics, scaledMouseX, scaledMouseY, partialTick);
+            // 改枪台（tab 6）无实际功能，绘制红叉遮罩
+            if (i == 6) {
+                StartGameScreen.renderWipOverlay(guiGraphics, x, tabStartY, tabWidth, tabHeight, scaledMouseX, scaledMouseY);
+            }
+            // 部门（tab 3）无实际内容，绘制红叉遮罩
+            if (i == 3) {
+                StartGameScreen.renderWipOverlay(guiGraphics, x, tabStartY, tabWidth, tabHeight, scaledMouseX, scaledMouseY);
+            }
         }
 
         if (!hasEmbeddedPage) {
@@ -300,6 +331,17 @@ public class DFGUI_MAIN extends Screen {
         }
         guiGraphics.disableScissor();
         guiGraphics.pose().popPose();
+
+        // 内嵌子面板（置于最上层，与主界面按钮同步缩放）
+        if (subScreen != null) {
+            int sx = (int)((mouseX - this.offsetX) / this.uiScale);
+            int sy = (int)((mouseY - this.offsetY) / this.uiScale);
+            guiGraphics.pose().pushPose();
+            guiGraphics.pose().translate(this.offsetX, this.offsetY, 0.0f);
+            guiGraphics.pose().scale(this.uiScale, this.uiScale, 1.0f);
+            subScreen.render(guiGraphics, sx, sy, partialTick);
+            guiGraphics.pose().popPose();
+        }
     }
 
     @Override
@@ -312,16 +354,11 @@ public class DFGUI_MAIN extends Screen {
             StartGameScreen.handleOverlayClick(scaledMouseX, scaledMouseY, button, w, h);
             return true;
         }
-        if (button == 0 && !(subScreen instanceof OperatorSwitchConfirmScreen)
-                && StartGameScreen.isSettingsIconClicked(scaledMouseX, scaledMouseY, w, subScreen != null)) {
-            Minecraft.getInstance().setScreen(new SettingsScreen(this));
-            return true;
-        }
         if (button == 0 && handleTabClick(scaledMouseX, scaledMouseY)) {
             return true;
         }
-        // 内嵌子面板优先处理点击（未命中时回落主界面逻辑，允许点击标签切换/关闭面板）
-        if (subScreen != null && subScreen.mouseClicked(scaledMouseX, scaledMouseY, button)) {
+        // 内嵌子面板优先处理点击（坐标转为参考分辨率空间）
+        if (subScreen != null && subScreen.mouseClicked((int)((mouseX - this.offsetX) / this.uiScale), (int)((mouseY - this.offsetY) / this.uiScale), button)) {
             return true;
         }
         if (StartGameScreen.handleBottomButtonClick(scaledMouseX, scaledMouseY, button, w, h, selectedTab)) {
@@ -341,7 +378,12 @@ public class DFGUI_MAIN extends Screen {
                 }
             }
 
-            // 右上角 settings/mail 空触发（常显，与底栏按钮一致，无实际功能）
+            // 右上角 settings 图标：打开设置界面
+            if (StartGameScreen.isSettingsIconClicked(scaledMouseX, scaledMouseY, w, h)) {
+                Minecraft.getInstance().setScreen(new SettingsScreen(this));
+                return true;
+            }
+            // 右上角 mail 图标：空触发
             if (StartGameScreen.isTopRightIconClicked(scaledMouseX, scaledMouseY, w, h)) {
                 return true;
             }
@@ -393,7 +435,7 @@ public class DFGUI_MAIN extends Screen {
             return true;
         }
         // 内嵌子面板优先处理滚轮（交易行/特勤处列表滚动）
-        if (subScreen != null && subScreen.mouseScrolled(toReferenceX(mouseX), toReferenceY(mouseY), delta)) {
+        if (subScreen != null && subScreen.mouseScrolled((int)((mouseX - this.offsetX) / this.uiScale), (int)((mouseY - this.offsetY) / this.uiScale), delta)) {
             return true;
         }
         // 仓库页：滚轮滚动仓库/物品栏
@@ -417,8 +459,8 @@ public class DFGUI_MAIN extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        // 内嵌子面板优先处理拖拽（仓库滚动条等）
-        if (subScreen != null && subScreen.mouseDragged(toReferenceX(mouseX), toReferenceY(mouseY), button,
+        // 内嵌子面板优先处理拖拽（坐标与拖拽增量均转为参考分辨率空间）
+        if (subScreen != null && subScreen.mouseDragged((int)((mouseX - this.offsetX) / this.uiScale), (int)((mouseY - this.offsetY) / this.uiScale), button,
                 dragX / this.uiScale, dragY / this.uiScale)) {
             return true;
         }
@@ -441,7 +483,7 @@ public class DFGUI_MAIN extends Screen {
         Operator.handleMouseReleased();
         // 转发鼠标松开给内嵌子面板（仓库滚动条拖拽结束等）
         if (subScreen != null) {
-            subScreen.mouseReleased(toReferenceX(mouseX), toReferenceY(mouseY), button);
+            subScreen.mouseReleased((int)((mouseX - this.offsetX) / this.uiScale), (int)((mouseY - this.offsetY) / this.uiScale), button);
         }
         return super.mouseReleased(mouseX, mouseY, button);
     }

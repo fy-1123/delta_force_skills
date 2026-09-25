@@ -80,6 +80,11 @@ public class DfsChestLootModifier extends LootModifier {
             }
         }
 
+        // Independent roll, sharing the supply probability and its one-item yield.
+        if (context.getRandom().nextFloat() < SPECIAL_EQUIPMENT_SUPPLY_CHANCE) {
+            generatedLoot.add(new ItemStack(ModItems.BLUEPRINT.get()));
+        }
+
         return generatedLoot;
     }
 

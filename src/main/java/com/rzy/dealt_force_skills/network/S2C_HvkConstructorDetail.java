@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class S2C_HvkConstructorDetail {
-    private static final int MAX_MISSING = 256;
+    private static final int MAX_MISSING = 4096;
     private static final int MAX_ALTERNATIVES =
             HvkAdvancedStandardTemplateConstructorBlockEntity.MAX_RECIPE_TREE_ALTERNATIVES;
 

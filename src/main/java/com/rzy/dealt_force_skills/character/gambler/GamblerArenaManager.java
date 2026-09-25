@@ -164,7 +164,7 @@ public final class GamblerArenaManager {
 
     private static boolean beginSession(ServerPlayer gambler, ServerLevel arena, List<ServerPlayer> players,
                                         boolean cooldownOnEnd) {
-        if (players.stream().anyMatch(player -> PLAYER_TO_SESSION.containsKey(player.getUUID()))) {
+        if (!SESSIONS.isEmpty() || players.stream().anyMatch(player -> PLAYER_TO_SESSION.containsKey(player.getUUID()))) {
             gambler.displayClientMessage(Component.translatable("message.dealt_force_skills.gambler.arena.target_busy"), true);
             return true;
         }
@@ -645,8 +645,11 @@ public final class GamblerArenaManager {
     }
 
     private static void prepareArena(ServerLevel arena) {
+        GamblerArenaCleanupEvents.beginReset();
+        try {
         loadArenaCleanupChunks(arena);
         discardNonPlayerArenaEntities(arena);
+        clearArenaTerrain(arena);
         PENDING_VILLAGER_CONVERSIONS.clear();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int x = -ARENA_CLEAR_RADIUS; x <= ARENA_CLEAR_RADIUS; x++) {
@@ -679,6 +682,47 @@ public final class GamblerArenaManager {
             arena.setBlock(new BlockPos(22, ARENA_Y, z), Blocks.BLUE_WOOL.defaultBlockState(), 3);
         }
         discardNonPlayerArenaEntities(arena);
+        } finally {
+            GamblerArenaCleanupEvents.endReset();
+        }
+    }
+
+    // Only this dimension's arena footprint belongs to the minigame. Clear occupied sections
+    // at every height, including blocks placed above spectators or below the original floor.
+    private static void clearArenaTerrain(ServerLevel arena) {
+        var area = new net.minecraft.world.level.levelgen.structure.BoundingBox(
+                -ARENA_CLEAR_RADIUS, arena.getMinBuildHeight(), -ARENA_CLEAR_RADIUS,
+                ARENA_CLEAR_RADIUS, arena.getMaxBuildHeight() - 1, ARENA_CLEAR_RADIUS);
+        arena.getBlockTicks().clearArea(area);
+        arena.getFluidTicks().clearArea(area);
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        int minChunk = Math.floorDiv(-ARENA_CLEAR_RADIUS, 16);
+        int maxChunk = Math.floorDiv(ARENA_CLEAR_RADIUS, 16);
+        for (int cx = minChunk; cx <= maxChunk; cx++) {
+            for (int cz = minChunk; cz <= maxChunk; cz++) {
+                var chunk = arena.getChunk(cx, cz);
+                var sections = chunk.getSections();
+                for (int sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+                    var section = sections[sectionIndex];
+                    if (section.hasOnlyAir()) continue;
+                    int bottom = (chunk.getMinSection() + sectionIndex) * 16;
+                    for (int x = Math.max(-ARENA_CLEAR_RADIUS, cx * 16); x <= Math.min(ARENA_CLEAR_RADIUS, cx * 16 + 15); x++) {
+                        for (int z = Math.max(-ARENA_CLEAR_RADIUS, cz * 16); z <= Math.min(ARENA_CLEAR_RADIUS, cz * 16 + 15); z++) {
+                            for (int y = 0; y < 16; y++) {
+                                if (section.getBlockState(x & 15, y, z & 15).isAir()) continue;
+                                pos.set(x, bottom + y, z);
+                                if (arena.getBlockEntity(pos) instanceof net.minecraft.world.Container container) {
+                                    container.clearContent();
+                                }
+                                arena.setBlock(pos, Blocks.AIR.defaultBlockState(), 2 | 16 | 32);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        arena.getBlockTicks().clearArea(area);
+        arena.getFluidTicks().clearArea(area);
     }
 
     private static void loadArenaCleanupChunks(ServerLevel arena) {

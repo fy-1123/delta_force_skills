@@ -20,6 +20,11 @@ public final class ModConfigScreens {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
+        event.enqueueWork(() -> {
+            if (com.rzy.dealt_force_skills.compat.SophisticatedBackpackCompat.isLoaded()) {
+                com.rzy.dealt_force_skills.compat.SophisticatedBackpackCompat.registerClient();
+            }
+        });
         event.enqueueWork(() -> ModLoadingContext.get().registerExtensionPoint(
                 ConfigScreenHandler.ConfigScreenFactory.class,
                 () -> new ConfigScreenHandler.ConfigScreenFactory(

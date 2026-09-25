@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 打开后释放对应维度的最大观测战利品。

@@ -1,12 +1,12 @@
 package mccfk.DeltaForce.java.data;
 
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import com.mojang.logging.LogUtils;
 import com.rzy.dealt_force_skills.character.CharacterBranchPackManager;
 import com.rzy.dealt_force_skills.character.CharacterDefinition;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 
@@ -84,7 +84,7 @@ public final class PlayerCharacterStore {
             JsonObject obj = new JsonObject();
             obj.addProperty(ID_KEY, characterId == null ? "" : characterId);
             try (BufferedWriter writer = Files.newBufferedWriter(file)) {
-                new GsonBuilder().setPrettyPrinting().create().toJson(obj, writer);
+                new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(obj, writer);
             }
         } catch (IOException e) {
             LOGGER.error("[DF] 无法保存玩家角色数据: {}/{}.json", playerDataDir, playerName);
@@ -158,6 +158,14 @@ public final class PlayerCharacterStore {
     /**
      * 获取当前玩家的角色类型（无传入时显示自身角色类型）
      */
+    public static Component getOperatorType() {
+        var player = Minecraft.getInstance().player;
+        if (player == null) {
+            return Component.translatable("deltaforce.operator.no_operator", "");
+        }
+        return getOperatorType(player.getName().getString());
+    }
+
     /**
      * 获取指定玩家的角色类型（friend 模组角色 role 的本地化）
      */
@@ -166,12 +174,20 @@ public final class PlayerCharacterStore {
         if (def == null) {
             return Component.translatable("deltaforce.operator.no_operator", playerName);
         }
-        return Component.translatable(def.roleTranslationKey());
+        return Component.translatable(def.role().translationKey());
     }
 
     /**
      * 获取当前玩家的角色名（无传入时显示自身角色名字）
      */
+    public static Component getOperatorName() {
+        var player = Minecraft.getInstance().player;
+        if (player == null) {
+            return Component.translatable("deltaforce.operator.no_operator", "");
+        }
+        return getOperatorName(player.getName().getString());
+    }
+
     /**
      * 获取指定玩家的角色名（friend 模组角色显示名）
      */

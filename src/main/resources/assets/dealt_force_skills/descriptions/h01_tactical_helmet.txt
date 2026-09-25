@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_2")
+.level(2);
 与常规制式头盔相比重量更轻。

@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 Hvk公司研发的高级瓦解光束发射器，可将物品分解为原材料。

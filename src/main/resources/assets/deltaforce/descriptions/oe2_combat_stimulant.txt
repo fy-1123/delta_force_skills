@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_3")
+.level(3);
 30 秒 ParCool 精力充沛和疲劳消除；获得时清除负面效果。

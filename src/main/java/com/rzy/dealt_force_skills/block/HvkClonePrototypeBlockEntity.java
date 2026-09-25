@@ -45,7 +45,6 @@ import java.util.UUID;
 
 public class HvkClonePrototypeBlockEntity extends BlockEntity {
     private static final int LOOT_PREVIEW_ROLLS = 32;
-    private static final long ENTITY_LISTING_BUDGET_NANOS = 75_000_000L;
     private static final int LOOT_CLONE_ROLLS = 96;
     private static final float CLONE_HEALTH_COST_RATIO = 0.5F;
     private static final int CLONE_FOOD_COST = 10;
@@ -181,49 +180,58 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
         return true;
     }
 
-    private AdvancedWorkBlockData data(ServerPlayer player, int requestedMode, String query, int requestedPage) {
-        int mode = requestedMode == AdvancedWorkBlockData.MODE_CLONE
-                ? AdvancedWorkBlockData.MODE_CLONE
-                : AdvancedWorkBlockData.MODE_EXTRACT;
-        String normalized = normalizeQuery(query);
-        List<EntryView> entries = entityEntries(player, mode, normalized);
-        int maxPage = entries.isEmpty() ? 0 : (entries.size() - 1) / AdvancedWorkBlockData.PAGE_SIZE;
-        int page = clamp(requestedPage, 0, maxPage);
-        int from = page * AdvancedWorkBlockData.PAGE_SIZE;
-        int to = Math.min(entries.size(), from + AdvancedWorkBlockData.PAGE_SIZE);
-        return new AdvancedWorkBlockData(worldPosition, AdvancedWorkBlockData.BLOCK_HVK_CLONE, mode, normalized,
-                page, entries.size(), 0.0D, entries.subList(from, to));
+    public static void warmQueryCatalog(ServerLevel level) {
+        List<EntryView> entries = new ArrayList<>();
+        for (EntityType<?> type : ForgeRegistries.ENTITY_TYPES.getValues()) {
+            ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(type);
+            if (id == null || type == EntityType.PLAYER) continue;
+            try {
+                Entity entity = type.create(level);
+                if (!(entity instanceof LivingEntity living) || living.getLootTable() == null
+                        || living.getLootTable().equals(EntityType.PLAYER.getDefaultLootTable())) continue;
+                entries.add(new EntryView(id, entityIcon(type), type.getDescription().getString(), "", List.of(), 0, 0));
+            } catch (RuntimeException error) {
+                // Retain a candidate when an entity factory requires a live world context.
+                WorkBlockQueryCatalog.warnEntry("entities", id, error);
+                entries.add(new EntryView(id, entityIcon(type), type.getDescription().getString(), "", List.of(), 0, 0));
+            }
+        }
+        WorkBlockQueryCatalog.register(level.getServer(), "entities", entries);
     }
 
-    private List<EntryView> entityEntries(ServerPlayer player, int mode, String query) {
+    private AdvancedWorkBlockData data(ServerPlayer player, int requestedMode, String query, int requestedPage) {
+        int mode = requestedMode == AdvancedWorkBlockData.MODE_CLONE
+                ? AdvancedWorkBlockData.MODE_CLONE : AdvancedWorkBlockData.MODE_EXTRACT;
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        List<EntryView> entries = new ArrayList<>();
-        long deadline = System.nanoTime() + ENTITY_LISTING_BUDGET_NANOS;
-        for (EntityType<?> type : ForgeRegistries.ENTITY_TYPES.getValues()) {
-            if (System.nanoTime() >= deadline) {
-                break;
-            }
-            ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(type);
-            if (id == null || !matches(type, id, query)) {
-                continue;
-            }
-            List<ItemStack> outputs = entityLoot(player, type, LOOT_PREVIEW_ROLLS);
-            if (outputs.isEmpty()) {
-                continue;
-            }
-            int available = mode == AdvancedWorkBlockData.MODE_CLONE
-                    ? WorkBlockStorageAccess.availableMatchingWithRedemption(player, sources,
-                    stack -> HvkGeneSample.isFor(stack, id),
-                    HvkGeneSample.create(id, type.getDescription().getString()), Integer.MAX_VALUE)
-                    : maxAvailableLoot(outputs, sources, player);
-            ItemStack icon = entityIcon(type);
-            String detail = mode == AdvancedWorkBlockData.MODE_CLONE
-                    ? Component.translatable("screen.dealt_force_skills.hvk_clone.sample_count", available).getString()
-                    : Component.translatable("screen.dealt_force_skills.hvk_clone.best_loot_count", available).getString();
-            entries.add(new EntryView(id, icon, type.getDescription().getString(), detail, outputs, available, 0.0D));
-        }
-        entries.sort(Comparator.comparing(EntryView::name).thenComparing(entry -> entry.id().toString()));
-        return entries;
+        Map<Item, Integer> availability = new HashMap<>();
+        Map<ResourceLocation, WorkBlockLootSampler> previews = new HashMap<>();
+        return WorkBlockQueryCatalog.page(player, this, "entities", AdvancedWorkBlockData.BLOCK_HVK_CLONE,
+                mode, normalizeQuery(query), requestedPage, 0.0D, () -> canUse(player), entry -> {
+                    EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(entry.id());
+                    WorkBlockLootSampler sampler = previews.computeIfAbsent(entry.id(), id -> entitySampler(player, type, LOOT_PREVIEW_ROLLS));
+                    List<ItemStack> outputs = sampler == null ? List.of() : sampler.step();
+                    if (outputs == null) return null;
+                    previews.remove(entry.id());
+                    int available = 0;
+                    if (mode == AdvancedWorkBlockData.MODE_CLONE) {
+                        available = WorkBlockStorageAccess.availableMatchingWithRedemption(player, sources,
+                                stack -> HvkGeneSample.isFor(stack, entry.id()),
+                                HvkGeneSample.create(entry.id(), entry.name()), Integer.MAX_VALUE);
+                    } else {
+                        for (ItemStack stack : outputs) {
+                            int total = availability.computeIfAbsent(stack.getItem(), item -> {
+                                int physical = WorkBlockStorageAccess.countItem(sources, item);
+                                return WorkBlockStorageAccess.availableItemWithRedemption(player, sources, item,
+                                        Math.max(stack.getMaxStackSize(), physical));
+                            });
+                            available = Math.max(available, total);
+                        }
+                    }
+                    String key = mode == AdvancedWorkBlockData.MODE_CLONE
+                            ? "screen.dealt_force_skills.hvk_clone.sample_count" : "screen.dealt_force_skills.hvk_clone.best_loot_count";
+                    return new EntryView(entry.id(), entry.icon(), entry.name(),
+                            Component.translatable(key, available).getString(), outputs, available, 0.0D);
+                });
     }
 
     private static boolean matches(EntityType<?> type, ResourceLocation id, String query) {
@@ -268,17 +276,22 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
     }
 
     private List<ItemStack> entityLoot(ServerPlayer player, EntityType<?> type, int rolls) {
+        WorkBlockLootSampler sampler = entitySampler(player, type, rolls);
+        return sampler == null ? List.of() : sampler.finish();
+    }
+
+    private WorkBlockLootSampler entitySampler(ServerPlayer player, EntityType<?> type, int rolls) {
         if (!(level instanceof ServerLevel serverLevel) || type == null) {
-            return List.of();
+            return null;
         }
         Entity entity = type.create(serverLevel);
         if (!(entity instanceof LivingEntity living)) {
-            return List.of();
+            return null;
         }
         living.moveTo(worldPosition.getX() + 0.5D, worldPosition.getY() + 1.0D, worldPosition.getZ() + 0.5D);
         ResourceLocation lootId = living.getLootTable();
         if (lootId == null || lootId.equals(EntityType.PLAYER.getDefaultLootTable())) {
-            return List.of();
+            return null;
         }
         LootTable table = serverLevel.getServer().getLootData().getLootTable(lootId);
         DamageSource damageSource = player.damageSources().playerAttack(player);
@@ -294,32 +307,9 @@ public class HvkClonePrototypeBlockEntity extends BlockEntity {
                     .withLuck(player.getLuck())
                     .create(LootContextParamSets.ENTITY);
         } catch (RuntimeException ignored) {
-            return List.of();
+            return null;
         }
-        Map<Item, ItemStack> prototypes = new LinkedHashMap<>();
-        Map<Item, Integer> maxCounts = new HashMap<>();
-        int safeRolls = Math.max(1, Math.min(rolls, 128));
-        for (int i = 0; i < safeRolls; i++) {
-            Map<Item, Integer> rollCounts = new HashMap<>();
-            for (ItemStack stack : table.getRandomItems(params)) {
-                if (stack.isEmpty() || stack.is(Items.AIR)) {
-                    continue;
-                }
-                prototypes.putIfAbsent(stack.getItem(), stack.copy());
-                rollCounts.merge(stack.getItem(), stack.getCount(), Integer::sum);
-            }
-            for (Map.Entry<Item, Integer> entry : rollCounts.entrySet()) {
-                maxCounts.merge(entry.getKey(), entry.getValue(), Math::max);
-            }
-        }
-        List<ItemStack> result = new ArrayList<>();
-        for (Map.Entry<Item, ItemStack> entry : prototypes.entrySet()) {
-            ItemStack stack = entry.getValue().copy();
-            stack.setCount(Math.max(1, maxCounts.getOrDefault(entry.getKey(), 1)));
-            result.add(stack);
-        }
-        result.sort(Comparator.comparing(stack -> itemKey(stack.getItem())));
-        return List.copyOf(result);
+        return new WorkBlockLootSampler(() -> table.getRandomItems(params), Math.max(1, Math.min(rolls, 128)));
     }
 
     private static ItemStack entityIcon(EntityType<?> type) {

@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -58,6 +57,13 @@ public final class ClientHudLayout {
         return true;
     }
 
+    /** 仅修改内存配置不写磁盘，供设置界面实时预览；保存时由 save() 统一落盘，取消时由 forceReload() 恢复 */
+    public static synchronized void setValueInMemory(String path, Object value) {
+        if (path == null || path.isBlank() || value == null) return;
+        ensureFresh();
+        config.set(path, value);
+    }
+
     public static synchronized void flush() {
         if (config != null) {
             config.save();
@@ -73,20 +79,20 @@ public final class ClientHudLayout {
         reload(modifiedTime(configPath()));
     }
 
+    /**
+     * 技能按钮X坐标（GUI系，自动随界面尺寸缩放）。
+     * 与体力条一致，使用guiWidth/guiHeight自适应，不额外乘以补偿系数。
+     */
     public static int x(int defaultX) {
-        if (!hudLayoutEnabled()) {
-            return defaultX;
-        }
-        return Math.round((defaultX + offset("x_offset", 208)) * guiScaleFactor());
+        return defaultX + offset("x_offset", 208);
     }
 
+    /**
+     * 技能按钮Y坐标（GUI坐标系，自动随界面尺寸缩放）。
+     * 与体力条一致，使用guiWidth/guiHeight自适应，不额外乘以补偿系数。
+     */
     public static int y(int defaultY) {
-        if (!hudLayoutEnabled()) {
-            return defaultY;
-        }
-        float factor = guiScaleFactor();
-        int currentHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        return Math.round((defaultY - currentHeight + currentHeight / factor + offset("y_offset", -10)) * factor);
+        return defaultY + offset("y_offset", -10);
     }
 
     /**
@@ -95,25 +101,11 @@ public final class ClientHudLayout {
     public static final float REFERENCE_GUI_SCALE = 3.0F;
 
     /**
-     * “HUD布局”开关（配置项 global.hud_layout，默认关闭）。
-     * 开启：技能按钮按当前布局逻辑显示（血条右侧、偏移/缩放/界面尺寸补偿）。
-     * 关闭：回到默认位置（血条左侧上方，无偏移、无缩放、无界面尺寸补偿）。
-     */
-    public static synchronized boolean hudLayoutEnabled() {
-        ensureFresh();
-        return boolValue("global.hud_layout", false);
-    }
-
-    /**
      * 当前界面尺寸相对基准(3)的补偿系数。
-     * 技能按钮偏移是在界面尺寸=3时校准的最优位置；界面尺寸 1/2 时放大补偿到等效位置。
-     * 界面尺寸 ≥3 时不再补偿（跟随原版 GUI 正常缩放），避免血条/按钮与快捷栏重叠；
-     * 非常规（非整数）界面尺寸也不补偿，避免坐标舍入错位。
+     * 仅用于StaminaBarRenderer等需要保持恒定物理尺寸的元素。
+     * 界面尺寸 ≥3 时返回1.0，<3时返回补偿倍率。
      */
     public static float guiScaleFactor() {
-        if (!hudLayoutEnabled()) {
-            return 1.0F;
-        }
         double scale = Minecraft.getInstance().getWindow().getGuiScale();
         if (scale <= 0 || !Double.isFinite(scale)) {
             return 1.0F;
@@ -130,17 +122,15 @@ public final class ClientHudLayout {
         return REFERENCE_GUI_SCALE / (float) scale;
     }
 
+    /**
+     * 技能按钮缩放系数（配置项 global.button_scale，默认 0.6）。
+     * 始终生效，不依赖任何开关。
+     */
     public static synchronized float buttonScale() {
-        if (!hudLayoutEnabled()) {
-            return 1.0F;
-        }
         ensureFresh();
+        // 暂时移除角色特定缩放叠加，仅使用全局配置
         float global = floatValue("global.button_scale", 0.6F);
-        String characterId = sanitizedCharacterId();
-        float character = characterId.isEmpty()
-                ? 1.0F
-                : floatValue("hud." + characterId + ".button_scale", 1.0F);
-        float effective = global * character;
+        float effective = global;
         if (!Float.isFinite(effective)) {
             LOGGER.warn("Ignoring non-finite effective HUD button scale in {}", FILE_NAME);
             return 1.0F;
@@ -149,16 +139,13 @@ public final class ClientHudLayout {
     }
 
     public static ButtonScale scaleButton(GuiGraphics graphics, int x, int y, int baseSize) {
-        if (!hudLayoutEnabled()) {
-            return ButtonScale.NOOP;
-        }
         float scale = buttonScale();
         if (scale == 1.0F) {
             return ButtonScale.NOOP;
         }
         int anchorX = x(8);
         float visualX = anchorX + (x - anchorX) * scale;
-        float visualY = y + baseSize * guiScaleFactor() - baseSize * scale;
+        float visualY = y + baseSize * (1.0F - scale);
         graphics.pose().pushPose();
         graphics.pose().translate(visualX, visualY, 0.0F);
         graphics.pose().scale(scale, scale, 1.0F);
@@ -176,19 +163,16 @@ public final class ClientHudLayout {
 
     public static synchronized float staminaScale() {
         ensureFresh();
+        // 暂时移除角色特定缩放叠加，仅使用全局配置
         float global = floatValue("global.stamina_scale", 1.0F);
-        String characterId = sanitizedCharacterId();
-        float character = characterId.isEmpty()
-                ? 1.0F : floatValue("hud." + characterId + ".stamina_scale", 1.0F);
-        float effective = global * character;
+        float effective = global;
         return Float.isFinite(effective) ? Math.max(0.25F, Math.min(3.0F, effective)) : 1.0F;
     }
 
     private static synchronized int offset(String axis, int fallback) {
         ensureFresh();
-        int global = intValue("global." + axis, fallback);
-        String characterId = sanitizedCharacterId();
-        return characterId.isEmpty() ? global : global + intValue("hud." + characterId + "." + axis, 0);
+        // 暂时移除角色特定偏移叠加，仅使用全局配置
+        return intValue("global." + axis, fallback);
     }
 
     private static int intValue(String path, int defaultValue) {
@@ -241,32 +225,6 @@ public final class ClientHudLayout {
         return ((Number) configured).floatValue();
     }
 
-    private static boolean boolValue(String path, boolean defaultValue) {
-        Object configured = config.get(path);
-        boolean value;
-        boolean changed = false;
-        if (configured instanceof Boolean bool) {
-            value = bool;
-        } else {
-            if (configured != null) {
-                LOGGER.warn("Ignoring non-boolean HUD setting {} in {}", path, FILE_NAME);
-            }
-            config.set(path, defaultValue);
-            value = defaultValue;
-            changed = true;
-        }
-        if (COMMENTED_PATHS.add(path)) {
-            config.setComment(path, "Enable the HUD layout adjustments (skill buttons on the right of the health bar, scaled). Default: "
-                    + defaultValue + ". The file is checked for changes once per second.");
-            changed = true;
-        }
-        if (changed) {
-            config.save();
-            updateObservedModifiedTime();
-        }
-        return value;
-    }
-
     private static void ensureFresh() {
         if (config == null) {
             loadInitial();
@@ -287,6 +245,7 @@ public final class ClientHudLayout {
         config = openConfig(configPath());
         COMMENTED_PATHS.clear();
         updateObservedModifiedTime();
+        ensureDefaultsPresent();
     }
 
     private static void reload(long modified) {
@@ -336,18 +295,18 @@ public final class ClientHudLayout {
         return FMLPaths.CONFIGDIR.get().resolve(FILE_NAME);
     }
 
-    private static String sanitizedCharacterId() {
-        String id = ClientCharacterSelectionState.displayedCharacterId().toLowerCase(Locale.ROOT);
-        return id.replaceAll("[^a-z0-9_-]", "_");
-    }
-
     private static void ensureDefaultsPresent() {
-        boolValue("global.hud_layout", false);
-        intValue("global.x_offset", 208);
+        // 清理旧版本遗留的 global.hud_layout 键（1.21.1已移除该开关）
+        if (config.contains("global.hud_layout")) {
+            config.remove("global.hud_layout");
+            config.save();
+            updateObservedModifiedTime();
+        }
+        intValue("global.x_offset", 0);
         intValue("global.y_offset", 0);
         floatValue("global.button_scale", 0.8F);
         ensureStaminaDefaults("global");
-        String characterId = sanitizedCharacterId();
+        String characterId = ClientCharacterSelectionState.selectedCharacterId();
         if (!characterId.isEmpty()) {
             intValue("hud." + characterId + ".x_offset", 0);
             intValue("hud." + characterId + ".y_offset", 0);

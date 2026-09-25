@@ -28,6 +28,13 @@ public class C2S_OpenSelectionOrShop {
             if (player == null || player.isSpectator()) {
                 return;
             }
+            if (!player.isCreative() && player.isShiftKeyDown()
+                    && com.rzy.dealt_force_skills.character.commander.CommanderStateManager.isCommander(player)) {
+                if (HaffShopManager.shouldOpenShop(player, true)) {
+                    HaffShopManager.openShop(player, true);
+                }
+                return;
+            }
             if (CharacterSelectionManager.hasCharacterReselection(player)) {
                 CharacterAvailability.syncToClient(player);
                 NetworkHandler.sendToPlayer(new S2C_OpenCharacterSelection(true), player);

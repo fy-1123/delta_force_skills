@@ -2,6 +2,8 @@ package mccfk.DeltaForce.java.client.overlay;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import mccfk.DeltaForce.java.client.CustomDropConfig;
+import mccfk.DeltaForce.java.client.screen.LayoutDataManager;
+import mccfk.DeltaForce.java.client.screen.LayoutEntry;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rzy.dealt_force_skills.item.DfsItemQuality;
@@ -101,8 +103,28 @@ public class GroundItemOverlay {
             description = getDescription(entity);
         }
 
+        // 从布局配置读取地面物品信息面板位置/缩放叠加
+        LayoutEntry le = LayoutDataManager.loadElement(
+                "deltaforce", "ground_item_hud", "custom_box_ground_item_panel",
+                0.72f, 0.11f, 0.18f, 0.15f);
+
+        // 直接用布局配置位置作为基础偏移
+        int baseX = (int) (le.relX() * guiGraphics.guiWidth());
+        int baseY = (int) (le.relY() * guiGraphics.guiHeight());
+        // 叠加CustomDropConfig的微调偏移
+        int xOffset = baseX - (guiGraphics.guiWidth() - 170) + CustomDropConfig.hudXOffset();
+        int baseY60 = guiGraphics.guiHeight() * 60 / 360;
+        int yOffset = baseY - baseY60 + CustomDropConfig.hudYOffset();
+        // XY独立缩放
+        float scaleX = le.scaleX;
+        float scaleY = le.scaleY;
+        float baseHudScale = CustomDropConfig.hudScale();
+
         renderItemHud(guiGraphics, mc, itemStack, quality, itemName, qualityLine, description,
-                alpha, CustomDropConfig.hudScale(), CustomDropConfig.hudXOffset(), CustomDropConfig.hudYOffset(),
+                alpha,
+                (1.0f + baseHudScale) * scaleX - 1.0f,
+                (1.0f + baseHudScale) * scaleY - 1.0f,
+                xOffset, yOffset,
                 simpleMode, hotkeyPressed);
 
         poseStack.popPose();
@@ -116,7 +138,8 @@ public class GroundItemOverlay {
      * @param qualityLine 品质行文本
      * @param description 物品描述（null则隐藏）
      * @param alpha 透明度 0-1
-     * @param scale 缩放比例（0=原始大小）
+     * @param scaleX X轴缩放比例（基础档位，默认0=100%）
+     * @param scaleY Y轴缩放比例（基础档位，默认0=100%）
      * @param xOffset X偏移（像素）
      * @param yOffset Y偏移（像素）
      * @param simpleMode 简易模式
@@ -124,7 +147,7 @@ public class GroundItemOverlay {
      */
     public static void renderItemHud(GuiGraphics guiGraphics, Minecraft mc, ItemStack itemStack,
                                       DfsItemQuality quality, Component itemName, Component qualityLine,
-                                      String description, float alpha, float scale, int xOffset, int yOffset,
+                                      String description, float alpha, float scaleX, float scaleY, int xOffset, int yOffset,
                                       boolean simpleMode, boolean showDetail) {
         PoseStack poseStack = guiGraphics.pose();
         poseStack.pushPose();
@@ -156,15 +179,17 @@ public class GroundItemOverlay {
         int boxHeight = Math.max(60, topPadding + nameHeight + 4 + itemAreaHeight + 4 + descHeight + bottomPadding);
 
         int screenWidth = guiGraphics.guiWidth();
+        int boxYBase = guiGraphics.guiHeight() * 60 / 360;
         int boxX = screenWidth - boxWidth - 20 + xOffset;
-        int boxY = 60 + yOffset;
+        int boxY = boxYBase + yOffset;
 
-        // 应用缩放比例
-        float scaleFactor = Float.isFinite(scale) ? Math.max(0.1F, Math.min(2.0F, 1.0F + scale)) : 1.0F;
+        // 应用缩放比例（双轴独立）
+        float scaleFactorX = 1.0F + scaleX;
+        float scaleFactorY = 1.0F + scaleY;
         float centerX = boxX + boxWidth / 2.0F;
         float centerY = boxY + boxHeight / 2.0F;
         poseStack.translate(centerX, centerY, 0);
-        poseStack.scale(scaleFactor, scaleFactor, 1.0F);
+        poseStack.scale(scaleFactorX, scaleFactorY, 1.0F);
         poseStack.translate(-centerX, -centerY, 0);
 
         RenderSystem.enableBlend();
@@ -273,6 +298,7 @@ public class GroundItemOverlay {
     }
 
     private static final Set<ResourceLocation> warnedItems = new HashSet<>();
+    private static final int MAX_WARNED_ITEMS = 500;
 
     private static String getDescription(GroundItemEntity entity) {
         ItemStack itemStack = entity.getItem();
@@ -284,6 +310,9 @@ public class GroundItemOverlay {
 
         ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(itemStack.getItem());
         if (itemId != null && warnedItems.add(itemId)) {
+            if (warnedItems.size() > MAX_WARNED_ITEMS) {
+                warnedItems.clear();
+            }
             Minecraft mc = Minecraft.getInstance();
             if (mc.player != null) {
                 String locKey = itemStack.getItem().getDescriptionId();

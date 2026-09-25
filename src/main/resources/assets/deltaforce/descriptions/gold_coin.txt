@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_5")
+.level(5);
 古老的阿萨拉海盗金币，被人擦的亮闪闪的。

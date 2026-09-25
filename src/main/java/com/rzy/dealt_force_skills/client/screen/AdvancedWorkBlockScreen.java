@@ -346,6 +346,10 @@ public class AdvancedWorkBlockScreen extends Screen {
     }
 
     private List<ActionButton> actionButtons() {
+        EntryView selected = selectedEntry();
+        if (selected == null || selected.outputs().isEmpty()) {
+            return List.of();
+        }
         int x = detailLeft() + PADDING;
         int y = detailTop() + detailHeight() - actionAreaHeight() + 6;
         int w = Math.max(42, (detailWidth() - PADDING * 2 - 8) / 3);

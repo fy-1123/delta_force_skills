@@ -146,73 +146,64 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
         playUseSound();
     }
 
+    public static void warmQueryCatalog(ServerLevel level) {
+        List<EntryView> chests = new ArrayList<>();
+        for (ResourceLocation id : chestLootIds(level)) {
+            chests.add(new EntryView(id, HvkTreasureChestBoxItem.create(id, lootName(id)), lootName(id), "", List.of(), 0, 0));
+        }
+        List<EntryView> ores = new ArrayList<>();
+        for (Block block : ForgeRegistries.BLOCKS.getValues()) {
+            if (!isOreBlock(block)) continue;
+            ItemStack icon = new ItemStack(block.asItem());
+            ResourceLocation id = ForgeRegistries.ITEMS.getKey(icon.getItem());
+            if (id != null) ores.add(new EntryView(id, icon, icon.getHoverName().getString(), "", List.of(icon), 0, 64));
+        }
+        WorkBlockQueryCatalog.register(level.getServer(), "chests", chests);
+        WorkBlockQueryCatalog.register(level.getServer(), "ores", ores);
+    }
+
     private AdvancedWorkBlockData data(ServerPlayer player, int requestedMode, String query, int requestedPage) {
         int mode = requestedMode == AdvancedWorkBlockData.MODE_TREASURE_ORE
-                ? AdvancedWorkBlockData.MODE_TREASURE_ORE
-                : AdvancedWorkBlockData.MODE_TREASURE_CHEST;
-        String normalized = normalizeQuery(query);
-        List<EntryView> entries = mode == AdvancedWorkBlockData.MODE_TREASURE_ORE
-                ? oreEntries(player, normalized)
-                : chestEntries(player, normalized);
-        int maxPage = entries.isEmpty() ? 0 : (entries.size() - 1) / AdvancedWorkBlockData.PAGE_SIZE;
-        int page = clamp(requestedPage, 0, maxPage);
-        int from = page * AdvancedWorkBlockData.PAGE_SIZE;
-        int to = Math.min(entries.size(), from + AdvancedWorkBlockData.PAGE_SIZE);
-        return new AdvancedWorkBlockData(worldPosition, AdvancedWorkBlockData.BLOCK_HVK_TREASURE_COMPASS, mode,
-                normalized, page, entries.size(), 0.0D, entries.subList(from, to));
-    }
-
-    private List<EntryView> chestEntries(ServerPlayer player, String query) {
-        if (!(level instanceof ServerLevel serverLevel)) {
-            return List.of();
-        }
+                ? AdvancedWorkBlockData.MODE_TREASURE_ORE : AdvancedWorkBlockData.MODE_TREASURE_CHEST;
         List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        List<EntryView> entries = new ArrayList<>();
-        for (ResourceLocation id : chestLootIds(serverLevel)) {
-            if (!matches(id, lootName(id), query)) {
-                continue;
-            }
-            List<ItemStack> outputs = chestLoot(player, serverLevel, Vec3.atCenterOf(worldPosition), id, LOOT_PREVIEW_ROLLS);
-            if (outputs.isEmpty()) {
-                continue;
-            }
-            int available = maxAvailablePaymentStacks(outputs, sources, player);
-            ItemStack icon = HvkTreasureChestBoxItem.create(id, lootName(id));
-            String detail = Component.translatable("screen.dealt_force_skills.hvk_treasure.payment_stacks", available)
-                    .getString();
-            entries.add(new EntryView(id, icon, lootName(id), detail, outputs, available, 0.0D));
-        }
-        entries.sort(Comparator.comparing(EntryView::name).thenComparing(entry -> entry.id().toString()));
-        return entries;
-    }
-
-    private List<EntryView> oreEntries(ServerPlayer player, String query) {
-        List<WorkBlockStorageAccess.SourceSlot> sources = WorkBlockStorageAccess.collectSources(level, worldPosition, player);
-        int stoneStacks = availableStoneStacks(player, sources);
-        List<EntryView> entries = new ArrayList<>();
-        for (Block block : ForgeRegistries.BLOCKS.getValues()) {
-            if (!isOreBlock(block)) {
-                continue;
-            }
-            Item item = block.asItem();
-            ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
-            if (id == null || !matches(id, new ItemStack(item).getHoverName().getString(), query)) {
-                continue;
-            }
-            ItemStack stack = new ItemStack(item);
-            String detail = Component.translatable("screen.dealt_force_skills.hvk_treasure.stone_stacks", stoneStacks)
-                    .getString();
-            entries.add(new EntryView(id, stack, stack.getHoverName().getString(), detail,
-                    List.of(stack.copy()), stoneStacks, 64.0D));
-        }
-        entries.sort(Comparator.comparing(EntryView::name).thenComparing(entry -> entry.id().toString()));
-        return entries;
+        Map<Item, Integer> availability = new HashMap<>();
+        Map<ResourceLocation, WorkBlockLootSampler> previews = new HashMap<>();
+        int[] stones = {-1};
+        return WorkBlockQueryCatalog.page(player, this, mode == AdvancedWorkBlockData.MODE_TREASURE_ORE ? "ores" : "chests",
+                AdvancedWorkBlockData.BLOCK_HVK_TREASURE_COMPASS, mode, normalizeQuery(query), requestedPage,
+                0.0D, () -> canUse(player), entry -> {
+                    if (mode == AdvancedWorkBlockData.MODE_TREASURE_ORE) {
+                        if (stones[0] < 0) stones[0] = availableStoneStacks(player, sources);
+                        String detail = Component.translatable("screen.dealt_force_skills.hvk_treasure.stone_stacks", stones[0]).getString();
+                        return new EntryView(entry.id(), entry.icon(), entry.name(), detail,
+                                List.of(entry.icon()), stones[0], 64.0D);
+                    }
+                    WorkBlockLootSampler sampler = previews.computeIfAbsent(entry.id(), id ->
+                            chestSampler(player, (ServerLevel) level, Vec3.atCenterOf(worldPosition), id, LOOT_PREVIEW_ROLLS));
+                    List<ItemStack> outputs = sampler == null ? List.of() : sampler.step();
+                    if (outputs == null) return null;
+                    previews.remove(entry.id());
+                    int available = 0;
+                    for (ItemStack stack : outputs) {
+                        int total = availability.computeIfAbsent(stack.getItem(), item ->
+                                WorkBlockStorageAccess.availableItemWithRedemption(player, sources, item, Integer.MAX_VALUE));
+                        available = Math.max(available, total / Math.max(1, stack.getMaxStackSize()));
+                    }
+                    String detail = Component.translatable("screen.dealt_force_skills.hvk_treasure.payment_stacks", available).getString();
+                    return new EntryView(entry.id(), entry.icon(), entry.name(), detail, outputs, available, 0.0D);
+                });
     }
 
     public static List<ItemStack> chestLoot(ServerPlayer player, ServerLevel level, Vec3 origin,
                                             ResourceLocation lootId, int rolls) {
+        WorkBlockLootSampler sampler = chestSampler(player, level, origin, lootId, rolls);
+        return sampler == null ? List.of() : sampler.finish();
+    }
+
+    private static WorkBlockLootSampler chestSampler(ServerPlayer player, ServerLevel level, Vec3 origin,
+                                            ResourceLocation lootId, int rolls) {
         if (player == null || level == null || lootId == null) {
-            return List.of();
+            return null;
         }
         LootTable table = level.getServer().getLootData().getLootTable(lootId);
         LootParams params;
@@ -222,32 +213,9 @@ public class HvkAdvancedTreasureCompassBlockEntity extends BlockEntity {
                     .withLuck(player.getLuck())
                     .create(LootContextParamSets.CHEST);
         } catch (RuntimeException ignored) {
-            return List.of();
+            return null;
         }
-        Map<Item, ItemStack> prototypes = new LinkedHashMap<>();
-        Map<Item, Integer> maxCounts = new HashMap<>();
-        int safeRolls = Math.max(1, Math.min(rolls, 256));
-        for (int i = 0; i < safeRolls; i++) {
-            Map<Item, Integer> rollCounts = new HashMap<>();
-            for (ItemStack stack : table.getRandomItems(params)) {
-                if (stack.isEmpty() || stack.is(Items.AIR)) {
-                    continue;
-                }
-                prototypes.putIfAbsent(stack.getItem(), stack.copy());
-                rollCounts.merge(stack.getItem(), stack.getCount(), Integer::sum);
-            }
-            for (Map.Entry<Item, Integer> entry : rollCounts.entrySet()) {
-                maxCounts.merge(entry.getKey(), entry.getValue(), Math::max);
-            }
-        }
-        List<ItemStack> result = new ArrayList<>();
-        for (Map.Entry<Item, ItemStack> entry : prototypes.entrySet()) {
-            ItemStack stack = entry.getValue().copy();
-            stack.setCount(Math.max(1, maxCounts.getOrDefault(entry.getKey(), 1)));
-            result.add(stack);
-        }
-        result.sort(Comparator.comparing(stack -> itemKey(stack.getItem())));
-        return List.copyOf(result);
+        return new WorkBlockLootSampler(() -> table.getRandomItems(params), Math.max(1, Math.min(rolls, 256)));
     }
 
     public static List<ItemStack> chestBoxLoot(ServerPlayer player, ServerLevel level, ResourceLocation lootId) {

@@ -52,6 +52,8 @@ public final class VyronStateManager {
     private static final String EQUIPPED_TOOL = "EquippedTool";
     private static final String FALLING_SOUND_ACTIVE = "FallingSoundActive";
     private static final String FALLING_SOUND_LAST_TICK = "FallingSoundLastTick";
+    private static final String PROPULSION_DESCENDING = "PropulsionDescending";
+    private static final String LAST_POWERED_LANDING_TICK = "LastPoweredLandingTick";
     private static final int FALLING_SOUND_REPLAY_TICKS = 140;
 
     private VyronStateManager() {
@@ -86,6 +88,8 @@ public final class VyronStateManager {
         tag.putInt(EQUIPPED_TOOL, VyronTool.NONE.ordinal());
         tag.putBoolean(FALLING_SOUND_ACTIVE, false);
         tag.putLong(FALLING_SOUND_LAST_TICK, 0L);
+        tag.putBoolean(PROPULSION_DESCENDING, false);
+        tag.putLong(LAST_POWERED_LANDING_TICK, -1L);
     }
 
     public static void copyState(Player original, Player target) {
@@ -118,6 +122,7 @@ public final class VyronStateManager {
         tickDash(player);
         tickPowered(player, now);
         tickFallingSound(player, now);
+        tickPropulsionLanding(player);
     }
 
     public static boolean startDash(ServerPlayer player, Vec3 direction) {
@@ -234,7 +239,7 @@ public final class VyronStateManager {
     }
 
     public static int bombCharges(Player player) {
-        return data(player).getInt(BOMB_CHARGES);
+        return Math.min(bombCapacity(player), Math.max(0, data(player).getInt(BOMB_CHARGES)));
     }
 
     public static int bombRechargeRemainingTicks(Player player) {
@@ -350,6 +355,45 @@ public final class VyronStateManager {
             return;
         }
         stopFallingSound(player);
+    }
+
+    private static void tickPropulsionLanding(ServerPlayer player) {
+        CompoundTag tag = data(player);
+        if (!CommanderStateManager.hasBranchUpgrade(player,
+                CommanderBranchUpgrade.VYRON_PROPULSION_MOD)) {
+            tag.putBoolean(PROPULSION_DESCENDING, false);
+            return;
+        }
+        if (player.onGround()) {
+            if (tag.getBoolean(PROPULSION_DESCENDING)) {
+                grantPoweredOnLanding(player);
+            }
+            return;
+        }
+        if (player.isPassenger() || player.getAbilities().flying
+                || player.isInWaterOrBubble() || player.onClimbable()) {
+            tag.putBoolean(PROPULSION_DESCENDING, false);
+            return;
+        }
+        if (player.getDeltaMovement().y < -0.01D) {
+            tag.putBoolean(PROPULSION_DESCENDING, true);
+        }
+    }
+
+    public static void grantPoweredOnLanding(ServerPlayer player) {
+        if (!isVyron(player)) {
+            return;
+        }
+        initializeIfNeeded(player);
+        CompoundTag tag = data(player);
+        tag.putBoolean(PROPULSION_DESCENDING, false);
+        long now = SkillCooldownHelper.now(player);
+        if (tag.getLong(LAST_POWERED_LANDING_TICK) == now) {
+            return;
+        }
+        tag.putLong(LAST_POWERED_LANDING_TICK, now);
+        grantPowered(player, true);
+        syncToClient(player);
     }
 
     private static void stopFallingSound(ServerPlayer player) {

@@ -2,10 +2,14 @@ package com.rzy.dealt_force_skills.event;
 
 import com.rzy.dealt_force_skills.config.DealtForceConfig;
 import com.rzy.dealt_force_skills.arena.HvkAsaraArenaManager;
+import com.rzy.dealt_force_skills.advancement.DfsAchievements;
 import com.rzy.dealt_force_skills.block.BladeWireBlockEntity;
 import com.rzy.dealt_force_skills.block.QuickCoverBlock;
 import com.rzy.dealt_force_skills.block.QuickCoverBlockEntity;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
+import com.rzy.dealt_force_skills.character.chamber.ChamberGunKind;
+import com.rzy.dealt_force_skills.character.chamber.ChamberStateManager;
+import com.rzy.dealt_force_skills.character.chamber.ChamberTaczEnhancement;
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import com.rzy.dealt_force_skills.character.commander.CommanderBranchUpgrade;
 import com.rzy.dealt_force_skills.character.commander.CommanderStateManager;
@@ -18,6 +22,7 @@ import com.rzy.dealt_force_skills.character.dwolf.DWolfSkills;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfStateManager;
 import com.rzy.dealt_force_skills.character.dwolf.DWolfTool;
 import com.rzy.dealt_force_skills.character.gizmo.GizmoStateManager;
+import com.rzy.dealt_force_skills.character.gambler.GamblerArenaManager;
 import com.rzy.dealt_force_skills.character.gambler.GamblerStateManager;
 import com.rzy.dealt_force_skills.character.gizmo.GizmoTool;
 import com.rzy.dealt_force_skills.character.ghroth.GhrothStateManager;
@@ -71,8 +76,10 @@ import com.rzy.dealt_force_skills.effect.MorseFlashedEffect;
 import com.rzy.dealt_force_skills.effect.ShakehandsCombatHandler;
 import com.rzy.dealt_force_skills.effect.ToxikTearGasBlindEffect;
 import com.rzy.dealt_force_skills.effect.ToxikFireflyInterferenceEffect;
+import com.rzy.dealt_force_skills.team.RoundStartFreezeManager;
 import com.rzy.dealt_force_skills.team.TeamCombatRules;
 import com.rzy.dealt_force_skills.util.EmptyHandExtinguishHandler;
+import com.rzy.dealt_force_skills.util.MeleeWeaponCompat;
 import com.rzy.dealt_force_skills.util.ReconRevealThrottle;
 import com.rzy.dealt_force_skills.util.TargetingUtil;
 import com.rzy.dealt_force_skills.entity.RaptorFalconDroneEntity;
@@ -915,6 +922,16 @@ public class CommonEvents {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onLivingHurtGamblerPostFinalDamage(LivingHurtEvent event) {
+        LivingEntity target = event.getEntity();
+        if (!target.level().isClientSide && event.getAmount() > 0.0F) {
+            if (damageSourceRootPlayer(event.getSource()) instanceof ServerPlayer attacker) {
+                GamblerStateManager.handlePostFinalDamage(attacker, target, event.getSource(), event.getAmount());
+            }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onLivingHurtGhrothDamageFloor(LivingHurtEvent event) {
         LivingEntity target = event.getEntity();
         GhrothDamageFloor floor = GHROTH_DAMAGE_FLOORS.get(target.getUUID());
@@ -1153,6 +1170,13 @@ public class CommonEvents {
                 || NikaidouHiroStateManager.isWeaponActive(event.getPlayer())
                 || DepartmentOfTransportationStateManager.hasEquippedTool(event.getPlayer())) {
             event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onLivingTickNTwoColdDecay(LivingEvent.LivingTickEvent event) {
+        if (!event.getEntity().level().isClientSide) {
+            com.rzy.dealt_force_skills.character.ntwo.NTwoStateManager.tickColdDecay(event.getEntity());
         }
     }
 
@@ -2065,6 +2089,10 @@ public class CommonEvents {
         if (player instanceof ServerPlayer serverPlayer) {
             MorseStateManager.recordPlayerAction(serverPlayer);
             LexNinjiaStateManager.onPlayerAction(serverPlayer);
+            if (GamblerArenaManager.blocksInteraction(serverPlayer)) {
+                cancelPlayerInteract(event);
+                return;
+            }
         }
         if (player instanceof ServerPlayer serverPlayer
                 && (UluruLoiteringMissileEntity.isPlayerControlling(serverPlayer)
@@ -2098,8 +2126,14 @@ public class CommonEvents {
             return;
         }
 
-        if (isAnyToolEquipped(player)) {
-            cancelPlayerInteract(event);
+        if (!tryCutTargetedBladeWire(event)) {
+            if (isAnyToolEquipped(player)) {
+                cancelPlayerInteract(event);
+            } else {
+                if (player instanceof ServerPlayer serverPlayerx) {
+                    DfsAchievements.recordToxikAdrenalineAction(serverPlayerx, "interact");
+                }
+            }
         }
     }
 
@@ -2472,10 +2506,31 @@ public class CommonEvents {
         TempestStateManager.triggerExplosionSpineForNearby(serverLevel,
                 event.getExplosion().getPosition(), event.getAffectedEntities());
         if (departmentChargedCreeper) {
+            removeDepartmentOwnerFromExplosionTargets(directSource, event.getAffectedEntities());
             event.getAffectedBlocks().clear();
+            SuperbWarfareCompat.damageVehicles(
+                    serverLevel,
+                    event.getExplosion().getPosition(),
+                    6.0,
+                    SkillDamageHelper.departmentTrap(serverLevel, directSource, directSource),
+                    directSource,
+                    0.16F,
+                    false
+            );
+            SuperbWarfareCompat.removeVehicles(event.getAffectedEntities());
             DepartmentOfTransportationStateManager.handleDepartmentChargedCreeperExplosion(serverLevel, directSource);
         } else if (hakimRocket) {
             event.getAffectedBlocks().clear();
+            SuperbWarfareCompat.damageVehicles(
+                    serverLevel,
+                    event.getExplosion().getPosition(),
+                    SAEED_HAKIM_ROCKET_DAMAGE_RADIUS,
+                    SkillDamageHelper.uluruMissile(serverLevel, hakimRocketOwner, hakimRocketOwner),
+                    directSource,
+                    SAEED_HAKIM_ROCKET_DAMAGE / 100.0F,
+                    true
+            );
+            SuperbWarfareCompat.removeVehicles(event.getAffectedEntities());
             preventSaeedHakimRocketKnockback(serverLevel, hakimRocketOwner,
                     event.getExplosion().getPosition(), event.getAffectedEntities());
         }
@@ -2508,6 +2563,16 @@ public class CommonEvents {
             return guard;
         }
         return null;
+    }
+
+    private static void removeDepartmentOwnerFromExplosionTargets(Entity source, List<Entity> affectedEntities) {
+        if (source != null && !affectedEntities.isEmpty()) {
+            CompoundTag tag = source.getPersistentData();
+            if (tag.hasUUID("DepartmentOwner")) {
+                UUID ownerId = tag.getUUID("DepartmentOwner");
+                affectedEntities.removeIf(entity -> entity != null && ownerId.equals(entity.getUUID()));
+            }
+        }
     }
 
     private static void preventSaeedHakimRocketKnockback(ServerLevel level, SaeedGuardEntity owner, Vec3 center,
@@ -2555,11 +2620,14 @@ public class CommonEvents {
             }
             allowPortableAdsTaczHit(event);
             handleGhrothTaczPreDamage(event);
+            handleChamberTaczPreDamage(event);
+            recordSaeedGuardTaczPreDamage(event);
             return;
         }
         if (TACZ_GUN_RELOAD_EVENT.equals(eventName)) {
             recordMorseTaczAction(event);
-            if (cancelLexNinjiaTaczAction(event) || cancelUndeadTaczAction(event) || cancelDownedTaczAction(event)) {
+            if (cancelLexNinjiaTaczAction(event) || cancelUndeadTaczAction(event) || cancelDownedTaczAction(event)
+                    || cancelFrozenTaczAction(event) || cancelManbaDuelTaczAction(event)) {
                 return;
             }
             cancelTaczReloadEvent(event);
@@ -2575,6 +2643,8 @@ public class CommonEvents {
             if (cancelLexNinjiaTaczAction(event)
                     || cancelUndeadTaczAction(event)
                     || cancelDownedTaczAction(event)
+                    || cancelFrozenTaczAction(event)
+                    || cancelManbaDuelTaczAction(event)
                     || throttleMorseShockTaczTimeEvent(event)
                     || throttleSonicTaczTimeEvent(event)) {
                 return;
@@ -2622,6 +2692,33 @@ public class CommonEvents {
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.FAIL);
         return true;
+    }
+
+    private static boolean tryCutTargetedBladeWire(PlayerInteractEvent event) {
+        if (event instanceof PlayerInteractEvent.LeftClickBlock leftClick
+                && leftClick.getEntity() instanceof ServerPlayer player
+                && leftClick.getLevel() instanceof ServerLevel level
+                && MeleeWeaponCompat.isMeleeWeapon(player.getMainHandItem())) {
+            BlockPos pos = leftClick.getPos();
+            if (!BladeWireBlockEntity.destroyWireBlock(level, pos, player)) {
+                return false;
+            }
+
+            damageCuttingWeapon(player);
+            leftClick.setCanceled(true);
+            leftClick.setUseBlock(Event.Result.DENY);
+            leftClick.setUseItem(Event.Result.DENY);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void damageCuttingWeapon(ServerPlayer player) {
+        ItemStack weapon = player.getMainHandItem();
+        if (!weapon.isEmpty() && !player.getAbilities().instabuild) {
+            weapon.hurtAndBreak(1, player, p -> p.broadcastBreakEvent(EquipmentSlot.MAINHAND));
+        }
     }
 
     private static void handleTouhouMaidCoffeePickup(Event event) {
@@ -2773,6 +2870,46 @@ public class CommonEvents {
             recordGhrothDamageFloor(target, attacker, floor, GhrothStateManager.isStarsActive(attacker));
         } catch (ReflectiveOperationException | LinkageError ignored) {
             // TaCZ event internals differ between versions; Ghroth falls back to LivingHurt handling.
+        }
+    }
+
+    private static void handleChamberTaczPreDamage(Event event) {
+        try {
+            if (!(event.getClass().getMethod("getAttacker").invoke(event) instanceof ServerPlayer attacker)) {
+                return;
+            }
+
+            ItemStack gun = attacker.getMainHandItem();
+            if (!ChamberTaczEnhancement.isChamberWeapon(gun)) {
+                return;
+            }
+
+            Object hurtObject = event.getClass().getMethod("getHurtEntity").invoke(event);
+            float headshotMultiplier = reflectedFloat(event, "getHeadshotMultiplier", 1.0F);
+            event.getClass().getMethod("setHeadshotMultiplier", float.class).invoke(event,
+                    ChamberTaczEnhancement.headshotMultiplier(headshotMultiplier, gun));
+            if (ChamberTaczEnhancement.kind(gun) == ChamberGunKind.TOUR_DE_FORCE
+                    && hurtObject instanceof LivingEntity target
+                    && reflectedFloat(event, "getBaseAmount", 0.0F) > 0.0F) {
+                ChamberStateManager.tryTriggerTourSlowField(attacker, target);
+            }
+        } catch (LinkageError | ReflectiveOperationException ignored) {
+            // Chamber Tacz enhancement is optional.
+        }
+    }
+
+    private static void recordSaeedGuardTaczPreDamage(Event event) {
+        try {
+            Object attackerObject = event.getClass().getMethod("getAttacker").invoke(event);
+            Object hurtObject = event.getClass().getMethod("getHurtEntity").invoke(event);
+            if (attackerObject instanceof SaeedGuardEntity guard
+                    && guard.guardType() == SaeedGuardType.IRON_RAIN
+                    && hurtObject instanceof LivingEntity
+                    && !(reflectedFloat(event, "getBaseAmount", 0.0F) <= 0.0F)) {
+                guard.owner().ifPresent(DfsAchievements::recordSaeedIronRainHit);
+            }
+        } catch (LinkageError | ReflectiveOperationException ignored) {
+            // Saeed guard Tacz tracking is optional.
         }
     }
 
@@ -3169,6 +3306,19 @@ public class CommonEvents {
         );
     }
 
+    public static double effectiveTaczFireRateMultiplier(LivingEntity entity) {
+        return taczSpeedMultipliers(entity).fireRate();
+    }
+
+    public static double effectiveTaczReloadMultiplier(LivingEntity entity) {
+        return taczSpeedMultipliers(entity).reload();
+    }
+
+    public static double effectiveTaczAimMultiplier(LivingEntity entity) {
+        TaczSpeedMultipliers multipliers = taczSpeedMultipliers(entity);
+        return multipliers.aim() / multipliers.aimPenalty();
+    }
+
     private static void shiftTaczServerDataHolder(LivingEntity entity, TaczSpeedMultipliers multipliers) {
         try {
             Class<?> operatorClass = Class.forName(TACZ_GUN_OPERATOR);
@@ -3470,6 +3620,38 @@ public class CommonEvents {
         player.displayClientMessage(Component.translatable(
                 "message.dealt_force_skills.undead.tacz_forbidden"), true);
         return true;
+    }
+
+    private static boolean cancelFrozenTaczAction(Event event) {
+        if (!event.isCancelable() || TACZ_GUN_FIRE_SELECT_EVENT.equals(event.getClass().getName())) {
+            return false;
+        }
+        LivingEntity entity = taczEventEntity(event);
+        if (entity instanceof Player player && RoundStartFreezeManager.isFrozen(player)) {
+            event.setCanceled(true);
+            cancelOptionalTaczReload(entity);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean cancelManbaDuelTaczAction(Event event) {
+        if (!event.isCancelable()) {
+            return false;
+        }
+        LivingEntity entity = taczEventEntity(event);
+        if (entity instanceof ServerPlayer player
+                && ManbaStateManager.isManba(player)
+                && ManbaStateManager.isDuelActive(player)) {
+            event.setCanceled(true);
+            if (TACZ_GUN_RELOAD_EVENT.equals(event.getClass().getName())) {
+                cancelOptionalTaczReload(player);
+            }
+            player.displayClientMessage(Component.translatable(
+                    "message.dealt_force_skills.manba.tacz_forbidden_duel"), true);
+            return true;
+        }
+        return false;
     }
 
     private static boolean throttleSonicTaczTimeEvent(Event event) {

@@ -62,7 +62,7 @@ public class StartGameScreen {
 
     private static final int BTN_COUNT = 7;
     private static final int BAR_HEIGHT = 20;
-    private static final int FIRST_X = 30;
+    private static final int FIRST_X_RATIO = 3;     // 首个按钮距左边缘 = 屏幕宽度 * 3 / 100
     private static final int[] GAP_PATTERN = {7, 6, 6};
 
     private static final int BUTTON_TEX_W = 128;
@@ -77,7 +77,7 @@ public class StartGameScreen {
     private static final float ICON_TEX_SCALE = 0.45F;
 
     // === 右侧按钮布局常量 ===
-    private static final int MARGIN_RIGHT = 30;
+    private static final int MARGIN_RIGHT_RATIO = 3;  // 距右边缘 = 屏幕宽度 * 3 / 100
     private static final int GAP_DEPLOY = 3;
     private static final int GAP_SOCIAL_DEPLOY = 7;
     private static final int GAP_RECRUIT_SOCIAL = 6;
@@ -104,13 +104,13 @@ public class StartGameScreen {
     private static final int NO_TARGET_W = (int)(NO_TARGET_ORIG_W * MODE_PANEL_SCALE);
     private static final int NO_TARGET_H = (int)(NO_TARGET_ORIG_H * MODE_PANEL_SCALE);
 
-    private static final int MODE_PANEL_MARGIN_RIGHT = 15;
+    private static final int MODE_PANEL_MARGIN_RIGHT_RATIO = 2;  // 距右边缘 = 屏幕宽度 * 2 / 100
     private static final int PRE_BATTLE_REP_BOTTOM_OFFSET = 10;
     private static final int MODE_PANEL_GAP = 1;
 
     // === 右上角信息区布局常量 ===
-    private static final int TOP_RIGHT_MARGIN_X = 10;   // 距右边缘
-    private static final int TOP_RIGHT_MARGIN_Y = 10;   // 距上边缘
+    private static final int TOP_RIGHT_MARGIN_X_RATIO = 1;  // 距右边缘 = 屏幕宽度 * 1 / 100
+    private static final int TOP_RIGHT_MARGIN_Y = 10;        // 距上边缘（固定值，窄窗口自动切换为40）
     private static final int TOP_RIGHT_ICON_SIZE = 20;  // 图标绘制尺寸
     private static final int TOP_RIGHT_GAP = 4;         // 元素间距
     private static final int TOP_RIGHT_HAVOC_SHIFT = 15;         // 哈夫币数量/图标整体右移基准像素
@@ -137,10 +137,11 @@ public class StartGameScreen {
     }
 
     /**
-     * 获取好友在线数（供其他界面读取）
+     * 获取全部在线玩家数（供其他界面读取）
      */
     public static int getOnlineFriendsCount() {
-        return snapshot.roster().size();
+        var connection = Minecraft.getInstance().getConnection();
+        return connection != null ? connection.getOnlinePlayers().size() : 0;
     }
 
     public static void acceptSnapshot(S2C_StartPageSnapshot value) {
@@ -170,6 +171,27 @@ public class StartGameScreen {
     }
 
     /**
+     * 在指定区域绘制"制作中"红叉遮罩，悬浮时显示"制作中"提示
+     */
+    public static void renderWipOverlay(GuiGraphics guiGraphics, int x, int y, int w, int h, int mouseX, int mouseY) {
+        // 红色描边，表示"框架已预留、功能开发中"
+        int border = Math.max(1, Math.min(w, h) / 16);
+        // 上边
+        guiGraphics.fill(x, y, x + w, y + border, 0xFFFF3333);
+        // 下边
+        guiGraphics.fill(x, y + h - border, x + w, y + h, 0xFFFF3333);
+        // 左边
+        guiGraphics.fill(x, y, x + border, y + h, 0xFFFF3333);
+        // 右边
+        guiGraphics.fill(x + w - border, y, x + w, y + h, 0xFFFF3333);
+        // 悬浮提示
+        if (mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h) {
+            Component tip = Component.translatable("deltaforce.wip.making");
+            guiGraphics.renderTooltip(Minecraft.getInstance().font, tip, mouseX, mouseY);
+        }
+    }
+
+    /**
      * 渲染底栏按钮（左侧原有按钮仅开始游戏显示 + 右侧新增按钮常显）
      * @param guiGraphics GUI上下文
      * @param mouseX 鼠标X
@@ -188,7 +210,7 @@ public class StartGameScreen {
 
         // === 左侧原有按钮（仅开始游戏标签页显示，从左到右）===
         if (showLeftButtons) {
-            int currentX = FIRST_X;
+            int currentX = screenWidth * FIRST_X_RATIO / 100;
             int leftButtonCount = screenWidth < 430 ? 1 : BTN_COUNT;
             for (int i = 0; i < leftButtonCount; i++) {
                 int x = currentX;
@@ -231,12 +253,17 @@ public class StartGameScreen {
                     hovered = i;
                 }
 
+                // 按钮1-6无实际功能，绘制红叉遮罩
+                if (i > 0) {
+                    renderWipOverlay(guiGraphics, x, y, drawW, drawH, mouseX, mouseY);
+                }
+
                 currentX = x + drawW + GAP_PATTERN[i % GAP_PATTERN.length];
             }
         }
 
         // === 右侧新增按钮（常显；从右往左：部署3→部署2→部署1→社交→招募→排行榜）===
-        int rightEdge = screenWidth - MARGIN_RIGHT;
+        int rightEdge = screenWidth - screenWidth * MARGIN_RIGHT_RATIO / 100;
         // 从右到左计算新按钮位置
         int[] nx = new int[NEW_BTN_COUNT];
         int[] nw = new int[NEW_BTN_COUNT];
@@ -270,7 +297,7 @@ public class StartGameScreen {
 
             // 社交按钮(新按钮索引2)内部靠右侧显示好友在线数变量
             if (i == 2) {
-                Component friendsText = Component.literal(String.valueOf(snapshot.roster().size()));
+                Component friendsText = Component.literal(String.valueOf(getOnlineFriendsCount()));
                 int textWidth = font.width(friendsText);
                 float textScale = 0.55F;
                 int scaledTextWidth = (int)(textWidth * textScale);
@@ -299,7 +326,7 @@ public class StartGameScreen {
         // 绘制悬浮白色视觉反馈
         if (hovered >= 0) {
             if (hovered < 100) {
-                int hx = FIRST_X;
+                int hx = screenWidth * FIRST_X_RATIO / 100;
                 int leftButtonCount = screenWidth < 430 ? 1 : BTN_COUNT;
                 for (int i = 0; i < leftButtonCount; i++) {
                     int hw = (i == 0) ? BUTTON_DRAW_W : ICON_DRAW_SIZE;
@@ -667,7 +694,7 @@ public class StartGameScreen {
         int buttonY = screenHeight - BAR_HEIGHT;
         if (mouseY < buttonY || mouseY >= buttonY + BAR_HEIGHT) return -1;
         if (selectedTab == 0) {
-            int currentX = FIRST_X;
+            int currentX = screenWidth * FIRST_X_RATIO / 100;
             int leftButtonCount = screenWidth < 430 ? 1 : BTN_COUNT;
             for (int i = 0; i < leftButtonCount; i++) {
                 int width = i == 0 ? BUTTON_DRAW_W : ICON_DRAW_SIZE;
@@ -684,7 +711,7 @@ public class StartGameScreen {
     }
 
     private static int newButtonX(int index, int screenWidth) {
-        int rightEdge = screenWidth - MARGIN_RIGHT;
+        int rightEdge = screenWidth - screenWidth * MARGIN_RIGHT_RATIO / 100;
         int slot3 = rightEdge - ICON_DRAW_SIZE;
         int slot2 = slot3 - GAP_DEPLOY - ICON_DRAW_SIZE;
         int slot1 = slot2 - GAP_DEPLOY - ICON_DRAW_SIZE;
@@ -809,7 +836,7 @@ public class StartGameScreen {
 
         // 检查左侧原有按钮（仅开始游戏标签页）
         if (selectedTab == 0) {
-            int currentX = FIRST_X;
+            int currentX = screenWidth * FIRST_X_RATIO / 100;
             for (int i = 0; i < BTN_COUNT; i++) {
                 int drawW = (i == 0) ? BUTTON_DRAW_W : ICON_DRAW_SIZE;
                 if (mouseX >= currentX && mouseX < currentX + drawW) {
@@ -820,7 +847,7 @@ public class StartGameScreen {
         }
 
         // 检查右侧新按钮（常显）
-        int rightEdge = screenWidth - MARGIN_RIGHT;
+        int rightEdge = screenWidth - screenWidth * MARGIN_RIGHT_RATIO / 100;
         int[] cx = new int[NEW_BTN_COUNT];
         int[] cw = new int[NEW_BTN_COUNT];
 
@@ -859,8 +886,11 @@ public class StartGameScreen {
      */
     public static int renderTopRightInfo(GuiGraphics guiGraphics, int mouseX, int mouseY, int screenWidth, int screenHeight, int selectedTab) {
         var font = Minecraft.getInstance().font;
-        int y = screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
-        int rightEdge = screenWidth - TOP_RIGHT_MARGIN_X;
+        int y = TOP_RIGHT_MARGIN_Y;
+        if (screenWidth < 640) {
+            y = 40;
+        }
+        int rightEdge = screenWidth - screenWidth * TOP_RIGHT_MARGIN_X_RATIO / 100;
         int hovered = 0;
 
         boolean showNetwork = (selectedTab == 0);                // 网络验证仅在开始游戏显示
@@ -888,6 +918,9 @@ public class StartGameScreen {
         // 2. mail（常显，往左）
         int mailX = settingsX - TOP_RIGHT_GAP - TOP_RIGHT_ICON_SIZE;
         guiGraphics.blit(ICON_MAIL, mailX, y, 0, 0, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE);
+
+        // 无实际功能
+        renderWipOverlay(guiGraphics, mailX, y, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE, mouseX, mouseY);
 
         // 当前已绘制区域的最左位置
         int cursorX = mailX;
@@ -1107,30 +1140,27 @@ public class StartGameScreen {
     /**
      * 检测右上角 settings/mail 图标是否被点击（空触发，与底栏按钮一致）
      */
-    public static boolean isSettingsIconClicked(int mouseX, int mouseY, int screenWidth, boolean embedded) {
-        int x = screenWidth - TOP_RIGHT_MARGIN_X - TOP_RIGHT_ICON_SIZE;
-        int y = embedded ? TOP_RIGHT_MARGIN_Y : screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
-        return mouseX >= x && mouseX < x + TOP_RIGHT_ICON_SIZE && mouseY >= y && mouseY < y + TOP_RIGHT_ICON_SIZE;
-    }
-
-    public static void renderSettingsIcon(GuiGraphics graphics, int mouseX, int mouseY, int screenWidth, boolean embedded) {
-        int x = screenWidth - TOP_RIGHT_MARGIN_X - TOP_RIGHT_ICON_SIZE;
-        int y = embedded ? TOP_RIGHT_MARGIN_Y : screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
-        graphics.blit(ICON_SETTINGS, x, y, 0, 0, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE, TOP_RIGHT_ICON_SIZE);
-        if (isSettingsIconClicked(mouseX, mouseY, screenWidth, embedded)) {
-            graphics.fill(x, y, x + TOP_RIGHT_ICON_SIZE, y + TOP_RIGHT_ICON_SIZE, 0x80FFFFFF);
-            graphics.renderTooltip(Minecraft.getInstance().font, Component.translatable("screen.deltaforce.settings"), mouseX, mouseY);
-        }
-    }
-
     public static boolean isTopRightIconClicked(int mouseX, int mouseY, int screenWidth, int screenHeight) {
         int y = screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
-        int rightEdge = screenWidth - TOP_RIGHT_MARGIN_X;
+        int rightEdge = screenWidth - screenWidth * TOP_RIGHT_MARGIN_X_RATIO / 100;
         int settingsX = rightEdge - TOP_RIGHT_ICON_SIZE;
         int mailX = settingsX - TOP_RIGHT_GAP - TOP_RIGHT_ICON_SIZE;
         if (mouseY >= y && mouseY < y + TOP_RIGHT_ICON_SIZE) {
             if (mouseX >= settingsX && mouseX < settingsX + TOP_RIGHT_ICON_SIZE) return true;
             if (mouseX >= mailX && mouseX < mailX + TOP_RIGHT_ICON_SIZE) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 检测右上角 settings 图标是否被点击（用于打开设置界面）
+     */
+    public static boolean isSettingsIconClicked(int mouseX, int mouseY, int screenWidth, int screenHeight) {
+        int y = screenWidth < 640 ? 40 : TOP_RIGHT_MARGIN_Y;
+        int rightEdge = screenWidth - screenWidth * TOP_RIGHT_MARGIN_X_RATIO / 100;
+        int settingsX = rightEdge - TOP_RIGHT_ICON_SIZE;
+        if (mouseY >= y && mouseY < y + TOP_RIGHT_ICON_SIZE) {
+            if (mouseX >= settingsX && mouseX < settingsX + TOP_RIGHT_ICON_SIZE) return true;
         }
         return false;
     }
@@ -1145,7 +1175,7 @@ public class StartGameScreen {
         int hovered = -1;
 
         // pre_battle_rep（缩放到0.4倍）
-        int preX = screenWidth - MODE_PANEL_MARGIN_RIGHT - PRE_BATTLE_REP_W;
+        int preX = screenWidth - screenWidth * MODE_PANEL_MARGIN_RIGHT_RATIO / 100 - PRE_BATTLE_REP_W;
         int preBottom = barY - PRE_BATTLE_REP_BOTTOM_OFFSET;
         int preY = preBottom - PRE_BATTLE_REP_H;
 
@@ -1159,6 +1189,8 @@ public class StartGameScreen {
         if (mouseX >= preX && mouseX < preX + PRE_BATTLE_REP_W && mouseY >= preY && mouseY < preY + PRE_BATTLE_REP_H) {
             hovered = -2;
         }
+        // 玩法模式面板无实际功能，绘制红叉遮罩
+        renderWipOverlay(guiGraphics, preX, preY, PRE_BATTLE_REP_W, PRE_BATTLE_REP_H, mouseX, mouseY);
 
         // no_target（缩放到0.4倍）
         int noX = preX;
@@ -1174,6 +1206,8 @@ public class StartGameScreen {
         if (mouseX >= noX && mouseX < noX + NO_TARGET_W && mouseY >= noY && mouseY < noY + NO_TARGET_H) {
             hovered = -3;
         }
+        // no_target 玩法面板无实际功能，绘制红叉遮罩
+        renderWipOverlay(guiGraphics, noX, noY, NO_TARGET_W, NO_TARGET_H, mouseX, mouseY);
 
         return hovered;
     }
@@ -1183,7 +1217,7 @@ public class StartGameScreen {
      */
     public static boolean isPreBattleRepClicked(int mouseX, int mouseY, int screenWidth, int screenHeight) {
         int barY = screenHeight - BAR_HEIGHT;
-        int preX = screenWidth - MODE_PANEL_MARGIN_RIGHT - PRE_BATTLE_REP_W;
+        int preX = screenWidth - screenWidth * MODE_PANEL_MARGIN_RIGHT_RATIO / 100 - PRE_BATTLE_REP_W;
         int preBottom = barY - PRE_BATTLE_REP_BOTTOM_OFFSET;
         int preY = preBottom - PRE_BATTLE_REP_H;
         return mouseX >= preX && mouseX < preX + PRE_BATTLE_REP_W && mouseY >= preY && mouseY < preY + PRE_BATTLE_REP_H;
@@ -1194,30 +1228,11 @@ public class StartGameScreen {
      */
     public static boolean isNoTargetClicked(int mouseX, int mouseY, int screenWidth, int screenHeight) {
         int barY = screenHeight - BAR_HEIGHT;
-        int preX = screenWidth - MODE_PANEL_MARGIN_RIGHT - PRE_BATTLE_REP_W;
+        int preX = screenWidth - screenWidth * MODE_PANEL_MARGIN_RIGHT_RATIO / 100 - PRE_BATTLE_REP_W;
         int preBottom = barY - PRE_BATTLE_REP_BOTTOM_OFFSET;
         int preY = preBottom - PRE_BATTLE_REP_H;
         int noY = preY - MODE_PANEL_GAP - NO_TARGET_H;
         return mouseX >= preX && mouseX < preX + NO_TARGET_W && mouseY >= noY && mouseY < noY + NO_TARGET_H;
-    }
-
-    /**
-     * 检测社交按钮点击并处理好友在线数（临时调试：左键+1，右键-1）
-     * @return 是否点击到社交按钮
-     */
-    public static boolean handleSocialClick(int mouseX, int mouseY, int screenWidth, int screenHeight, int button) {
-        int btnY = screenHeight - BAR_HEIGHT;
-        int rightEdge = screenWidth - MARGIN_RIGHT;
-        // 社交按钮位置（新按钮索引2）
-        int socialX = rightEdge - ICON_DRAW_SIZE - GAP_DEPLOY - ICON_DRAW_SIZE - GAP_DEPLOY - ICON_DRAW_SIZE - GAP_SOCIAL_DEPLOY - SOCIAL_DRAW_W;
-        int socialW = SOCIAL_DRAW_W;
-        int socialH = ICON_DRAW_SIZE;
-        int socialY = btnY;
-
-        if (mouseX >= socialX && mouseX < socialX + socialW && mouseY >= socialY && mouseY < socialY + socialH) {
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -1227,18 +1242,13 @@ public class StartGameScreen {
      * @param centerY 中心Y坐标
      */
     public static void renderPlayerModel(GuiGraphics guiGraphics, int centerX, int centerY) {
-        renderPlayerModel(guiGraphics, centerX, centerY,
-                Minecraft.getInstance().getWindow().getGuiScaledHeight());
-    }
-
-    /** Renders the player using the caller's virtual canvas height. */
-    public static void renderPlayerModel(GuiGraphics guiGraphics, int centerX, int centerY, int screenHeight) {
         var player = Minecraft.getInstance().player;
         if (player == null) return;
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
         float modelScale = Math.max(36.0F, Math.min(100.0F, (screenHeight - BAR_HEIGHT) * 0.35F));
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(centerX - modelScale * 0.75F, centerY + modelScale * 1.55F, 100.0F);

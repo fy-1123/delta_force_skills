@@ -78,7 +78,7 @@ public final class DWolfInputHandler {
         handlePendingHandCannonAnimations();
         handlePendingSmokeThrow();
         handleSkillKeys(active1Owned, active2Owned);
-        if (nativeCharacter || ClientCommanderState.isPassiveEnabled(ModCharacters.D_WOLF_ID)) {
+        if (nativeCharacter || passiveOwned) {
             handleSlide(minecraft);
         }
         handleOverloadSelfReward(minecraft, coreOwned);
@@ -136,8 +136,12 @@ public final class DWolfInputHandler {
             return;
         }
 
+        if (Minecraft.getInstance().screen != null) {
+            return;
+        }
+
         event.setCanceled(true);
-        if (Minecraft.getInstance().screen != null || event.getAction() != GLFW.GLFW_PRESS) {
+        if (event.getAction() != GLFW.GLFW_PRESS) {
             return;
         }
 
@@ -152,6 +156,9 @@ public final class DWolfInputHandler {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onInteractionKey(InputEvent.InteractionKeyMappingTriggered event) {
+        if (Minecraft.getInstance().screen != null) {
+            return;
+        }
         if (!ClientDWolfHudState.hasHandCannonEquipped()) {
             return;
         }
@@ -172,6 +179,9 @@ public final class DWolfInputHandler {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+        if (Minecraft.getInstance().screen != null) {
+            return;
+        }
         if (ClientDWolfHudState.hasHandCannonEquipped()) {
             event.setCanceled(true);
         }

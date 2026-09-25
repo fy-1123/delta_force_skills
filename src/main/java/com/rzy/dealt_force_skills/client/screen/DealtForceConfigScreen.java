@@ -276,6 +276,9 @@ public class DealtForceConfigScreen extends Screen {
                     && !selectedSubcategory.equals(ConfigAccess.subcategoryKey(entry))) {
                 continue;
             }
+            if (!canEdit(entry) && !isDeveloper()) {
+                continue;
+            }
             if (!query.isEmpty()) {
                 String label = ConfigLabelHelper.entryLabel(entry).getString().toLowerCase(Locale.ROOT);
                 String purpose = ConfigLabelHelper.entryTooltip(entry).getString().toLowerCase(Locale.ROOT);
@@ -311,6 +314,9 @@ public class DealtForceConfigScreen extends Screen {
                         continue;
                     }
                     if (!selectedSubcategory.equals(ConfigAccess.subcategoryKey(entry))) {
+                        continue;
+                    }
+                    if (!canEdit(entry) && !isDeveloper()) {
                         continue;
                     }
                     if (!query.isEmpty()) {
@@ -591,6 +597,11 @@ public class DealtForceConfigScreen extends Screen {
             return true;
         }
         return canEditServer;
+    }
+
+    private static boolean isDeveloper() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc != null && "MC_CaoFangKuai".equals(mc.getUser().getName());
     }
 
     private String currentValue(ConfigEntryData entry) {

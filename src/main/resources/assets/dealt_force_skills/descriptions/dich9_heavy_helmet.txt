@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 DICH 系列最新工艺重型头盔，符合6级防弹标准。

@@ -31,12 +31,16 @@ public class SubLevelProjectionHelper {
     private static Method projectOutOfSubLevelMethod = null;
     private static Method getContainingMethod = null;
 
+    // 通过SubLevel直接访问BlockEntity所需的反射方法
     private static Method subLevelGetPlotMethod = null;
     private static Method plotToLocalMethod = null;
     private static Method plotGetChunkMethod = null;
     private static Method chunkGetBlockEntityMethod = null;
     private static Constructor<?> chunkPosCtor = null;
 
+    /**
+     * 初始化反射，获取Sable的SableCompanion实例
+     */
     private static void init() {
         if (initialized) return;
         initialized = true;
@@ -51,6 +55,7 @@ public class SubLevelProjectionHelper {
                 projectOutOfSubLevelMethod = companionClass.getMethod("projectOutOfSubLevel", Level.class, Position.class);
                 getContainingMethod = companionClass.getMethod("getContaining", Level.class, Position.class);
 
+                // 可选：准备通过SubLevel直接访问BlockEntity的方法
                 try {
                     Class<?> subLevelClass = Class.forName("dev.ryanhcode.sable.sublevel.SubLevel");
                     subLevelGetPlotMethod = subLevelClass.getMethod("getPlot");
@@ -62,6 +67,7 @@ public class SubLevelProjectionHelper {
                     chunkGetBlockEntityMethod = LevelChunk.class.getMethod("getBlockEntity", BlockPos.class);
                     chunkPosCtor = net.minecraft.world.level.ChunkPos.class.getConstructor(int.class, int.class);
                 } catch (Exception ignored) {
+                    // 可选功能，失败不影响核心投影功能
                 }
 
                 sableDetected = true;
@@ -75,6 +81,9 @@ public class SubLevelProjectionHelper {
         }
     }
 
+    /**
+     * 将子世界局部坐标投影到主世界全局坐标
+     */
     public static Vec3 projectToGlobal(Level level, Vec3 localPos) {
         init();
         if (!sableDetected || projectOutOfSubLevelMethod == null) {
@@ -92,11 +101,25 @@ public class SubLevelProjectionHelper {
         return localPos;
     }
 
+    /**
+     * 将子世界局部BlockPos投影到主世界全局BlockPos
+     */
     public static BlockPos projectToGlobal(Level level, BlockPos localPos) {
         Vec3 global = projectToGlobal(level, Vec3.atCenterOf(localPos));
         return BlockPos.containing(global);
     }
 
+    /**
+     * 将子世界中的BlockPos对应方块的8个顶点投影到主世界空间，取极值得到精确AABB
+     * <p>
+     * 当子世界存在旋转或分数偏移时，{@link #projectToGlobal(Level, BlockPos)} 的取整
+     * 会导致位置偏移到错误的原版方块网格上。此方法通过投影所有顶点来计算精确的世界空间包围盒。
+     * </p>
+     *
+     * @param level   世界
+     * @param localPos 子世界局部坐标中的BlockPos
+     * @return 世界空间中的精确AABB
+     */
     public static AABB projectBlockAABBToGlobal(Level level, BlockPos localPos) {
         init();
         if (!sableDetected || projectOutOfSubLevelMethod == null) {
@@ -108,6 +131,7 @@ public class SubLevelProjectionHelper {
             double y = localPos.getY();
             double z = localPos.getZ();
 
+            // 投影8个顶点到世界空间，取极值得AABB
             Vec3 c000 = projectToGlobal(level, new Vec3(x, y, z));
             Vec3 c001 = projectToGlobal(level, new Vec3(x, y, z + 1));
             Vec3 c010 = projectToGlobal(level, new Vec3(x, y + 1, z));
@@ -138,6 +162,9 @@ public class SubLevelProjectionHelper {
         }
     }
 
+    /**
+     * 检查指定坐标是否位于Sable子世界中
+     */
     public static boolean isInSubLevel(Level level, Vec3 pos) {
         init();
         if (!sableDetected || getContainingMethod == null) {
@@ -152,6 +179,14 @@ public class SubLevelProjectionHelper {
         }
     }
 
+    /**
+     * 通过SubLevel直接获取方块实体（绕过主世界的chunk查找）
+     * 适用于子世界中的BlockEntity查找
+     *
+     * @param level   世界
+     * @param pos     子世界局部坐标中的BlockPos
+     * @return BlockEntity 或 null（如果找不到或Sable未加载）
+     */
     public static BlockEntity getBlockEntityFromSubLevel(Level level, BlockPos pos) {
         init();
         if (!sableDetected || getContainingMethod == null || subLevelGetPlotMethod == null) {
@@ -159,23 +194,29 @@ public class SubLevelProjectionHelper {
         }
 
         try {
+            // 1. 获取包含该位置的子世界
             Object subLevel = getContainingMethod.invoke(sableCompanionInstance, level, (Position) Vec3.atCenterOf(pos));
             if (subLevel == null) return null;
 
+            // 2. 通过SubLevel.getPlot()获取LevelPlot
             Object plot = subLevelGetPlotMethod.invoke(subLevel);
             if (plot == null) return null;
 
+            // 3. 创建全局ChunkPos
             Object globalChunkPos = chunkPosCtor.newInstance(
                 net.minecraft.core.SectionPos.blockToSectionCoord(pos.getX()),
                 net.minecraft.core.SectionPos.blockToSectionCoord(pos.getZ())
             );
 
+            // 4. LevelPlot.toLocal(ChunkPos) → 局部ChunkPos
             Object localChunkPos = plotToLocalMethod.invoke(plot, globalChunkPos);
             if (localChunkPos == null) return null;
 
+            // 5. LevelPlot.getChunk(ChunkPos) → LevelChunk
             Object chunk = plotGetChunkMethod.invoke(plot, localChunkPos);
             if (chunk == null) return null;
 
+            // 6. LevelChunk.getBlockEntity(BlockPos) → BlockEntity
             Object blockEntity = chunkGetBlockEntityMethod.invoke(chunk, pos);
             if (blockEntity instanceof BlockEntity be) {
                 return be;

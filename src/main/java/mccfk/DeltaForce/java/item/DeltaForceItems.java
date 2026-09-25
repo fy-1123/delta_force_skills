@@ -1,7 +1,5 @@
 package mccfk.DeltaForce.java.item;
 
-import com.rzy.dealt_force_skills.item.DfsItemQuality;
-import com.rzy.dealt_force_skills.item.QualityTooltipItem;
 import mccfk.DeltaForce.java.DeltaForce;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -12,63 +10,47 @@ import net.minecraftforge.registries.RegistryObject;
 
 /**
  * DeltaForce物品注册 - 所有三角洲行动(DF)相关物品
+ * 品质等级通过描述文件 .level(X); 决定，不在此处硬编码
  */
 public class DeltaForceItems {
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, DeltaForce.MODID);
 
     // 临时测试物品 - modelsnull 占位模型
-    public static final RegistryObject<Item> TEMP_DF = ITEMS.register("temp_df",
-            () -> qualityItem(DfsItemQuality.WHITE));
+    public static final RegistryObject<Item> TEMP_DF = plainItem("temp_df");
 
-    public static final RegistryObject<Item> LOGO_DF = ITEMS.register("logo_df",
-            () -> qualityItem(DfsItemQuality.WHITE));
+    public static final RegistryObject<Item> LOGO_DF = plainItem("logo_df");
 
     // 6级(红色)
-    public static final RegistryObject<Item> AFRICAN_STAR = ITEMS.register("african_star",
-            () -> qualityItem(DfsItemQuality.RED));
+    public static final RegistryObject<Item> AFRICAN_STAR = plainItem("african_star");
 
-    public static final RegistryObject<Item> OCEAN_TEAR = ITEMS.register("ocean_tear",
-            () -> qualityItem(DfsItemQuality.RED));
+    public static final RegistryObject<Item> OCEAN_TEAR = plainItem("ocean_tear");
 
-    public static final RegistryObject<Item> EXPERIMENTAL_DATA = ITEMS.register("experimental_data",
-            () -> qualityItem(DfsItemQuality.RED));
+    public static final RegistryObject<Item> EXPERIMENTAL_DATA = plainItem("experimental_data");
 
-    public static final RegistryObject<Item> CARBON_FIBER_PLATE = ITEMS.register("carbon_fiber_plate",
-            () -> qualityItem(DfsItemQuality.RED));
+    public static final RegistryObject<Item> CARBON_FIBER_PLATE = plainItem("carbon_fiber_plate");
 
-    public static final RegistryObject<Item> GOLD_BAR = ITEMS.register("gold_bar",
-            () -> qualityItem(DfsItemQuality.RED));
+    public static final RegistryObject<Item> GOLD_BAR = plainItem("gold_bar");
 
-    // 高速磁盘阵列
-    public static final RegistryObject<Item> HIGH_SPEED_DISK_ARRAY = ITEMS.register("high_speed_disk_array",
-            () -> qualityItem(DfsItemQuality.RED));
+    public static final RegistryObject<Item> HIGH_SPEED_DISK_ARRAY = plainItem("high_speed_disk_array");
 
     // 5级(金色)
-    public static final RegistryObject<Item> GOLD_COIN = ITEMS.register("gold_coin",
-            () -> qualityItem(DfsItemQuality.GOLD));
+    public static final RegistryObject<Item> GOLD_COIN = plainItem("gold_coin");
 
-    // 6级(红色)
-    public static final RegistryObject<Item> IMPRESSIONIST_PAINTING = ITEMS.register("impressionist_painting",
-            () -> qualityItem(DfsItemQuality.RED));
+    public static final RegistryObject<Item> IMPRESSIONIST_PAINTING = plainItem("impressionist_painting");
 
-    public static final RegistryObject<Item> ASARA_CLASSIFIED_DOCS = ITEMS.register("asara_classified_docs",
-            () -> qualityItem(DfsItemQuality.PURPLE));
+    public static final RegistryObject<Item> ASARA_CLASSIFIED_DOCS = plainItem("asara_classified_docs");
 
     // 3级(蓝色)
-    public static final RegistryObject<Item> SUGAR_TRIANGLE = ITEMS.register("sugar_triangle",
-            () -> qualityItem(DfsItemQuality.BLUE));
+    public static final RegistryObject<Item> SUGAR_TRIANGLE = plainItem("sugar_triangle");
 
-    public static final RegistryObject<Item> SILVER_COIN = ITEMS.register("silver_coin",
-            () -> qualityItem(DfsItemQuality.BLUE));
+    public static final RegistryObject<Item> SILVER_COIN = plainItem("silver_coin");
 
     // 2级(绿色)
-    public static final RegistryObject<Item> COPPER_COIN = ITEMS.register("copper_coin",
-            () -> qualityItem(DfsItemQuality.GREEN));
+    public static final RegistryObject<Item> COPPER_COIN = plainItem("copper_coin");
 
     // 1级(白色)
-    public static final RegistryObject<Item> LITTLE_JOKER = ITEMS.register("little_joker",
-            () -> qualityItem(DfsItemQuality.WHITE));
-    
+    public static final RegistryObject<Item> LITTLE_JOKER = plainItem("little_joker");
+
     // ===== 调酒原材料（从CFK移植，移除拼音缩写，使用规范英文名）=====
 
     // 杜松灵
@@ -105,14 +87,10 @@ public class DeltaForceItems {
     public static final RegistryObject<Item> TONIC_WATER = plainItem("tonic_water");
 
     /**
-     * 注册普通物品
+     * 注册普通物品（品质由描述文件.level(X);决定）
      */
     private static RegistryObject<Item> plainItem(String name) {
-        return ITEMS.register(name, () -> qualityItem(DfsItemQuality.WHITE));
-    }
-
-    private static Item qualityItem(DfsItemQuality quality) {
-        return new QualityTooltipItem(new Item.Properties(), quality, null);
+        return ITEMS.register(name, () -> new Item(new Item.Properties()));
     }
 
     /**

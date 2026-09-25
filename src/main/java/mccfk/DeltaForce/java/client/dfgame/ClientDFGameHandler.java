@@ -1,21 +1,21 @@
 package mccfk.DeltaForce.java.client.dfgame;
 
+import mccfk.DeltaForce.java.DeltaForce;
+import mccfk.DeltaForce.java.client.screen.LayoutDataManager;
+import mccfk.DeltaForce.java.client.screen.LayoutEntry;
+import mccfk.DeltaForce.java.dfgame.DFGameManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import mccfk.DeltaForce.java.DeltaForce;
-import mccfk.DeltaForce.java.dfgame.DFGameManager;
 
 /**
  * DFGAME 客户端处理器
- * 负责：血量条渲染（死亡流程走原版，由服务端伤害事件触发）
+ * 血条位置/缩放读取布局配置，编辑器中改的实时生效
  */
 public class ClientDFGameHandler {
 
     /**
      * 渲染 DFGAME 血量条（左下角，替换原版血量显示）
-     * @param guiGraphics GUI 上下文
-     * @param screenWidth 屏幕宽
-     * @param screenHeight 屏幕高
+     * 位置/缩放从布局配置读取
      */
     public static void renderHealthBar(GuiGraphics guiGraphics, int screenWidth, int screenHeight) {
         if (!DeltaForce.isDFGameEnabled()) {
@@ -23,35 +23,43 @@ public class ClientDFGameHandler {
         }
 
         var player = Minecraft.getInstance().player;
+        float healthPercent;
+        String healthText;
         if (player == null) {
-            return;
+            healthPercent = 1.0f;
+            healthText = "100.00/100";
+        } else {
+            String playerName = player.getName().getString();
+            double health = DFGameManager.getHealth(playerName);
+            healthPercent = (float) (health / DFGameManager.MAX_HEALTH);
+            healthText = String.format("%.2f/100", health);
         }
 
-        String playerName = player.getName().getString();
-        double health = DFGameManager.getHealth(playerName);
-        float healthPercent = (float) (health / DFGameManager.MAX_HEALTH);
+        // 从布局配置读取血条位置/缩放/尺寸
+        LayoutEntry le = LayoutDataManager.loadElement(
+                "dfgame", "hud", "health_health_bar",
+                0.02f, 0.92f, 0.22f, 0.04f);
 
-        // 左下角位置（按界面尺寸补偿：以界面尺寸=3为基准，锚定屏幕左下角）
-        float hudScale = com.rzy.dealt_force_skills.client.ClientHudLayout.guiScaleFactor();
-        int barX = Math.round(10 * hudScale);
-        int barY = screenHeight - Math.round(30 * hudScale);
-        int barW = Math.round(200 * hudScale);
-        int barH = Math.round(10 * hudScale);
+        int barW = Math.max(10, (int) (le.relWidth * screenWidth * le.scaleX));
+        int barH = Math.max(4, (int) (le.relHeight * screenHeight * le.scaleY));
+        int barX = (int) (le.relX() * screenWidth);
+        int barY = (int) (le.relY() * screenHeight);
 
         var font = Minecraft.getInstance().font;
 
-        // 绘制血量文本：血量/100
-        String healthText = String.format("%.2f/100", health);
-        guiGraphics.drawString(font, healthText, barX, barY - Math.round(12 * hudScale), 0xFFFFFFFF, false);
+        // 血量文本
+        int textY = barY - Math.round(barH * 1.2f);
+        if (textY < 0) textY = barY + barH + 2;
+        guiGraphics.drawString(font, healthText, barX, textY, 0xFFFFFFFF, false);
 
-        // 绘制血条背景（深灰色）
+        // 血条背景
         guiGraphics.fill(barX, barY, barX + barW, barY + barH, 0x80333333);
 
-        // 绘制血条（白色，按血量比例）
+        // 血量填充
         int fillW = (int) (barW * healthPercent);
         guiGraphics.fill(barX, barY, barX + fillW, barY + barH, 0xFFFFFFFF);
 
-        // 绘制血条边框
+        // 边框
         guiGraphics.renderOutline(barX, barY, barW, barH, 0xFFCCCCCC);
     }
 }

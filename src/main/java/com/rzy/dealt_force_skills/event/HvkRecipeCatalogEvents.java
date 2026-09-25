@@ -3,6 +3,11 @@ package com.rzy.dealt_force_skills.event;
 import com.rzy.dealt_force_skills.DealtForceSkillsMod;
 import com.rzy.dealt_force_skills.block.HvkAdvancedDisassemblyBeamEmitterBlockEntity;
 import com.rzy.dealt_force_skills.block.HvkAdvancedStandardTemplateConstructorBlockEntity;
+import com.rzy.dealt_force_skills.block.WorkBlockQueryCatalog;
+import com.rzy.dealt_force_skills.block.InterdimensionalBlockEntity;
+import com.rzy.dealt_force_skills.block.HvkAdvancedTreasureCompassBlockEntity;
+import com.rzy.dealt_force_skills.block.HvkClonePrototypeBlockEntity;
+import net.minecraftforge.event.TickEvent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.event.OnDatapackSyncEvent;
@@ -18,17 +23,19 @@ public final class HvkRecipeCatalogEvents {
     }
 
     @SubscribeEvent
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            WorkBlockQueryCatalog.tick(event.getServer());
+            HvkAdvancedStandardTemplateConstructorBlockEntity.tickPlanningJobs(event.getServer());
+        }
+    }
+
+    @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
         warm(event.getServer(), true);
     }
 
-    @SubscribeEvent
-    public static void onLevelLoad(LevelEvent.Load event) {
-        if (event.getLevel() instanceof ServerLevel level) {
-            HvkAdvancedStandardTemplateConstructorBlockEntity.warmRecipeCatalog(level);
-            HvkAdvancedDisassemblyBeamEmitterBlockEntity.warmRecipeCatalog(level);
-        }
-    }
+
 
     @SubscribeEvent
     public static void onDatapackSync(OnDatapackSyncEvent event) {
@@ -39,6 +46,7 @@ public final class HvkRecipeCatalogEvents {
 
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
+        WorkBlockQueryCatalog.clear();
         HvkAdvancedStandardTemplateConstructorBlockEntity.clearRecipeCatalog(event.getServer());
         HvkAdvancedDisassemblyBeamEmitterBlockEntity.clearRecipeCatalog(event.getServer());
     }
@@ -48,11 +56,16 @@ public final class HvkRecipeCatalogEvents {
             return;
         }
         if (clearFirst) {
+            WorkBlockQueryCatalog.clear();
             HvkAdvancedStandardTemplateConstructorBlockEntity.clearRecipeCatalog(server);
             HvkAdvancedDisassemblyBeamEmitterBlockEntity.clearRecipeCatalog(server);
         }
         ServerLevel level = server.overworld();
+        if (level == null) return;
         HvkAdvancedStandardTemplateConstructorBlockEntity.warmRecipeCatalog(level);
         HvkAdvancedDisassemblyBeamEmitterBlockEntity.warmRecipeCatalog(level);
+        InterdimensionalBlockEntity.warmQueryCatalog(level);
+        HvkAdvancedTreasureCompassBlockEntity.warmQueryCatalog(level);
+        HvkClonePrototypeBlockEntity.warmQueryCatalog(level);
     }
 }

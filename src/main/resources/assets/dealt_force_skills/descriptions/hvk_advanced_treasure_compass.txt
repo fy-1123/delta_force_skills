@@ -1,2 +1,2 @@
-.tag("#deltaforce:df_age_6")
+.level(6);
 Hvk公司研发的高级寻宝罗盘，用于定位隐藏宝藏。

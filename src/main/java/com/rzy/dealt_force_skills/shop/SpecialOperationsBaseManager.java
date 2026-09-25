@@ -413,6 +413,19 @@ public final class SpecialOperationsBaseManager {
         if (removed.isEmpty()) {
             return 0L;
         }
+        return settleSale(player, removed);
+    }
+
+    /** Sell an extracted storage stack through the same pricing, buyback and currency path as the UI. */
+    public static long sellFromHandler(ServerPlayer player, net.minecraftforge.items.IItemHandler inventory, int slot, int count) {
+        if (player == null || count <= 0 || slot < 0 || slot >= inventory.getSlots()) return 0L;
+        ItemStack offered = inventory.extractItem(slot, count, true);
+        if (offered.isEmpty() || !DealtItemsHavocConfig.isSellable(player, offered)) return 0L;
+        ItemStack removed = inventory.extractItem(slot, offered.getCount(), false);
+        return removed.isEmpty() ? 0L : settleSale(player, removed);
+    }
+
+    private static long settleSale(ServerPlayer player, ItemStack removed) {
         long unitPrice = DealtItemsHavocConfig.price(player, removed);
         long value = unitPrice > Long.MAX_VALUE / removed.getCount() ? Long.MAX_VALUE : unitPrice * removed.getCount();
         rememberSold(player, removed);

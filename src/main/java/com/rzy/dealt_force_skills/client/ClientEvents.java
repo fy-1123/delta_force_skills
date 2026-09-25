@@ -285,6 +285,15 @@ public class ClientEvents {
         );
     }
 
+    public static double effectiveTaczClientFireRateMultiplier(LocalPlayer player) {
+        return taczSpeedMultipliers(player).fireRate();
+    }
+
+    public static double effectiveTaczClientAimMultiplier(LocalPlayer player) {
+        TaczSpeedMultipliers multipliers = taczSpeedMultipliers(player);
+        return multipliers.aim() / multipliers.aimPenalty();
+    }
+
     private static double ghrothClientFireRateMultiplier(net.minecraft.client.player.LocalPlayer player) {
         if (!ModCharacters.GHROTH_ID.equals(ClientCharacterSelectionState.selectedCharacterId())) {
             return 1.0D;
