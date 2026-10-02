@@ -18,8 +18,8 @@ public final class RoverConfig {
     public static volatile double INJECTOR_DAMAGE = DealtForceConfig.bind("INJECTOR_DAMAGE", () -> DealtForceConfig.doubleValue("characters.rover.injector_damage", 8.0));
     public static volatile double INJECTOR_DIRECT_REDUCTION = DealtForceConfig.bind("INJECTOR_DIRECT_REDUCTION", () -> DealtForceConfig.doubleValue("characters.rover.injector_direct_reduction", 0.40));
     public static volatile double INJECTOR_TICK_REDUCTION = DealtForceConfig.bind("INJECTOR_TICK_REDUCTION", () -> DealtForceConfig.doubleValue("characters.rover.injector_tick_reduction", 0.08));
-    public static volatile int INJECTOR_DURATION = DealtForceConfig.bind("INJECTOR_DURATION", () -> DealtForceConfig.intValue("characters.rover.injector_duration", 60));
-    public static volatile double INJECTOR_RADIUS = DealtForceConfig.bind("INJECTOR_RADIUS", () -> DealtForceConfig.doubleValue("characters.rover.injector_radius", 3.0));
+    public static volatile int INJECTOR_DURATION = DealtForceConfig.bind("INJECTOR_DURATION", () -> DealtForceConfig.intValue("characters.rover.injector_duration", 200));
+    public static volatile double INJECTOR_RADIUS = DealtForceConfig.bind("INJECTOR_RADIUS", () -> DealtForceConfig.doubleValue("characters.rover.injector_radius", 4.0));
     public static volatile int INJECTOR_RESTORE_DELAY = DealtForceConfig.bind("INJECTOR_RESTORE_DELAY", () -> DealtForceConfig.intValue("characters.rover.injector_restore_delay", 20));
     public static volatile int INJECTOR_SLOW_AMPLIFIER = DealtForceConfig.bind("INJECTOR_SLOW_AMPLIFIER", () -> DealtForceConfig.intValue("characters.rover.injector_slow_amplifier", 2));
     public static volatile double INJECTOR_SPEED = DealtForceConfig.bind("INJECTOR_SPEED", () -> DealtForceConfig.doubleValue("characters.rover.injector_speed", 2.2));

@@ -90,6 +90,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.SPECIAL_EQUIPMENT_SUPPLY.get());
                         output.accept(ModItems.DRIFTWOOD.get());
                         output.accept(ModItems.LUCKY_COIN.get());
+            output.accept(ModItems.FOX_MUSIC_PLAYER.get());
             output.accept(ModItems.ETERNAL_LOVE_BLESSING.get());
             output.accept(ModItems.HOOK_AUTHOR_BLESSING.get());
                         output.accept(ModItems.RAVEN_SHADOW_EXTRACT.get());

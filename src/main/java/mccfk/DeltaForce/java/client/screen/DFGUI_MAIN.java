@@ -94,32 +94,7 @@ public class DFGUI_MAIN extends Screen {
     }
 
     /**
-     * 接收U键监听结果，验证后申请开启三角洲主界面。
-     * 仅当dfMainEnabled=true时由DeltaForceClient的U键监听调用，
-     * 不应直接绕过此方法setScreen。
-     * 使用DeltaForce.isDFMainEnabled()（静态变量）与onClientTick保持同一数据源，
-     * 避免反射持久化失败导致配置文件与静态变量不一致拦截。
-     */
-    public static void requestOpen() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) {
-            return;
-        }
-        if (mc.screen != null) {
-            return;
-        }
-        // 与onClientTick保持一致，使用静态变量作为唯一数据源
-        // 避免DFClientConfig与DeltaForce.dfMainEnabled因反射失败而不同步
-        if (!mccfk.DeltaForce.java.DeltaForce.isDFMainEnabled()) {
-            return;
-        }
-        StartGameScreen.closeOverlayPanels();
-        mc.setScreen(new DFGUI_MAIN());
-    }
-
-    /**
      * 打开三角洲主界面并直接选中"特战干员"标签页（供外部按键/入口调用）
-     * /df main 开关仅控制 U 键是否打开主界面，不影响此入口
      */
     public static void openToOperator() {
         lastSelectedTab = OPERATOR_TAB_INDEX;
@@ -128,7 +103,6 @@ public class DFGUI_MAIN extends Screen {
     }
 
     /** Opens the redesigned special-operations panel inside the Delta Force shell.
-     * /df main 开关仅控制 U 键，不影响此入口
      */
     public static void openToLogistics() {
         lastSelectedTab = LOGISTICS_TAB_INDEX;

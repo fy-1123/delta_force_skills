@@ -489,7 +489,8 @@ public final class SpecialOperationsBaseManager {
         }
         ItemStack template = cheapestRedeemableTemplate(player, predicate);
         long unit = redemptionUnitCost(player, template);
-        long cost = unit > Long.MAX_VALUE / count ? Long.MAX_VALUE : unit * count;
+        if (unit > Long.MAX_VALUE / count) return ItemStack.EMPTY;
+        long cost = unit * count;
         if (!spendHavocCoins(player, cost)) {
             return ItemStack.EMPTY;
         }
@@ -545,7 +546,8 @@ public final class SpecialOperationsBaseManager {
         double multiplier = Math.max(1.0D, DealtItemsHavocConfig.buybackMultiplier()
                 - effectiveLevel(player, Facility.COMMAND_CENTER) * 0.1D);
         long unit = Math.max(1L, (long) Math.ceil(DealtItemsHavocConfig.price(player, template) * multiplier));
-        long cost = unit > Long.MAX_VALUE / count ? Long.MAX_VALUE : unit * count;
+        if (unit > Long.MAX_VALUE / count) return false;
+        long cost = unit * count;
         if (!spendHavocCoins(player, cost)) {
             return false;
         }

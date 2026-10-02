@@ -20,7 +20,7 @@ import java.lang.reflect.Modifier;
 import java.util.function.Supplier;
 
 public class NetworkHandler {
-    private static final String PROTOCOL = "69";
+    private static final String PROTOCOL = "71";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(DealtForceSkillsMod.MODID, "main"),
@@ -31,6 +31,18 @@ public class NetworkHandler {
 
     public static void onCommonSetup(FMLCommonSetupEvent e) {
         e.enqueueWork(() -> {
+            CHANNEL.messageBuilder(S2C_FoxMusicPlayback.class, 243, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_FoxMusicPlayback::encode).decoder(S2C_FoxMusicPlayback::decode)
+                    .consumerMainThread(S2C_FoxMusicPlayback::handle).add();
+            CHANNEL.messageBuilder(S2C_FoxMusicSnapshot.class, 242, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_FoxMusicSnapshot::encode).decoder(S2C_FoxMusicSnapshot::decode)
+                    .consumerMainThread(S2C_FoxMusicSnapshot::handle).add();
+            CHANNEL.messageBuilder(C2S_FoxMusicAction.class, 241, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_FoxMusicAction::encode).decoder(C2S_FoxMusicAction::decode)
+                    .consumerMainThread(C2S_FoxMusicAction::handle).add();
+            CHANNEL.messageBuilder(S2C_VaultMotion.class, 240, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(S2C_VaultMotion::encode).decoder(S2C_VaultMotion::decode)
+                    .consumerMainThread(S2C_VaultMotion::handle).add();
             CHANNEL.messageBuilder(C2S_StaminaVault.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_StaminaVault::encode).decoder(C2S_StaminaVault::decode)
                     .consumerMainThread(C2S_StaminaVault::handle).add();

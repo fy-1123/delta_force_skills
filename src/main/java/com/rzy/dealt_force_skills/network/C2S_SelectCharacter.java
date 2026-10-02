@@ -87,6 +87,8 @@ public class C2S_SelectCharacter {
                             CharacterSelectionManager.consumeCharacterReselection(player);
                             SkillDispatcher.onCharacterSelected(player, character);
                             NetworkHandler.sendToPlayer(new S2C_SyncSelectedCharacter(character.id()), player);
+                            player.displayClientMessage(Component.translatable("message.dealt_force_skills.character_selected",
+                                    character.displayName()), true);
                             if (ModCharacters.SAEED_ID.equals(character.id())) {
                                 SaeedRecruitManager.openInitialChoiceIfNeeded(player);
                             }
@@ -116,6 +118,8 @@ public class C2S_SelectCharacter {
                         CharacterSelectionManager.consumeCharacterReselection(player);
                         SkillDispatcher.onCharacterSelected(player, character);
                         NetworkHandler.sendToPlayer(new S2C_SyncSelectedCharacter(character.id()), player);
+                        player.displayClientMessage(Component.translatable("message.dealt_force_skills.character_selected",
+                                character.displayName()), true);
                         if (ModCharacters.SAEED_ID.equals(character.id())) {
                             SaeedRecruitManager.openInitialChoiceIfNeeded(player);
                         }

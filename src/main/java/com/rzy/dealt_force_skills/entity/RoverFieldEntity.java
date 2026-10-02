@@ -33,6 +33,7 @@ public final class RoverFieldEntity extends Entity implements SmokeCloudModelSta
     private static final EntityDataAccessor<Float> RADIUS = SynchedEntityData.defineId(RoverFieldEntity.class, EntityDataSerializers.FLOAT);
     private static final DustParticleOptions AEROSOL = new DustParticleOptions(new Vector3f(0.65F, 0.95F, 0.65F), 1.1F);
     private UUID ownerId;
+    private final java.util.Set<UUID> purifiedListeners = new java.util.HashSet<>();
 
     public RoverFieldEntity(EntityType<? extends RoverFieldEntity> type, Level level) {
         super(type, level); noPhysics = true; noCulling = true;
@@ -68,14 +69,19 @@ public final class RoverFieldEntity extends Entity implements SmokeCloudModelSta
                 entity -> entity.isAlive() && entity.distanceToSqr(this) <= radius * radius)) {
             if (!smoke) {
                 RoverStateManager.applyAerosol(owner, target, pulse);
+                if (target instanceof ServerPlayer listener && target.hasEffect(ModEffects.ROVER_PURIFIED.get())
+                        && com.rzy.dealt_force_skills.team.DealtTeamManager.isSelfOrTeammate(owner, target)
+                        && purifiedListeners.add(target.getUUID())) {
+                    RoverStateManager.sound(listener, com.rzy.dealt_force_skills.character.rover.RoverSounds.PURIFIED);
+                }
             } else if (pulse && TargetingUtil.isHostileLivingFor(owner, target)) {
                 if (target instanceof Player) {
                     target.addEffect(new MobEffectInstance(MobEffects.CONFUSION, Math.max(1, RoverConfig.SMOKE_DEBUFF_DURATION), Math.max(0, RoverConfig.SMOKE_NAUSEA_AMPLIFIER)), owner);
                     target.addEffect(new MobEffectInstance(MobEffects.WITHER, Math.max(1, RoverConfig.SMOKE_DEBUFF_DURATION), Math.max(0, RoverConfig.WITHER_AMPLIFIER)), owner);
                     target.addEffect(new MobEffectInstance(ModEffects.ROVER_VULNERABLE.get(), Math.max(1, RoverConfig.SMOKE_VULNERABILITY_DURATION)), owner);
                 } else {
-                    SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, owner), owner,
-                            (float) (target.getMaxHealth() * Math.max(0, RoverConfig.SMOKE_MOB_FRACTION)));
+                    if (SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(level, this, owner), owner,
+                            (float) (target.getMaxHealth() * Math.max(0, RoverConfig.SMOKE_MOB_FRACTION)))) RoverStateManager.damageFeedback(owner);
                 }
             }
         }
@@ -105,11 +111,18 @@ public final class RoverFieldEntity extends Entity implements SmokeCloudModelSta
     @Override public boolean shouldRenderAtSqrDistance(double distance) { return distance < 512 * 512; }
     @Override public Packet<ClientGamePacketListener> getAddEntityPacket() { return NetworkHooks.getEntitySpawningPacket(this); }
     @Override protected void addAdditionalSaveData(CompoundTag tag) {
+        net.minecraft.nbt.ListTag listeners = new net.minecraft.nbt.ListTag();
+        for (UUID id : purifiedListeners) listeners.add(net.minecraft.nbt.StringTag.valueOf(id.toString()));
+        tag.put("PurifiedListeners", listeners);
         if (ownerId != null) tag.putUUID("Owner", ownerId);
         tag.putBoolean("Smoke", shouldRenderSmokeModel()); tag.putInt("Life", smokeLifetimeTicks());
         tag.putFloat("Radius", entityData.get(RADIUS)); tag.putInt("Age", tickCount);
     }
     @Override protected void readAdditionalSaveData(CompoundTag tag) {
+        purifiedListeners.clear();
+        for (net.minecraft.nbt.Tag entry : tag.getList("PurifiedListeners", net.minecraft.nbt.Tag.TAG_STRING)) {
+            try { purifiedListeners.add(UUID.fromString(entry.getAsString())); } catch (IllegalArgumentException ignored) { }
+        }
         ownerId = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
         entityData.set(SMOKE, tag.getBoolean("Smoke")); entityData.set(LIFE, Math.max(1, tag.getInt("Life")));
         entityData.set(RADIUS, Math.max(0.1F, tag.getFloat("Radius"))); tickCount = tag.getInt("Age");

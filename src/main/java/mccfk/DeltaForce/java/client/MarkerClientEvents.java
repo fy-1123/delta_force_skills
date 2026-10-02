@@ -1,11 +1,9 @@
 package mccfk.DeltaForce.java.client;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import com.rzy.dealt_force_skills.network.NetworkHandler;
 import com.rzy.dealt_force_skills.client.screen.GtiTradingHallScreen;
 import com.rzy.dealt_force_skills.client.screen.SpecialOperationsBaseScreen;
 import mccfk.DeltaForce.java.DeltaForce;
-import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import mccfk.DeltaForce.java.client.screen.Operator;
 import mccfk.DeltaForce.java.client.screen.WarehousePanel;
 import mccfk.DeltaForce.java.client.renderer.MarkerRenderer;
@@ -33,21 +31,17 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.Optional;
 
 /**
  * 标点客户端事件处理
- * 管理鼠标中键标点、U键主界面、标点渲染、登出清理等
+ * 管理鼠标中键标点、标点渲染、登出清理等
  */
 @Mod.EventBusSubscriber(modid = DeltaForce.MODID, value = Dist.CLIENT)
 public final class MarkerClientEvents {
     private MarkerClientEvents() {
     }
-
-    /** U键按下状态追踪（用于检测按键首次按下） */
-    private static boolean uKeyWasDown = false;
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -57,24 +51,6 @@ public final class MarkerClientEvents {
         // 鼠标中键创建标点
         while (DeltaForceClient.MARKER_KEY.consumeClick()) createMarkerFromView();
 
-        // U键打开三角洲主界面（需 /df main t 开启，不注册为KeyMapping）
-        if (DeltaForce.isDFMainEnabled()) {
-            Minecraft mc = Minecraft.getInstance();
-            long window = mc.getWindow().getWindow();
-            boolean uDown = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_U);
-            if (uDown && !uKeyWasDown && mc.player != null && mc.screen == null) {
-                boolean coreOwnsKey = java.util.stream.Stream.of(
-                        com.rzy.dealt_force_skills.client.KeybindRegister.CHARACTER_SELECT,
-                        com.rzy.dealt_force_skills.client.KeybindRegister.ACTIVE_SKILL_1,
-                        com.rzy.dealt_force_skills.client.KeybindRegister.ACTIVE_SKILL_2,
-                        com.rzy.dealt_force_skills.client.KeybindRegister.CORE_SKILL)
-                        .anyMatch(key -> key != null && key.matches(GLFW.GLFW_KEY_U, 0));
-                if (!coreOwnsKey) mc.setScreen(new DFGUI_MAIN());
-            }
-            uKeyWasDown = uDown;
-        } else {
-            uKeyWasDown = false;
-        }
     }
 
     @SubscribeEvent

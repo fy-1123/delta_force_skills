@@ -20,6 +20,8 @@ import net.minecraft.world.entity.player.Player;
 import java.util.List;
 
 public final class SkillDamageHelper {
+    private static final ThreadLocal<net.minecraft.server.level.ServerPlayer> ACTIVE_SKILL_PLAYER = new ThreadLocal<>();
+    public static net.minecraft.server.level.ServerPlayer activeSkillPlayer() { return ACTIVE_SKILL_PLAYER.get(); }
     private static final ThreadLocal<Boolean> COMMANDER_SKILL_DAMAGE =
             ThreadLocal.withInitial(() -> false);
     private static volatile float BONUS_PER_EXPERIENCE_LEVEL = com.rzy.dealt_force_skills.config.DealtForceConfig.bind("BONUS_PER_EXPERIENCE_LEVEL", () -> com.rzy.dealt_force_skills.config.DealtForceConfig.floatValue("experience_growth.general.skill_damage_per_level", 0.005F));
@@ -86,6 +88,8 @@ public final class SkillDamageHelper {
                 ServerLevel level = (ServerLevel) target.level();
                 appliedSource = level.damageSources().fellOutOfWorld();
             }
+            net.minecraft.server.level.ServerPlayer previousSkillPlayer = ACTIVE_SKILL_PLAYER.get();
+            ACTIVE_SKILL_PLAYER.set(commander);
             COMMANDER_SKILL_DAMAGE.set(true);
             try {
                 boolean applied = target.hurt(appliedSource, scaled);
@@ -93,6 +97,7 @@ public final class SkillDamageHelper {
                 return applied;
             } finally {
                 COMMANDER_SKILL_DAMAGE.remove();
+                if (previousSkillPlayer == null) ACTIVE_SKILL_PLAYER.remove(); else ACTIVE_SKILL_PLAYER.set(previousSkillPlayer);
             }
         }
         return target.hurt(source, scaled);

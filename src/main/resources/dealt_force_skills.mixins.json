@@ -21,7 +21,8 @@
     "client.HvkClimbableMixin",
     "client.MinecraftSpectatorOutlineMixin",
     "client.PlayerRendererSkinMixin",
-    "client.ScreenBackgroundBlurMixin"
+    "client.ScreenBackgroundBlurMixin",
+    "client.VaultCameraMixin"
   ],
   "injectors": {
     "defaultRequire": 1

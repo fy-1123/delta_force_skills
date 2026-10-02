@@ -391,6 +391,14 @@ public final class DealtForceConfig {
         if (config == null) {
             config = CommentedFileConfig.builder(configPath()).sync().build();
             config.load();
+            if (!Boolean.TRUE.equals(config.get("migrations.rover_aerosol_1_9_35"))) {
+                Object duration = config.get("characters.rover.injector_duration");
+                Object radius = config.get("characters.rover.injector_radius");
+                if (duration instanceof Number n && n.intValue() == 60) config.set("characters.rover.injector_duration", 200);
+                if (radius instanceof Number n && n.doubleValue() == 3.0) config.set("characters.rover.injector_radius", 4.0);
+                config.set("migrations.rover_aerosol_1_9_35", true);
+                dirty = true;
+            }
         }
         return config;
     }

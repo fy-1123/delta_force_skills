@@ -14,6 +14,7 @@ public final class CharacterSkinTextures {
             Map.entry(ModCharacters.ULURU_ID, skin("uluru")),
             Map.entry(ModCharacters.GIZMO_ID, skin("gizmo")),
             Map.entry(ModCharacters.SHEPHERD_ID, skin("shepherd")),
+            Map.entry(ModCharacters.N_TWO_ID, skin("n_two")),
             Map.entry(ModCharacters.D_WOLF_ID, skin("d_wolf")),
             Map.entry(ModCharacters.VYRON_ID, skin("vyron")),
             Map.entry(ModCharacters.NOX_ID, skin("nox")),
@@ -23,6 +24,8 @@ public final class CharacterSkinTextures {
             Map.entry(ModCharacters.MORSE_ID, skin("morse")),
             Map.entry(ModCharacters.RAPTOR_ID, skin("raptor")),
             Map.entry(ModCharacters.STINGER_ID, skin("stinger")),
+            Map.entry(ModCharacters.ROVER_ID, skin("rover")),
+            Map.entry(ModCharacters.COMMANDER_ID, skin("commander")),
             Map.entry(ModCharacters.TOXIK_ID, skin("toxik")),
             Map.entry(ModCharacters.VLINDER_ID, skin("vlinder")),
             Map.entry(ModCharacters.MANBA_ID, skin("manba")),
@@ -36,6 +39,18 @@ public final class CharacterSkinTextures {
             Map.entry(ModCharacters.GHROTH_ID, skin("ghroth"))
     );
 
+    // Only supplied skins override geometry; other roles retain their existing model behavior.
+    private static final Map<String, String> MODELS = Map.of(
+            ModCharacters.VLINDER_ID, "default",
+            ModCharacters.SHEPHERD_ID, "default",
+            ModCharacters.N_TWO_ID, "default",
+            ModCharacters.VYRON_ID, "default",
+            ModCharacters.RAPTOR_ID, "slim",
+            ModCharacters.TOXIK_ID, "slim",
+            ModCharacters.ROVER_ID, "slim",
+            ModCharacters.COMMANDER_ID, "slim"
+    );
+
     private CharacterSkinTextures() {
     }
 
@@ -44,6 +59,13 @@ public final class CharacterSkinTextures {
             return Optional.empty();
         }
         return Optional.ofNullable(SKINS.get(characterId));
+    }
+
+    public static Optional<String> modelFor(String characterId) {
+        if (characterId == null || characterId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(MODELS.get(characterId));
     }
 
     private static ResourceLocation skin(String name) {

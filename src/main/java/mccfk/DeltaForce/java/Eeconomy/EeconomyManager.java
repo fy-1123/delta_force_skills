@@ -90,6 +90,17 @@ public class EeconomyManager {
             parseArray(root, "initial_quantity", initialQuantity);
             parseArray(root, "max", max);
             parseArray(root, "min", min);
+            // Upgrade only the historical shipped limit; retain administrator custom limits.
+            if (max.getOrDefault(CurrencyType.HAVOC_COIN, Long.MAX_VALUE) == Integer.MAX_VALUE) {
+                max.put(CurrencyType.HAVOC_COIN, Long.MAX_VALUE);
+                for (JsonElement element : root.getAsJsonArray("max")) {
+                    JsonObject entry = element.getAsJsonObject();
+                    if (entry.has("havoc_coin")) entry.addProperty("havoc_coin", Long.toString(Long.MAX_VALUE));
+                }
+                try (BufferedWriter writer = Files.newBufferedWriter(configPath)) {
+                    new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root, writer);
+                }
+            }
 
         } catch (IOException | JsonSyntaxException e) {
             Path noPath = configPath.resolveSibling(configPath.getFileName() + ".no");
@@ -277,7 +288,8 @@ public class EeconomyManager {
      */
     public long addBalance(String playerName, CurrencyType type, long amount) {
         long current = getBalance(playerName, type);
-        long newBalance = current + amount;
+        long newBalance = amount > 0L && current > Long.MAX_VALUE - amount ? Long.MAX_VALUE
+                : amount < 0L && current < Long.MIN_VALUE - amount ? Long.MIN_VALUE : current + amount;
         setBalance(playerName, type, newBalance);
         return getBalance(playerName, type);
     }
@@ -286,6 +298,11 @@ public class EeconomyManager {
      * 减少玩家指定货币余额
      */
     public long subtractBalance(String playerName, CurrencyType type, long amount) {
+        if (amount == Long.MIN_VALUE) {
+            long current = getBalance(playerName, type);
+            setBalance(playerName, type, current >= 0L ? Long.MAX_VALUE : current - amount);
+            return getBalance(playerName, type);
+        }
         return addBalance(playerName, type, -amount);
     }
 

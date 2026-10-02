@@ -1210,7 +1210,7 @@ public class ClientEvents {
             e.registerEntityRenderer(ModEntities.VYRON_TIGER_CANNON.get(), VyronTigerCannonProjectileRenderer::new);
             e.registerEntityRenderer(ModEntities.ROVER_PROJECTILE.get(), ctx -> new ThrownItemRenderer<>(ctx));
             e.registerEntityRenderer(ModEntities.ROVER_FIELD.get(), com.rzy.dealt_force_skills.client.renderer.RoverFieldRenderer::new);
-            e.registerEntityRenderer(ModEntities.ROVER_WOLF.get(), net.minecraft.client.renderer.entity.WolfRenderer::new);
+            e.registerEntityRenderer(ModEntities.ROVER_WOLF.get(), com.rzy.dealt_force_skills.client.renderer.RoverWolfRenderer::new);
             e.registerEntityRenderer(ModEntities.STINGER_SMOKE_GRENADE.get(), ctx -> new BlockbenchProjectileRenderer<>(
                     ctx, model("stinger_smoke_grenade"), "prime", "idle", 0.85F,
                     BlockbenchProjectileRenderer.Alignment.NONE));

@@ -89,7 +89,7 @@ public final class GtiTradingHallManager {
         if (DealtBaseConfig.rawConfig().get(ENTRIES) == null) {
             List<String> defaults = new ArrayList<>();
             defaults.add(encode(new Entry(new ItemStack(ModItems.ETERNAL_LOVE_BLESSING.get()), 3_550_336L, Category.MISC)));
-            defaults.add(encode(new Entry(new ItemStack(ModItems.HOOK_AUTHOR_BLESSING.get()), Integer.MAX_VALUE, Category.MISC)));
+            defaults.add(encode(new Entry(new ItemStack(ModItems.HOOK_AUTHOR_BLESSING.get()), Long.MAX_VALUE, Category.MISC)));
             DealtBaseConfig.rawConfig().set(ENTRIES, defaults);
             DealtBaseConfig.rawConfig().setComment(ENTRIES,
                     "Exact count-one ItemStack SNBT listings for the GTI trading hall.");
@@ -97,15 +97,40 @@ public final class GtiTradingHallManager {
         }
     }
 
+    private static void migrateMusicListings() {
+        if (Boolean.TRUE.equals(DealtBaseConfig.rawConfig().get("trading_hall.music_1_9_35"))) return;
+        Object raw = DealtBaseConfig.rawConfig().get(ENTRIES);
+        List<String> updated = new ArrayList<>();
+        boolean musicFound = false;
+        if (raw instanceof List<?> list) for (Object value : list) {
+            if (!(value instanceof String encoded)) continue;
+            Entry entry = decode(encoded);
+            if (entry != null && entry.stack().is(ModItems.HOOK_AUTHOR_BLESSING.get())) encoded = encode(new Entry(entry.stack(), Long.MAX_VALUE, entry.category()));
+            if (entry != null && entry.stack().is(ModItems.FOX_MUSIC_PLAYER.get())) musicFound = true;
+            updated.add(encoded);
+        }
+        if (!musicFound) updated.add(encode(new Entry(new ItemStack(ModItems.FOX_MUSIC_PLAYER.get()), 1_919_810L, Category.MISC)));
+        DealtBaseConfig.rawConfig().set(ENTRIES, updated);
+        DealtBaseConfig.rawConfig().set("trading_hall.music_1_9_35", true);
+        DealtBaseConfig.markDirty();
+        DealtBaseConfig.flush();
+    }
+
     public static synchronized List<Entry> entries() {
         populateDefaults();
+        migrateMusicListings();
         Object raw = DealtBaseConfig.rawConfig().get(ENTRIES);
         if (!(raw instanceof List<?> list)) return List.of();
         List<Entry> result = new ArrayList<>();
         for (Object value : list) {
             if (value instanceof String encoded) {
                 Entry entry = decode(encoded);
-                if (entry != null) result.add(entry);
+                if (entry != null) {
+                    if (entry.stack().is(ModItems.HOOK_AUTHOR_BLESSING.get()) && entry.price() == Integer.MAX_VALUE) {
+                        entry = new Entry(entry.stack(), Long.MAX_VALUE, entry.category());
+                    }
+                    result.add(entry);
+                }
             }
         }
         return result.stream().sorted(Comparator.comparingLong(Entry::price)
@@ -143,7 +168,11 @@ public final class GtiTradingHallManager {
                 || count <= 0 || count > MAX_PURCHASE_COUNT) return;
         Entry entry = entries.get(index);
         long total = safeMultiply(entry.price(), count);
-        if (total <= 0L || !SpecialOperationsBaseManager.spendHavocCoins(player, total)) return;
+        if (total <= 0L || !SpecialOperationsBaseManager.spendHavocCoins(player, total)) {
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(total <= 0L
+                    ? "message.dealt_force_skills.transaction.too_large" : "message.dealt_force_skills.shop.not_enough_coins"), true);
+            return;
+        }
         for (int remaining = count; remaining > 0;) {
             ItemStack purchased = entry.stack().copy();
             int amount = Math.min(remaining, purchased.getMaxStackSize());
@@ -151,6 +180,7 @@ public final class GtiTradingHallManager {
             remaining -= amount;
             if (!player.getInventory().add(purchased) && !purchased.isEmpty()) player.drop(purchased, false);
         }
+        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("message.dealt_force_skills.transaction.success"), true);
         open(player);
     }
 
@@ -212,6 +242,6 @@ public final class GtiTradingHallManager {
     }
 
     private static long safeMultiply(long value, int count) {
-        return value > Long.MAX_VALUE / count ? Long.MAX_VALUE : value * count;
+        return count <= 0 || value > Long.MAX_VALUE / count ? -1L : value * count;
     }
 }

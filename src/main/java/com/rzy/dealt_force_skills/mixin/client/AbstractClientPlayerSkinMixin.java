@@ -10,6 +10,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(AbstractClientPlayer.class)
 public abstract class AbstractClientPlayerSkinMixin {
+    @Inject(method = "getModelName", at = @At("HEAD"), cancellable = true)
+    private void dealt_force_skills$useSelectedCharacterModel(CallbackInfoReturnable<String> cir) {
+        AbstractClientPlayer player = (AbstractClientPlayer) (Object) this;
+        ClientCharacterSkinState.modelFor(player).ifPresent(cir::setReturnValue);
+    }
+
     @Inject(method = "getSkinTextureLocation", at = @At("HEAD"), cancellable = true)
     private void dealt_force_skills$useSelectedCharacterSkin(CallbackInfoReturnable<ResourceLocation> cir) {
         AbstractClientPlayer player = (AbstractClientPlayer) (Object) this;

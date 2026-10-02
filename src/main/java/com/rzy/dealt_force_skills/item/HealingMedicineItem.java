@@ -104,15 +104,7 @@ public class HealingMedicineItem extends DfsUseItem {
             return false;
         }
         stack.hurtAndBreak(cost, player, broken -> broken.broadcastBreakEvent(player.getUsedItemHand()));
-        if (mccfk.DeltaForce.java.DeltaForce.isDFGameEnabled()) {
-            // DFGAME 自定义血量系统：直接按自定义血量(0-100)的百分比恢复，不再走原版 heal 事件
-            String playerName = player.getName().getString();
-            double currentHealth = mccfk.DeltaForce.java.dfgame.DFGameManager.getHealth(playerName);
-            mccfk.DeltaForce.java.dfgame.DFGameManager.setHealth(playerName,
-                    currentHealth + mccfk.DeltaForce.java.dfgame.DFGameManager.MAX_HEALTH * healPercent);
-        } else {
-            player.heal((float) (player.getMaxHealth() * healPercent));
-        }
+        player.heal((float) (player.getMaxHealth() * healPercent));
         incrementMedicineWorkTicks(stack);
         if (feedback) {
             play(level, player, workSound);
@@ -140,12 +132,6 @@ public class HealingMedicineItem extends DfsUseItem {
     }
 
     private static boolean needsHealing(LivingEntity entity) {
-        if (mccfk.DeltaForce.java.DeltaForce.isDFGameEnabled()) {
-            // DFGAME 下原版血量始终为满，需按自定义血量(0-100)判断是否还需要治疗
-            String playerName = entity.getName().getString();
-            return mccfk.DeltaForce.java.dfgame.DFGameManager.getHealth(playerName)
-                    < mccfk.DeltaForce.java.dfgame.DFGameManager.MAX_HEALTH;
-        }
         return entity.getHealth() < entity.getMaxHealth();
     }
 }

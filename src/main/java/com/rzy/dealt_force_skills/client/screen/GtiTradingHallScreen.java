@@ -115,7 +115,7 @@ public final class GtiTradingHallScreen extends Screen {
         graphics.fill(left(), top(), left() + panelWidth(), top() + panelHeight(), 0xEE10171C);
         graphics.drawString(font, title, left() + 12, top() + 12, 0xFFFFFF);
         graphics.drawString(font, Component.translatable("screen.dealt_force_skills.gti.coins", coins),
-                left() + panelWidth() - 155, top() + 12, 0xFFE2B84B);
+                left() + panelWidth() - 12 - font.width(Component.translatable("screen.dealt_force_skills.gti.coins", coins)), top() + 12, 0xFFE2B84B);
         List<Indexed> visible = visible();
         int end = Math.min(visible.size(), scroll + visibleRows());
         for (int row = scroll; row < end; row++) {

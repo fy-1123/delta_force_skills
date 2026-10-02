@@ -2,6 +2,7 @@ package com.rzy.dealt_force_skills.network;
 
 import com.rzy.dealt_force_skills.character.CharacterSelectionManager;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
@@ -29,6 +30,7 @@ public class C2S_ClearSelectedCharacter {
                 return;
             }
             CharacterSelectionManager.clearSelectedCharacter(player, msg.becomeNormalPlayer);
+            player.displayClientMessage(Component.translatable("message.dealt_force_skills.character_cleared"), true);
         });
         ctx.get().setPacketHandled(true);
     }

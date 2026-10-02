@@ -61,17 +61,25 @@ public final class ClientCharacterSkinState {
     }
 
     public static Optional<ResourceLocation> skinFor(Player player) {
+        return CharacterSkinTextures.skinFor(skinCharacterIdFor(player));
+    }
+
+    public static Optional<String> modelFor(Player player) {
+        return CharacterSkinTextures.modelFor(skinCharacterIdFor(player));
+    }
+
+    private static String skinCharacterIdFor(Player player) {
         if (player == null) {
-            return Optional.empty();
+            return null;
         }
         if (DISABLED_ENTITY_IDS.contains(player.getId())) {
-            return Optional.empty();
+            return null;
         }
         String characterId = CHARACTER_BY_ENTITY_ID.get(player.getId());
         if ((characterId == null || characterId.isBlank()) && player == Minecraft.getInstance().player) {
             characterId = ClientCharacterSelectionState.selectedCharacterId();
         }
-        return CharacterSkinTextures.skinFor(characterId);
+        return characterId;
     }
 
     public static Optional<String> characterIdFor(Player player) {

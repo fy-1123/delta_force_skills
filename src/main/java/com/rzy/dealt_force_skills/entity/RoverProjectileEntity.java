@@ -51,6 +51,7 @@ public final class RoverProjectileEntity extends ThrowableItemProjectile {
     @Override protected void onHitBlock(BlockHitResult hit) {
         if (level().isClientSide) return;
         if (smoke && hit.getDirection() == Direction.UP || !smoke && (!bounce || bounces >= 1)) {
+            if (smoke) level().playSound(null, hit.getBlockPos(), RoverSounds.SMOKE_LAND, SoundSource.PLAYERS, 0.7F, 1.0F);
             setPos(hit.getLocation()); burst(); return;
         }
         bounces++;
@@ -59,7 +60,7 @@ public final class RoverProjectileEntity extends ThrowableItemProjectile {
         setDeltaMovement(velocity.subtract(normal.scale(2 * velocity.dot(normal))).scale(0.75));
         setPos(hit.getLocation().add(normal.scale(0.06)));
         hasImpulse = true;
-        level().playSound(null, blockPosition(), RoverSounds.SMOKE_BOUNCE, SoundSource.PLAYERS, 0.65F, 1.1F);
+        if (smoke) level().playSound(null, blockPosition(), RoverSounds.SMOKE_BOUNCE, SoundSource.PLAYERS, 0.65F, 1.1F);
     }
 
     private void burst() {

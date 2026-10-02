@@ -19,6 +19,17 @@ import java.util.Map;
 @Mixin(SoundEngine.class)
 public abstract class HearingSoundEngineMixin {
     @Shadow @Final private Map<SoundInstance, ChannelAccess.ChannelHandle> instanceToChannel;
+    @Inject(method = "tick(Z)V", at = @At("TAIL"))
+    private void dfs$pauseIndividualMusic(boolean gamePaused, CallbackInfo ci) {
+        instanceToChannel.forEach((sound, channel) -> {
+            if (sound instanceof com.rzy.dealt_force_skills.client.FoxMusicClient.FollowingSound music) {
+                boolean pause = gamePaused || music.paused();
+                channel.execute(handle -> { if (pause) handle.pause(); else handle.unpause(); });
+            }
+        });
+
+    }
+
     @Unique private double dealt_force_skills$lastHearingMultiplier = Double.NaN;
 
     @ModifyVariable(method = "play", at = @At("STORE"), ordinal = 1)

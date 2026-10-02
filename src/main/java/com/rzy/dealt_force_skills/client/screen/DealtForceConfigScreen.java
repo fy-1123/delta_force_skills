@@ -18,7 +18,6 @@ import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -276,7 +275,7 @@ public class DealtForceConfigScreen extends Screen {
                     && !selectedSubcategory.equals(ConfigAccess.subcategoryKey(entry))) {
                 continue;
             }
-            if (!canEdit(entry) && !isDeveloper()) {
+            if (!canEdit(entry)) {
                 continue;
             }
             if (!query.isEmpty()) {
@@ -316,7 +315,7 @@ public class DealtForceConfigScreen extends Screen {
                     if (!selectedSubcategory.equals(ConfigAccess.subcategoryKey(entry))) {
                         continue;
                     }
-                    if (!canEdit(entry) && !isDeveloper()) {
+                    if (!canEdit(entry)) {
                         continue;
                     }
                     if (!query.isEmpty()) {
@@ -599,10 +598,6 @@ public class DealtForceConfigScreen extends Screen {
         return canEditServer;
     }
 
-    private static boolean isDeveloper() {
-        Minecraft mc = Minecraft.getInstance();
-        return mc != null && "MC_CaoFangKuai".equals(mc.getUser().getName());
-    }
 
     private String currentValue(ConfigEntryData entry) {
         String key = keyOf(entry);

@@ -16,6 +16,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
@@ -29,6 +30,8 @@ import net.minecraft.world.phys.Vec3;
 import java.util.EnumSet;
 
 public final class RoverWolfEntity extends Wolf {
+    private static final double TARGET_HEIGHT_TOLERANCE = 0.5;
+    private static final int TARGET_HEIGHT_RECHECK_TICKS = 10;
     public RoverWolfEntity(EntityType<? extends Wolf> type, Level level) { super(type, level); }
 
     public boolean isRecovering() {
@@ -38,6 +41,7 @@ public final class RoverWolfEntity extends Wolf {
     public boolean preventLethalDamage() {
         if (level().isClientSide) return false;
         if (!isRecovering()) {
+            if (getOwner() instanceof ServerPlayer owner) RoverStateManager.sound(owner, RoverSounds.DOG_RETREAT);
             getPersistentData().putLong("RoverRecoverUntil", SkillCooldownHelper.now(this) + 8 * 20);
         }
         setHealth(1.0F);
@@ -69,6 +73,29 @@ public final class RoverWolfEntity extends Wolf {
         return target != this && getOwner() instanceof ServerPlayer owner
                 && TargetingUtil.isHostileLivingFor(owner, target)
                 && target.distanceToSqr(this) <= range * range;
+    }
+
+    private boolean isPreferredHeight(LivingEntity target) {
+        // Feet height allows slabs/steps without treating a flying target as ground-level.
+        return target.getY() <= getY() + TARGET_HEIGHT_TOLERANCE;
+    }
+
+    private LivingEntity findPreferredHeightTarget() {
+        double range = Math.max(1, RoverConfig.DOG_TARGET_RANGE);
+        TargetingConditions conditions = TargetingConditions.forCombat().range(range)
+                .selector(candidate -> isPreferredHeight(candidate) && isValidTarget(candidate));
+        return level().getNearestEntity(level().getEntitiesOfClass(LivingEntity.class,
+                getBoundingBox().inflate(range, 4.0, range), this::isPreferredHeight),
+                conditions, this, getX(), getEyeY(), getZ());
+    }
+
+    @Override public void setTarget(LivingEntity target) {
+        if (!level().isClientSide && target != null && target != getTarget()
+                && !isRecovering() && !isPreferredHeight(target)) {
+            LivingEntity preferred = findPreferredHeightTarget();
+            if (preferred != null) target = preferred;
+        }
+        super.setTarget(target);
     }
 
     @Override public boolean canAttack(LivingEntity target) {
@@ -107,6 +134,13 @@ public final class RoverWolfEntity extends Wolf {
         LivingEntity target = getTarget();
         if (target != null && !isValidTarget(target)) {
             setTarget(null);
+        } else if (target != null && !isRecovering() && !isPreferredHeight(target)
+                && tickCount % TARGET_HEIGHT_RECHECK_TICKS == 0) {
+            LivingEntity preferred = findPreferredHeightTarget();
+            if (preferred != null) {
+                getNavigation().stop();
+                setTarget(preferred);
+            }
         }
     }
 
@@ -137,7 +171,11 @@ public final class RoverWolfEntity extends Wolf {
         if (applied) {
             NetworkHandler.sendToPlayer(new S2C_LunaRevealEntities(java.util.List.of(target.getId()),
                     Math.max(1, RoverConfig.DOG_REVEAL_DURATION)), owner);
-            RoverStateManager.sound(owner, RoverSounds.DOG_ATTACK);
+            level().playSound(null, blockPosition(), RoverSounds.DOG_ATTACK, net.minecraft.sounds.SoundSource.PLAYERS, 0.85F, 1.0F);
+            if (!target.isAlive()) {
+                RoverStateManager.sound(owner, RoverSounds.DOG_KILL_OWNER);
+                if (target instanceof ServerPlayer victim) RoverStateManager.sound(victim, RoverSounds.DOG_KILL_VICTIM);
+            }
             if (level().getGameRules().getBoolean(ModGameRules.DEALT_WOUND) && random.nextDouble() < RoverConfig.DOG_INJURY_CHANCE) {
                 boolean abdomen = target.hasEffect(ModEffects.ABDOMEN_INJURY.get());
                 boolean chest = target.hasEffect(ModEffects.CHEST_INJURY.get());

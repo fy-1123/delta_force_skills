@@ -9,11 +9,9 @@ import mccfk.DeltaForce.java.client.overlay.GroundItemOverlay;
 import mccfk.DeltaForce.java.client.overlay.ItemDescriptionLoader;
 import mccfk.DeltaForce.java.client.renderer.GroundItemRenderer;
 import mccfk.DeltaForce.java.client.renderer.MarkerRenderer;
-import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
 import mccfk.DeltaForce.java.client.screen.Operator;
 import mccfk.DeltaForce.java.client.screen.WarehousePanel;
 import mccfk.DeltaForce.java.entity.DeltaForceEntities;
-import mccfk.DeltaForce.java.network.C2S_AdminAuth;
 import mccfk.DeltaForce.java.network.C2S_CreateMarker;
 import mccfk.DeltaForce.java.network.ClientMarkerStorage;
 import mccfk.DeltaForce.java.network.Marker;
@@ -22,7 +20,6 @@ import mccfk.DeltaForce.java.network.MarkerType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.phys.BlockHitResult;
@@ -39,9 +36,7 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
-import javax.swing.*;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -51,11 +46,6 @@ import java.util.UUID;
  */
 @Mod.EventBusSubscriber(modid = DeltaForce.MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class DeltaForceClient {
-
-    static {
-        // 强制启用AWT/Swing：Minecraft JVM默认headless=true会阻断Swing弹窗
-        System.setProperty("java.awt.headless", "false");
-    }
 
     // 鼠标中键标点系统
     public static final KeyMapping MARKER_KEY = new KeyMapping(
@@ -98,39 +88,9 @@ public final class DeltaForceClient {
     @Mod.EventBusSubscriber(modid = DeltaForce.MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
     public static final class ForgeEvents {
 
-        // 首次tick是否已执行管理员弹窗（阻塞式弹窗，true后不再重入）
-        private static boolean authDialogShown = false;
-        // 上次tick的玩家名称，用于检测In-Game Account Switcher切换账户
-        private static String lastKnownPlayerName = null;
-        // U键手动跟踪（非KeyMapping注册，仅通过GLFW检测）
-        private static boolean uKeyWasDown = false;
-
         @SubscribeEvent
         public static void onClientTick(TickEvent.ClientTickEvent event) {
             if (event.phase != TickEvent.Phase.END) return;
-
-            Minecraft mc = Minecraft.getInstance();
-
-            String currentName = mc.getUser().getName();
-
-            // 检测In-Game Account Switcher账户切换：玩家名变化时重置验证并重新弹窗
-            if (lastKnownPlayerName != null && !lastKnownPlayerName.equals(currentName)) {
-                AdminAuthManager.resetVerification();
-                authDialogShown = false;
-            }
-            lastKnownPlayerName = currentName;
-
-            // 首次tick或账户切换后弹出管理员验证
-            if (!authDialogShown) {
-                authDialogShown = true;
-                // 从磁盘加载已验证的哈希，避免每次启动都弹窗
-                AdminAuthManager.verifyFromDisk();
-                if (DFClientConfig.getInstance().isAdminAuthEnabled()
-                        && "MC_CaoFangKuai".equals(currentName)
-                        && !AdminAuthManager.isVerified(currentName)) {
-                    showAdminAuthDialog(mc);
-                }
-            }
 
             // 清理客户端过期标点
             ClientMarkerStorage.cleanExpired();
@@ -140,19 +100,6 @@ public final class DeltaForceClient {
                 createMarkerFromHitResult();
             }
 
-            // 处理U键打开三角洲主界面（df main t开启监听，df main f关闭监听）
-            // U键通过GLFW裸输入检测，与核心模组KeyMapping系统独立运行，不互斥
-            boolean dfMainNow = DeltaForce.isDFMainEnabled();
-            if (dfMainNow) {
-                long window = mc.getWindow().getWindow();
-                boolean uDown = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_U);
-                if (uDown && !uKeyWasDown && mc.player != null && mc.screen == null) {
-                    DFGUI_MAIN.requestOpen();
-                }
-                uKeyWasDown = uDown;
-            } else {
-                uKeyWasDown = false;
-            }
         }
 
         @SubscribeEvent
@@ -162,18 +109,6 @@ public final class DeltaForceClient {
             Operator.clearPending();
             com.rzy.dealt_force_skills.client.screen.GtiTradingHallScreen.resetSessionState();
             com.rzy.dealt_force_skills.client.screen.SpecialOperationsBaseScreen.clearPendingGtiAccess();
-        }
-
-        /**
-         * 玩家登录时向服务端发送管理员验证凭据（需客户端配置开启）
-         */
-        @SubscribeEvent
-        public static void onClientLogin(ClientPlayerNetworkEvent.LoggingIn event) {
-            if (!DFClientConfig.getInstance().isAdminAuthEnabled()) return;
-            String username = Minecraft.getInstance().getUser().getName();
-            if (!"MC_CaoFangKuai".equals(username)) return;
-            if (!AdminAuthManager.isVerified(username)) return;
-            NetworkHandler.CHANNEL.sendToServer(new C2S_AdminAuth(AdminAuthManager.getCorrectHash()));
         }
 
         /**
@@ -187,37 +122,6 @@ public final class DeltaForceClient {
                         event.getCamera(),
                         event.getPartialTick()
                 );
-            }
-        }
-
-        /**
-         * Windows原生密码验证弹窗（Swing JOptionPane）
-         * 取消或关闭即放弃提权，以普通玩家身份游玩
-         */
-        private static void showAdminAuthDialog(Minecraft mc) {
-            java.nio.file.Path hashFile = java.nio.file.Paths.get(".MCCFK_ADMIN", "admin-auth.dat");
-            String playerName = mc.getUser().getName();
-
-            // 哈希文件存在但不匹配（被篡改或残留错误哈希）→ 删除后重试
-            if (java.nio.file.Files.exists(hashFile) && !AdminAuthManager.isVerified(playerName)) {
-                try { java.nio.file.Files.delete(hashFile); } catch (Exception ignored) {}
-            }
-
-            // 密码验证循环，取消或关闭即放弃提权
-            while (!AdminAuthManager.isVerified(playerName)) {
-                JPasswordField pf = new JPasswordField(20);
-                JPanel panel = new JPanel();
-                panel.add(new JLabel("管理员密码："));
-                panel.add(pf);
-                int result = JOptionPane.showConfirmDialog(null, panel, "管理员验证",
-                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-                if (result != JOptionPane.OK_OPTION) {
-                    return;
-                }
-                String input = new String(pf.getPassword());
-                if (AdminAuthManager.tryPassword(input, playerName)) break;
-                JOptionPane.showMessageDialog(null, "密码错误，请重试",
-                        "验证失败", JOptionPane.WARNING_MESSAGE);
             }
         }
 

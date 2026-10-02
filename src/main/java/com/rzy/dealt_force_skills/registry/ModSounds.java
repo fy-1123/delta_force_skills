@@ -21,6 +21,29 @@ public class ModSounds {
     public static final Map<String, RegistryObject<SoundEvent>> LEX_NINJIA_SOUNDS = registerLexNinjiaSounds();
     public static final Map<String, RegistryObject<SoundEvent>> GAMBLER_POWER_SOUNDS = registerGamblerPowerSounds();
 
+    public static final RegistryObject<SoundEvent> ROVER_SMOKE_EQUIP = reg("rover.smoke_equip");
+    public static final RegistryObject<SoundEvent> ROVER_SMOKE_STOW = reg("rover.smoke_stow");
+    public static final RegistryObject<SoundEvent> ROVER_SMOKE_THROW = reg("rover.smoke_throw");
+    public static final RegistryObject<SoundEvent> ROVER_SMOKE_BOUNCE = reg("rover.smoke_bounce");
+    public static final RegistryObject<SoundEvent> ROVER_SMOKE_LAND = reg("rover.smoke_land");
+    public static final RegistryObject<SoundEvent> ROVER_SMOKE_BURST = reg("rover.smoke_burst");
+    public static final RegistryObject<SoundEvent> ROVER_INJECTOR_EQUIP = reg("rover.injector_equip");
+    public static final RegistryObject<SoundEvent> ROVER_INJECTOR_MODE = reg("rover.injector_mode");
+    public static final RegistryObject<SoundEvent> ROVER_INJECTOR_FIRE = reg("rover.injector_fire");
+    public static final RegistryObject<SoundEvent> ROVER_INJECTOR_BURST = reg("rover.injector_burst");
+    public static final RegistryObject<SoundEvent> ROVER_PURIFIED = reg("rover.purified");
+    public static final RegistryObject<SoundEvent> ROVER_CLEANSE = reg("rover.cleanse");
+    public static final RegistryObject<SoundEvent> ROVER_DAMAGE = reg("rover.damage");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_SUMMON = reg("rover.dog_summon");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_SPAWN = reg("rover.dog_spawn");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_COMMAND = reg("rover.dog_command");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_RECALL = reg("rover.dog_recall");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_TARGET = reg("rover.dog_target");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_ATTACK = reg("rover.dog_attack");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_RETREAT = reg("rover.dog_retreat");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_KILL_OWNER = reg("rover.dog_kill_owner");
+    public static final RegistryObject<SoundEvent> ROVER_DOG_KILL_VICTIM = reg("rover.dog_kill_victim");
+
     public static final RegistryObject<SoundEvent> SKILLS_CD = reg("skills_cd");
     public static final RegistryObject<SoundEvent> SKILLS_READY = reg("skills_ready");
 

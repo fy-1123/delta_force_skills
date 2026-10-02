@@ -100,7 +100,7 @@ public class LayoutConfigScreen extends Screen {
 
     public static void open() {
         var player = Minecraft.getInstance().player;
-        if (player == null || !"MC_CaoFangKuai".equals(player.getName().getString())) {
+        if (player == null) {
             return;
         }
         Minecraft.getInstance().setScreen(new LayoutConfigScreen());

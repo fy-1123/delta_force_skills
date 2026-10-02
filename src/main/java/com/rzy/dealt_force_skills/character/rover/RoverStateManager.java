@@ -242,6 +242,7 @@ public final class RoverStateManager {
             data(player).putLong("DogUntil", wolf.getPersistentData().getLong("RoverExpires"));
             data(player).remove("Waypoint");
             sound(player, RoverSounds.DOG_SUMMON);
+            player.level().playSound(null, wolf.blockPosition(), RoverSounds.DOG_SPAWN, SoundSource.PLAYERS, 0.85F, 1.0F);
         }
     }
 
@@ -263,7 +264,7 @@ public final class RoverStateManager {
             data(player).remove("DogUntil");
             data(player).remove("Waypoint");
             data(player).putLong("CoreUntil", SkillCooldownHelper.until(player, CORE_COOLDOWN));
-            sound(player, RoverSounds.DOG_RETREAT);
+
         }
     }
 
@@ -272,6 +273,7 @@ public final class RoverStateManager {
         SkillDamageHelper.hurt(target, SkillDamageHelper.trueDamage(owner.serverLevel(), projectile, owner), owner,
                 (float) Math.max(0, INJECTOR_DAMAGE));
         if (target.isAlive()) reduceHealth(target, INJECTOR_DIRECT_REDUCTION);
+        damageFeedback(owner);
     }
 
     public static void applyAerosol(ServerPlayer owner, LivingEntity target, boolean pulse) {
@@ -281,6 +283,7 @@ public final class RoverStateManager {
                 if (effect.getEffect().getCategory() == MobEffectCategory.HARMFUL && target.removeEffect(effect.getEffect())) cleansed++;
             }
             if (cleansed > 0) {
+                if (target instanceof ServerPlayer listener) sound(listener, RoverSounds.CLEANSE);
                 MobEffectInstance old = target.getEffect(ModEffects.ROVER_SECOND_CHANCE.get());
                 int stacks = Math.min(255, cleansed + (old == null ? 0 : old.getAmplifier() + 1));
                 target.addEffect(new MobEffectInstance(ModEffects.ROVER_SECOND_CHANCE.get(), Math.max(1, PROTECTION_DURATION),
@@ -294,7 +297,10 @@ public final class RoverStateManager {
             target.addEffect(new MobEffectInstance(ModEffects.NOX_DELAYED_WOUND.get(), duration), owner);
             NoxDelayedWoundEffect.resetCaps(target, target.getHealth());
             data(target).putLong("RestoreAt", SkillCooldownHelper.now(target) + Math.max(1, INJECTOR_RESTORE_DELAY));
-            if (pulse) reduceHealth(target, INJECTOR_TICK_REDUCTION);
+            if (pulse) {
+                reduceHealth(target, INJECTOR_TICK_REDUCTION);
+                damageFeedback(owner);
+            }
         }
     }
 
@@ -426,8 +432,17 @@ public final class RoverStateManager {
         return SkillCooldownHelper.remainingTicks(data(entity).getLong(key), SkillCooldownHelper.now(entity));
     }
 
+    public static void damageFeedback(ServerPlayer owner) {
+        long now = owner.level().getGameTime();
+        CompoundTag tag = data(owner);
+        if (!tag.contains("DamageSoundAt") || now >= tag.getLong("DamageSoundAt")) {
+            tag.putLong("DamageSoundAt", now + 4);
+            sound(owner, RoverSounds.DAMAGE);
+        }
+    }
+
     public static void sound(ServerPlayer player, SoundEvent sound) {
-        player.level().playSound(null, player.blockPosition(), sound, SoundSource.PLAYERS, 0.85F, 1.0F);
+        com.rzy.dealt_force_skills.util.RangedSoundHelper.playForPlayer(player, sound, SoundSource.PLAYERS, 0.85F, 1.0F);
     }
 
     public static void sync(ServerPlayer player) {

@@ -179,19 +179,29 @@ public final class StaminaMovement {
         if (remaining <= 0) return;
         Vec3 start = new Vec3(state.getDouble("VaultStartX"), state.getDouble("VaultStartY"), state.getDouble("VaultStartZ"));
         Vec3 target = new Vec3(state.getDouble("VaultX"), state.getDouble("VaultY"), state.getDouble("VaultZ"));
-        double progress = (state.getInt("VaultTotal") - remaining + 1.0D) / state.getInt("VaultTotal");
+        int total = Math.max(1, state.getInt("VaultTotal"));
+        Vec3 previous = player.position();
+        Vec3 next = previous;
         Vec3 raised = new Vec3(start.x, target.y, start.z);
-        Vec3 next = progress <= 0.6D ? start.lerp(raised, progress / 0.6D)
-                : raised.lerp(target, (progress - 0.6D) / 0.4D);
-        // Sweep the corner in two segments so the body never cuts through the ledge.
-        boolean crossesCorner = progress > 0.6D && player.getY() < target.y - 0.0001D;
-        boolean clear = crossesCorner ? clearPath(player, player.position(), raised) && clearPath(player, raised, next)
-                : clearPath(player, player.position(), next);
-        if (!canMove(player) || player.position().distanceTo(start) > 4.0D || !clear) {
+        boolean clear = canMove(player) && previous.distanceTo(start) <= 4.0D;
+        // Three swept movement judgments per tick; rendering is interpolated independently.
+        for (int substep = 1; clear && substep <= 3; substep++) {
+            double progress = (total - remaining + substep / 3.0D) / total;
+            Vec3 candidate = progress <= 0.6D ? start.lerp(raised, progress / 0.6D)
+                    : raised.lerp(target, (progress - 0.6D) / 0.4D);
+            boolean crossesCorner = progress > 0.6D && next.y < target.y - 0.0001D;
+            clear = crossesCorner ? clearPath(player, next, raised) && clearPath(player, raised, candidate)
+                    : clearPath(player, next, candidate);
+            next = candidate;
+        }
+        if (!clear) {
             state.putInt("VaultTicks", 0);
             player.setForcedPose(null);
             return;
         }
+        com.rzy.dealt_force_skills.network.NetworkHandler.sendToPlayer(
+                new com.rzy.dealt_force_skills.network.S2C_VaultMotion(previous.x, previous.y, previous.z,
+                        next.x, next.y, next.z), player);
         player.setForcedPose(Pose.CROUCHING);
         player.teleportTo(next.x, next.y, next.z);
         player.setDeltaMovement(Vec3.ZERO);

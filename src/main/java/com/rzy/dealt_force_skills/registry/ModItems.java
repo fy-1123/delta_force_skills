@@ -475,6 +475,9 @@ public class ModItems {
             () -> new LuckyCoinItem(new Item.Properties().stacksTo(1)));
     public static final RegistryObject<Item> HVK_UNIVERSAL_GLUE = ITEMS.register("hvk_universal_glue",
             () -> new HvkUniversalGlueItem(new Item.Properties().stacksTo(16)));
+    public static final RegistryObject<Item> FOX_MUSIC_PLAYER = ITEMS.register("fox_music_player",
+            () -> new com.rzy.dealt_force_skills.item.FoxMusicPlayerItem(new Item.Properties().stacksTo(1).fireResistant()));
+
     public static final RegistryObject<Item> ETERNAL_LOVE_BLESSING = ITEMS.register("eternal_love_blessing",
             () -> new EternalLoveBlessingItem(new Item.Properties().stacksTo(1)));
     public static final RegistryObject<Item> HOOK_AUTHOR_BLESSING = ITEMS.register("hook_author_blessing",

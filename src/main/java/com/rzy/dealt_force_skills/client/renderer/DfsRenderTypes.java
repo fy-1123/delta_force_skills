@@ -21,6 +21,15 @@ public final class DfsRenderTypes extends RenderType {
                     .setCullState(NO_CULL)
                     .createCompositeState(false)
     );
+    private static final RenderType TRAJECTORY_QUADS = RenderType.create(
+            "dfs_trajectory_quads", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS,
+            4096, false, true, RenderType.CompositeState.builder()
+                    .setShaderState(POSITION_COLOR_SHADER).setTextureState(NO_TEXTURE)
+                    .setTransparencyState(TRANSLUCENT_TRANSPARENCY).setCullState(NO_CULL)
+                    .setWriteMaskState(COLOR_WRITE).createCompositeState(false));
+
+    public static RenderType trajectoryQuads() { return TRAJECTORY_QUADS; }
+
     private static final RenderType EQUIPMENT_SOLID_QUADS = RenderType.create(
             "dfs_equipment_solid_quads",
             DefaultVertexFormat.POSITION_COLOR,

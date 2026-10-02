@@ -49,26 +49,26 @@ public record C2S_SpecialOperationsBaseAction(Action action, String target, int 
             if (player == null) return;
             boolean gtiAccess = GtiTradingHallManager.hasBaseAccess(player);
             if (!gtiAccess && !DealtShopAccessManager.isAllowed(DealtShopAccessManager.Service.BASE, player)) return;
+            boolean success = false;
             switch (msg.action) {
-                case OPEN, PAGE -> {
-                }
+                case OPEN, PAGE -> { }
                 case UPGRADE -> {
-                    SpecialOperationsBaseManager.Facility facility = SpecialOperationsBaseManager.Facility.byId(msg.target);
-                    if (facility != null) {
-                        SpecialOperationsBaseManager.upgrade(player, facility);
-                    }
+                    var facility = SpecialOperationsBaseManager.Facility.byId(msg.target);
+                    if (facility != null) success = SpecialOperationsBaseManager.upgrade(player, facility);
                 }
                 case SELL -> {
-                    try {
-                        SpecialOperationsBaseManager.sell(player,
-                                SpecialOperationsBaseManager.ItemSource.valueOf(msg.target), msg.index, msg.count);
-                    } catch (IllegalArgumentException ignored) {
-                    }
+                    try { success = SpecialOperationsBaseManager.sell(player,
+                            SpecialOperationsBaseManager.ItemSource.valueOf(msg.target), msg.index, msg.count) > 0L; }
+                    catch (IllegalArgumentException ignored) { }
                 }
-                case REDEEM -> SpecialOperationsBaseManager.redeem(player, msg.index, msg.count, gtiAccess);
-                case DEPOSIT -> SpecialOperationsBaseManager.depositInventory(player, msg.index, msg.count);
-                case WITHDRAW -> SpecialOperationsBaseManager.withdrawToInventory(player, msg.index, msg.count);
-                case EXCHANGE -> SpecialOperationsBaseManager.exchange(player, msg.target, msg.amount);
+                case REDEEM -> success = SpecialOperationsBaseManager.redeem(player, msg.index, msg.count, gtiAccess);
+                case DEPOSIT -> success = SpecialOperationsBaseManager.depositInventory(player, msg.index, msg.count);
+                case WITHDRAW -> success = SpecialOperationsBaseManager.withdrawToInventory(player, msg.index, msg.count);
+                case EXCHANGE -> success = SpecialOperationsBaseManager.exchange(player, msg.target, msg.amount);
+            }
+            if (msg.action != Action.OPEN && msg.action != Action.PAGE && msg.action != Action.UPGRADE) {
+                player.displayClientMessage(net.minecraft.network.chat.Component.translatable(success
+                        ? "message.dealt_force_skills.transaction.success" : "message.dealt_force_skills.transaction.failed"), true);
             }
             NetworkHandler.sendToPlayer(S2C_SpecialOperationsBaseSnapshot.capture(player, msg.page), player);
         });

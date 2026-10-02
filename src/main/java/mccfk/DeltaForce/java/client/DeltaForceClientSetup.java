@@ -1,25 +1,17 @@
 package mccfk.DeltaForce.java.client;
 
 import mccfk.DeltaForce.java.DeltaForce;
-import mccfk.DeltaForce.java.client.dfgame.DFGameDamageEventHandler;
-import mccfk.DeltaForce.java.client.dfgame.DFGameGuiEventHandler;
 import mccfk.DeltaForce.java.client.screen.ClientScreenRegistry;
-import mccfk.DeltaForce.java.client.screen.DFGUI_MAIN;
-import mccfk.DeltaForce.java.client.screen.DFGameHudScreen;
-import mccfk.DeltaForce.java.client.screen.DFInventoryScreen;
 import mccfk.DeltaForce.java.client.screen.DfsConfigProvider;
 import mccfk.DeltaForce.java.client.screen.DfsSkillHudScreen;
-import mccfk.DeltaForce.java.client.screen.GameModeSelectionScreen;
 import mccfk.DeltaForce.java.client.screen.GroundItemHudScreen;
 import mccfk.DeltaForce.java.client.screen.HudElementType;
 import mccfk.DeltaForce.java.client.screen.LayoutEntry;
-import mccfk.DeltaForce.java.client.screen.OperatorSwitchConfirmScreen;
 import mccfk.DeltaForce.java.client.screen.SettingsScreen;
 import mccfk.DeltaForce.java.client.screen.StaminaBarHudScreen;
 import mccfk.DeltaForce.java.item.creative.DeltaForceCreativeTabs;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.client.ConfigScreenHandler;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
 
@@ -55,13 +47,6 @@ public final class DeltaForceClientSetup {
         // 注册DF创造模式标签页
         DeltaForceCreativeTabs.register(modEventBus);
 
-        // 注册客户端 DFGAME 事件
-        MinecraftForge.EVENT_BUS.register(DFGameGuiEventHandler.class);
-        MinecraftForge.EVENT_BUS.register(DFGameDamageEventHandler.class);
-
-        // 从配置文件恢复 df main 开关状态
-        DeltaForce.setDFMain(DFClientConfig.getInstance().isDfMainEnabled());
-
         // 注册布局配置系统的可编辑界面
         registerLayoutScreens();
     }
@@ -70,14 +55,6 @@ public final class DeltaForceClientSetup {
     private static void registerLayoutScreens() {
         // 仅注册有真实视觉对应、可编辑位置的HUD元素
         // Screen类界面（主界面/设置/背包等）由Screen自身渲染，无需编辑器占位
-
-        // DFGame HUD: 屏幕血量条（真实渲染）
-        // entryId 必须用点号分隔 modId.screenName，编辑器才能正确匹配游戏端路径
-        ClientScreenRegistry.register("dfgame.hud",
-                Component.translatable("screen.deltaforce.dfgame_hud"),
-                DFGameHudScreen.class,
-                makeElements(
-                        el("health", "health_bar", 0.02f, 0.92f, 0f, 0f, 0.22f, 0.04f)));
 
         // DFS 技能按钮（真实渲染）
         ClientScreenRegistry.register("dfs.skill_hud",
@@ -138,10 +115,4 @@ public final class DeltaForceClientSetup {
         return list;
     }
 
-    /** 由 DeltaForce.setDFMain 通过反射调用，持久化开关状态到客户端配置文件 */
-    @SuppressWarnings("unused")
-    public static void onDfMainChanged(boolean enabled) {
-        DFClientConfig.getInstance().setDfMainEnabled(enabled);
-        DFClientConfig.getInstance().save();
-    }
 }

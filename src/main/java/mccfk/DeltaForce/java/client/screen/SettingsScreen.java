@@ -83,7 +83,6 @@ public class SettingsScreen extends Screen {
     private boolean showSettingsOverlay = false;
 
     // 已记录过的缺失翻译（避免日志重复）
-    private static final java.util.Set<String> loggedMissingTranslations = new java.util.HashSet<>();
 
     // 布局
     private int tabWidth, tabHeight, tabStartX, tabStartY;
@@ -637,11 +636,6 @@ public class SettingsScreen extends Screen {
                     tooltipLines.add(Component.literal(line));
                 }
             }
-            // 开发者（MC_CaoFangKuai）对WIP条目追加黄A悬浮提示
-            if (isDeveloper() && hoveredEntry.wip()) {
-                tooltipLines.add(Component.literal("功能开发中-仅对开发本功能的开发者显示的配置项")
-                        .withStyle(style -> style.withColor(0xFFFFCC00)));
-            }
             guiGraphics.renderComponentTooltip(this.font, tooltipLines, mouseX, mouseY);
         }
 
@@ -706,9 +700,8 @@ public class SettingsScreen extends Screen {
         return isAncestorChainEnabled(parent, boolValues, parentMap, visited);
     }
 
-    /** 权限过滤：移除当前用户无权编辑的配置项（无权限时不显示，避免修改失败）<br>开发者可查看所有配置项但无权限时淡灰显示仅查看模式 */
+    /** 权限过滤：移除当前用户无权编辑的配置项（无权限时不显示，避免修改失败） */
     private List<IConfigProvider.ConfigEntry> filterByPermission(List<IConfigProvider.ConfigEntry> entries) {
-        if (isDeveloper()) return entries;
         IConfigProvider provider = getCurrentProvider();
         if (provider == null) return entries;
         return entries.stream()
@@ -915,18 +908,13 @@ public class SettingsScreen extends Screen {
             canEdit = provider.canEdit(path);
             // 服务端配置且无权限 → 不显示 S 标记，避免用户误触后保存失败
             // 开发者始终显示标记（包括WIP黄A），以便查看和调试
-            if (!isClient && !canEdit && !isDeveloper()) {
+            if (!isClient && !canEdit) {
                 // 不绘制标记
             } else {
                 String tag = isClient ? "C" : "S";
                 int tagColor = isClient ? 0xFF55FF55 : 0xFFFF5555;
                 int tagX = indent + this.font.width(keyText) + 4;
                 guiGraphics.drawString(this.font, Component.literal(tag), tagX, mainY, tagColor, false);
-                // 黄色A标记：仅对开发者MC_CaoFangKuai且标记为WIP的条目显示
-                if (isDeveloper() && entry.wip()) {
-                    int aX = tagX + this.font.width(Component.literal(tag)) + 1;
-                    guiGraphics.drawString(this.font, Component.literal("A"), aX, mainY, 0xFFFFCC00, false);
-                }
             }
         }
 
@@ -972,10 +960,6 @@ public class SettingsScreen extends Screen {
             }
         }
 
-        // 开发者无权限时覆盖淡灰色半透明层，表示"仅查看不可编辑"
-        if (isDeveloper() && !canEdit) {
-            guiGraphics.fill(0, rowY, refW - SCROLL_BAR_WIDTH, rowY + entryRowHeight, 0x30666666);
-        }
     }
 
     // ======================== 布尔开关控件 ========================
@@ -1747,13 +1731,6 @@ public class SettingsScreen extends Screen {
         }
     }
 
-    /** 判断当前玩家是否为开发者MC_CaoFangKuai */
-    private static boolean isDeveloper() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.getUser() == null) return false;
-        return "MC_CaoFangKuai".equals(mc.getUser().getName());
-    }
-
     // ======================== 未保存弹窗 ========================
 
     private void renderUnsavedDialog(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -1971,16 +1948,6 @@ public class SettingsScreen extends Screen {
                 String result = translated.getString();
                 segmentTranslationCache.put(cacheKey, result);
                 return result;
-            }
-        }
-        // 未找到翻译，调试模式下记录日志（每个翻译仅输出一次）
-        if (DeltaForce.isDebugMode()) {
-            String logKey = modId + ":" + segment;
-            if (loggedMissingTranslations.add(logKey)) {
-                if (loggedMissingTranslations.size() > 500) {
-                    loggedMissingTranslations.clear(); // 防止无限增长
-                }
-                LOGGER.warn("Missing translation for segment: {} -> {}", modId, segment);
             }
         }
         String fallback = humanize(segment);

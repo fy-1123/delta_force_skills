@@ -44,6 +44,11 @@ import java.util.List;
 @Mod.EventBusSubscriber(modid = DealtForceSkillsMod.MODID, value = Dist.CLIENT)
 public final class ThrowTrajectoryPreview {
     private static final int MAX_POINTS = 96;
+    private static final int TUBE_SIDES = 12;
+    private static final double TUBE_RADIUS = 0.035;
+    private static final int TUBE_ALPHA = 48;
+    private static final double LANDING_RADIUS = 0.11;
+    private static float renderPartialTick;
 
     private ThrowTrajectoryPreview() {
     }
@@ -59,6 +64,7 @@ public final class ThrowTrajectoryPreview {
             return;
         }
 
+        renderPartialTick = event.getPartialTick();
         Preview preview = currentPreview(minecraft.player);
         if (preview == null) {
             return;
@@ -70,19 +76,19 @@ public final class ThrowTrajectoryPreview {
         }
 
         MultiBufferSource.BufferSource buffer = minecraft.renderBuffers().bufferSource();
-        VertexConsumer consumer = buffer.getBuffer(RenderType.lines());
+        VertexConsumer consumer = buffer.getBuffer(com.rzy.dealt_force_skills.client.renderer.DfsRenderTypes.trajectoryQuads());
         PoseStack poseStack = event.getPoseStack();
         PoseStack.Pose pose = poseStack.last();
         Vec3 camera = event.getCamera().getPosition();
 
-        List<Vec3> points = trajectory.points();
-        for (int i = 1; i < points.size(); i++) {
-            renderLine(consumer, pose, camera, points.get(i - 1), points.get(i),
-                    preview.red(), preview.green(), preview.blue(), 210);
-        }
-        renderLandingMark(consumer, pose, camera, trajectory.end(),
-                trajectory.hit() ? 255 : 180, preview.red(), preview.green(), preview.blue());
-        buffer.endBatch(RenderType.lines());
+        renderTube(consumer, pose, camera, trajectory.points(), preview.red(), preview.green(), preview.blue());
+        Vec3 sphereCenter = trajectory.hit()
+                ? trajectory.end().add(trajectory.normal().scale(LANDING_RADIUS + 0.008)) : trajectory.end();
+        renderLandingSphere(consumer, pose, camera, sphereCenter,
+                preview.red(), preview.green(), preview.blue(), trajectory.hit() ? 56 : 34);
+        renderLandingMark(consumer, pose, camera, trajectory.end(), trajectory.normal(),
+                trajectory.hit() ? 50 : 28, preview.red(), preview.green(), preview.blue());
+        buffer.endBatch(com.rzy.dealt_force_skills.client.renderer.DfsRenderTypes.trajectoryQuads());
     }
 
     private static Preview currentPreview(Player player) {
@@ -142,8 +148,8 @@ public final class ThrowTrajectoryPreview {
 
     private static Preview preview(Player player, double forwardOffset, double yOffset, double speed, double lift,
                                    double gravity, double drag, int maxTicks, int red, int green, int blue) {
-        Vec3 look = player.getLookAngle().normalize();
-        Vec3 start = player.getEyePosition().add(look.scale(forwardOffset)).add(0.0D, yOffset, 0.0D);
+        Vec3 look = player.getViewVector(renderPartialTick).normalize();
+        Vec3 start = player.getEyePosition(renderPartialTick).add(look.scale(forwardOffset)).add(0.0D, yOffset, 0.0D);
         Vec3 velocity = look.scale(speed).add(0.0D, lift, 0.0D);
         return new Preview(start, velocity, gravity, drag, Math.min(maxTicks, MAX_POINTS), red, green, blue);
     }
@@ -156,11 +162,11 @@ public final class ThrowTrajectoryPreview {
 
         for (int i = 0; i < preview.maxTicks(); i++) {
             Vec3 next = pos.add(motion);
-            HitResult hit = level.clip(new ClipContext(pos, next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+            net.minecraft.world.phys.BlockHitResult hit = level.clip(new ClipContext(pos, next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
             if (hit.getType() != HitResult.Type.MISS) {
                 Vec3 end = hit.getLocation();
                 points.add(end);
-                return new Trajectory(points, end, true);
+                return new Trajectory(points, end, true, Vec3.atLowerCornerOf(hit.getDirection().getNormal()));
             }
 
             points.add(next);
@@ -168,41 +174,98 @@ public final class ThrowTrajectoryPreview {
             motion = motion.add(0.0D, -preview.gravity(), 0.0D).scale(preview.drag());
         }
 
-        return new Trajectory(points, points.get(points.size() - 1), false);
+        return new Trajectory(points, points.get(points.size() - 1), false, new Vec3(0, 1, 0));
     }
 
     private static void renderLandingMark(VertexConsumer consumer, PoseStack.Pose pose, Vec3 camera, Vec3 center,
-                                          int alpha, int red, int green, int blue) {
-        double half = 0.28D;
-        renderLine(consumer, pose, camera, center.add(-half, 0.02D, 0.0D), center.add(half, 0.02D, 0.0D), red, green, blue, alpha);
-        renderLine(consumer, pose, camera, center.add(0.0D, 0.02D, -half), center.add(0.0D, 0.02D, half), red, green, blue, alpha);
-        renderLine(consumer, pose, camera, center.add(-half, 0.02D, -half), center.add(half, 0.02D, half), red, green, blue, alpha / 2);
-        renderLine(consumer, pose, camera, center.add(-half, 0.02D, half), center.add(half, 0.02D, -half), red, green, blue, alpha / 2);
+                                          Vec3 normal, int alpha, int red, int green, int blue) {
+        Vec3 axis = Math.abs(normal.y) > 0.9 ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+        Vec3 u = normal.cross(axis).normalize().scale(0.38);
+        Vec3 v = normal.cross(u).normalize().scale(0.38);
+        Vec3 origin = center.add(normal.scale(0.008));
+        for (int i = 0; i < 32; i++) {
+            double a = i * Math.PI / 16.0, b = (i + 1) * Math.PI / 16.0;
+            Vec3 p = origin.add(u.scale(Math.cos(a))).add(v.scale(Math.sin(a)));
+            Vec3 q = origin.add(u.scale(Math.cos(b))).add(v.scale(Math.sin(b)));
+            quad(consumer, pose, camera, origin, p, q, origin, red, green, blue, alpha);
+        }
     }
 
-    private static void renderLine(VertexConsumer consumer, PoseStack.Pose pose, Vec3 camera,
-                                   Vec3 from, Vec3 to, int red, int green, int blue, int alpha) {
-        Vec3 a = from.subtract(camera);
-        Vec3 b = to.subtract(camera);
-        Vec3 normal = b.subtract(a);
-        if (normal.lengthSqr() < 1.0E-6D) {
-            normal = new Vec3(0.0D, 1.0D, 0.0D);
-        } else {
-            normal = normal.normalize();
+    private static void renderTube(VertexConsumer consumer, PoseStack.Pose pose, Vec3 camera,
+                                   List<Vec3> points, int red, int green, int blue) {
+        Vec3[] previousRing = null;
+        Vec3 side = null;
+        for (int i = 0; i < points.size(); i++) {
+            Vec3 center = points.get(i);
+            Vec3 tangent = points.get(Math.min(i + 1, points.size() - 1))
+                    .subtract(points.get(Math.max(0, i - 1)));
+            if (tangent.lengthSqr() < 1.0E-10) {
+                tangent = center.subtract(points.get(Math.max(0, i - 1)));
+                if (tangent.lengthSqr() < 1.0E-10) continue;
+            }
+            tangent = tangent.normalize();
+            // Transport the circular frame along the curve, independent of the camera.
+            if (side != null) side = side.subtract(tangent.scale(side.dot(tangent)));
+            if (side == null || side.lengthSqr() < 1.0E-10) {
+                Vec3 axis = Math.abs(tangent.y) > 0.9 ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+                side = tangent.cross(axis);
+            }
+            side = side.normalize();
+            Vec3 up = tangent.cross(side).normalize();
+            Vec3[] ring = new Vec3[TUBE_SIDES];
+            for (int j = 0; j < TUBE_SIDES; j++) {
+                double angle = j * Math.PI * 2.0 / TUBE_SIDES;
+                ring[j] = center.add(side.scale(Math.cos(angle) * TUBE_RADIUS))
+                        .add(up.scale(Math.sin(angle) * TUBE_RADIUS));
+            }
+            if (previousRing != null) {
+                for (int j = 0; j < TUBE_SIDES; j++) {
+                    int next = (j + 1) % TUBE_SIDES;
+                    quad(consumer, pose, camera, previousRing[j], ring[j], ring[next], previousRing[next],
+                            red, green, blue, TUBE_ALPHA);
+                }
+            }
+            previousRing = ring;
         }
-        consumer.vertex(pose.pose(), (float) a.x, (float) a.y, (float) a.z)
-                .color(red, green, blue, alpha)
-                .normal(pose.normal(), (float) normal.x, (float) normal.y, (float) normal.z)
-                .endVertex();
-        consumer.vertex(pose.pose(), (float) b.x, (float) b.y, (float) b.z)
-                .color(red, green, blue, alpha)
-                .normal(pose.normal(), (float) normal.x, (float) normal.y, (float) normal.z)
-                .endVertex();
+    }
+
+    private static void renderLandingSphere(VertexConsumer consumer, PoseStack.Pose pose, Vec3 camera,
+                                            Vec3 center, int red, int green, int blue, int alpha) {
+        for (int latitude = 0; latitude < 8; latitude++) {
+            double a = -Math.PI / 2.0 + latitude * Math.PI / 8.0;
+            double b = -Math.PI / 2.0 + (latitude + 1) * Math.PI / 8.0;
+            for (int longitude = 0; longitude < 16; longitude++) {
+                double u = longitude * Math.PI / 8.0;
+                double v = (longitude + 1) * Math.PI / 8.0;
+                quad(consumer, pose, camera, spherePoint(center, a, u), spherePoint(center, b, u),
+                        spherePoint(center, b, v), spherePoint(center, a, v), red, green, blue, alpha);
+            }
+        }
+    }
+
+    private static Vec3 spherePoint(Vec3 center, double latitude, double longitude) {
+        double radius = Math.cos(latitude) * LANDING_RADIUS;
+        return center.add(radius * Math.cos(longitude), Math.sin(latitude) * LANDING_RADIUS,
+                radius * Math.sin(longitude));
+    }
+
+    private static void quad(VertexConsumer consumer, PoseStack.Pose pose, Vec3 camera,
+                             Vec3 a, Vec3 b, Vec3 c, Vec3 d, int red, int green, int blue, int alpha) {
+        vertex(consumer, pose, a.subtract(camera), red, green, blue, alpha);
+        vertex(consumer, pose, b.subtract(camera), red, green, blue, alpha);
+        vertex(consumer, pose, c.subtract(camera), red, green, blue, alpha);
+        vertex(consumer, pose, d.subtract(camera), red, green, blue, alpha);
+    }
+
+    private static void vertex(VertexConsumer consumer, PoseStack.Pose pose, Vec3 point,
+                               int red, int green, int blue, int alpha) {
+        consumer.vertex(pose.pose(), (float) point.x, (float) point.y, (float) point.z)
+                .color(red, green, blue, alpha).endVertex();
     }
 
     private record Preview(Vec3 start, Vec3 velocity, double gravity, double drag, int maxTicks, int red, int green, int blue) {
     }
 
-    private record Trajectory(List<Vec3> points, Vec3 end, boolean hit) {
+    private record Trajectory(List<Vec3> points, Vec3 end, boolean hit, Vec3 normal) {
     }
 }

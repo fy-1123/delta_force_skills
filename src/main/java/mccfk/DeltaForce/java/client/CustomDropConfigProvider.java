@@ -241,10 +241,10 @@ public class CustomDropConfigProvider implements IConfigProvider {
         };
     }
 
-    /** 添加布局自定义前往配置按钮（仅对MC_CaoFangKuai开放，alpha版功能） */
+    /** 添加布局自定义前往配置按钮（客户端本地布局） */
     private void addLayoutButton(List<ConfigEntry> entries) {
         var player = Minecraft.getInstance().player;
-        if (player == null || !"MC_CaoFangKuai".equals(player.getName().getString())) {
+        if (player == null) {
             return;
         }
         String path = LAYOUT_BUTTON_PATH;
