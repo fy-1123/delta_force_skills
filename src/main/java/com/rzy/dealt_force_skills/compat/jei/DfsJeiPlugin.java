@@ -30,6 +30,9 @@ import java.util.Map;
 
 @JeiPlugin
 public final class DfsJeiPlugin implements IModPlugin {
+    @Override public void onRuntimeAvailable(mezz.jei.api.runtime.IJeiRuntime runtime) { HvkJeiRecipes.available(runtime); }
+    @Override public void onRuntimeUnavailable() { HvkJeiRecipes.unavailable(); }
+
     @Override
     public ResourceLocation getPluginUid() {
         return id("jei");

@@ -20,7 +20,7 @@ import java.lang.reflect.Modifier;
 import java.util.function.Supplier;
 
 public class NetworkHandler {
-    private static final String PROTOCOL = "71";
+    private static final String PROTOCOL = "76";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(DealtForceSkillsMod.MODID, "main"),
@@ -31,6 +31,9 @@ public class NetworkHandler {
 
     public static void onCommonSetup(FMLCommonSetupEvent e) {
         e.enqueueWork(() -> {
+            CHANNEL.messageBuilder(C2S_HvkZiplineRide.class, 245, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_HvkZiplineRide::encode).decoder(C2S_HvkZiplineRide::decode)
+                    .consumerMainThread(C2S_HvkZiplineRide::handle).add();
             CHANNEL.messageBuilder(S2C_FoxMusicPlayback.class, 243, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_FoxMusicPlayback::encode).decoder(S2C_FoxMusicPlayback::decode)
                     .consumerMainThread(S2C_FoxMusicPlayback::handle).add();
@@ -43,6 +46,9 @@ public class NetworkHandler {
             CHANNEL.messageBuilder(S2C_VaultMotion.class, 240, net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(S2C_VaultMotion::encode).decoder(S2C_VaultMotion::decode)
                     .consumerMainThread(S2C_VaultMotion::handle).add();
+            CHANNEL.messageBuilder(C2S_StaminaPreferences.class, 244, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(C2S_StaminaPreferences::encode).decoder(C2S_StaminaPreferences::decode)
+                    .consumerMainThread(C2S_StaminaPreferences::handle).add();
             CHANNEL.messageBuilder(C2S_StaminaVault.class, id++, net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER)
                     .encoder(C2S_StaminaVault::encode).decoder(C2S_StaminaVault::decode)
                     .consumerMainThread(C2S_StaminaVault::handle).add();

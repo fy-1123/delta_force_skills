@@ -272,6 +272,8 @@ public final class DealtForceConfig {
         }
         intValue("client.fov.maximum_degrees", 120);
         GeneratedGameplayDefaults.populate();
+        com.rzy.dealt_force_skills.stamina.StaminaSettings.populate();
+        SkillBalance.populate();
         for (String className : GAMEPLAY_DEFAULT_CLASSES) {
             try {
                 Class.forName(className, true, DealtForceConfig.class.getClassLoader());

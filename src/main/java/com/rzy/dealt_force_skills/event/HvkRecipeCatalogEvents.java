@@ -46,6 +46,7 @@ public final class HvkRecipeCatalogEvents {
 
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
+        com.rzy.dealt_force_skills.compat.HvkJeiRecipeCatalog.clear(event.getServer());
         WorkBlockQueryCatalog.clear();
         HvkAdvancedStandardTemplateConstructorBlockEntity.clearRecipeCatalog(event.getServer());
         HvkAdvancedDisassemblyBeamEmitterBlockEntity.clearRecipeCatalog(event.getServer());
@@ -56,6 +57,7 @@ public final class HvkRecipeCatalogEvents {
             return;
         }
         if (clearFirst) {
+            com.rzy.dealt_force_skills.compat.HvkJeiRecipeCatalog.clear(server);
             WorkBlockQueryCatalog.clear();
             HvkAdvancedStandardTemplateConstructorBlockEntity.clearRecipeCatalog(server);
             HvkAdvancedDisassemblyBeamEmitterBlockEntity.clearRecipeCatalog(server);

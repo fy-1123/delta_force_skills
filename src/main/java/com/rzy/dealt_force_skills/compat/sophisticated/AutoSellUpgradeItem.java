@@ -40,7 +40,10 @@ public final class AutoSellUpgradeItem extends UpgradeItemBase<AutoSellUpgradeIt
         }
 
         public FilterLogic filter() { return filter; }
-        private CompoundTag data() { return upgrade.getOrCreateTag().getCompound(DATA_KEY).copy(); }
+        private CompoundTag data() {
+            CompoundTag tag = upgrade.getTag();
+            return tag == null ? new CompoundTag() : tag.getCompound(DATA_KEY).copy();
+        }
         private void saveData(CompoundTag data) { upgrade.getOrCreateTag().put(DATA_KEY, data); save(); }
 
         @Override public boolean isEnabled() { return data().getBoolean("Enabled"); }

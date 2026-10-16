@@ -22,6 +22,7 @@ public class C2S_SinevaShieldCharge {
     public static void handle(C2S_SinevaShieldCharge msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
+            if (com.rzy.dealt_force_skills.climb.HvkZiplineManager.blocksSkills(player)) return;
             if (player == null || player.isSpectator()) return;
             if (player.hasEffect(ModEffects.STUN.get()) || player.hasEffect(ModEffects.WEBBED.get()) || StingerStateManager.isDowned(player) || RoundStartFreezeManager.isFrozen(player)) return;
             SinevaSkills.tryShieldCharge(player);

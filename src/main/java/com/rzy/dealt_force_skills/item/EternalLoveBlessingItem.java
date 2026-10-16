@@ -124,12 +124,15 @@ public class EternalLoveBlessingItem extends QualityTooltipItem {
         if (stack.isEmpty()) {
             return;
         }
-        CompoundTag records = stack.getOrCreateTag().getCompound(RECORDS_TAG);
-        records.remove(effectId.toString());
-        if (records.isEmpty()) {
-            stack.getOrCreateTag().remove(RECORDS_TAG);
-        } else {
-            stack.getOrCreateTag().put(RECORDS_TAG, records);
+        CompoundTag tag = stack.getTag();
+        if (tag != null) {
+            CompoundTag records = tag.getCompound(RECORDS_TAG);
+            records.remove(effectId.toString());
+            if (records.isEmpty()) {
+                tag.remove(RECORDS_TAG);
+            } else {
+                tag.put(RECORDS_TAG, records);
+            }
         }
         playRecordSound(player);
         openRecordsScreen(player, stack);
@@ -209,7 +212,10 @@ public class EternalLoveBlessingItem extends QualityTooltipItem {
     }
 
     private static void clearRecords(ItemStack stack) {
-        stack.getOrCreateTag().remove(RECORDS_TAG);
+        CompoundTag tag = stack.getTag();
+        if (tag != null) {
+            tag.remove(RECORDS_TAG);
+        }
     }
 
     private static List<MobEffectInstance> collectItemEffects(ItemStack stack, ServerPlayer player) {

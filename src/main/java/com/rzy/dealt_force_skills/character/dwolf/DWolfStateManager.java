@@ -316,6 +316,7 @@ public final class DWolfStateManager {
     }
 
     public static boolean startSlide(ServerPlayer player) {
+        if (!com.rzy.dealt_force_skills.stamina.StaminaFeature.DWOLF_SLIDE.enabled(player)) return false;
         if (!canUseSlide(player) || !player.onGround() || !player.isSprinting()) {
             return false;
         }
@@ -334,7 +335,7 @@ public final class DWolfStateManager {
 
         if (!CommanderStateManager.hasBranchUpgrade(player, CommanderBranchUpgrade.DWOLF_EFFICIENT_STAMINA)
                 && com.rzy.dealt_force_skills.stamina.StaminaManager.consume(player,
-                com.rzy.dealt_force_skills.stamina.StaminaManager.skillCost(player, com.rzy.dealt_force_skills.stamina.StaminaRules.DWOLF_SLIDE_COST))
+                com.rzy.dealt_force_skills.stamina.StaminaManager.skillCost(player, com.rzy.dealt_force_skills.stamina.StaminaSettings.slideCost()))
                 != com.rzy.dealt_force_skills.stamina.StaminaManager.ConsumeResult.SUCCESS) {
             player.displayClientMessage(Component.translatable("message.dealt_force_skills.d_wolf.not_enough_stamina"), true);
             return false;
@@ -531,6 +532,13 @@ public final class DWolfStateManager {
         if (!persistent.contains(ROOT_TAG, Tag.TAG_COMPOUND)) {
             persistent.put(ROOT_TAG, new CompoundTag());
         }
-        return persistent.getCompound(ROOT_TAG);
+        CompoundTag tag = persistent.getCompound(ROOT_TAG);
+        if (player instanceof ServerPlayer) {
+            SkillCooldownHelper.clampCooldown(player, tag, HAND_CANNON_NEXT_RECHARGE, HAND_CANNON_RECHARGE_TICKS);
+            SkillCooldownHelper.clampCooldown(player, tag, SMOKE_NEXT_RECHARGE, SMOKE_RECHARGE_TICKS);
+            SkillCooldownHelper.clampCooldown(player, tag, OVERLOAD_COOLDOWN_UNTIL, OVERLOAD_COOLDOWN_TICKS);
+            SkillCooldownHelper.clampCooldown(player, tag, SLIDE_COOLDOWN_UNTIL, SLIDE_COOLDOWN_TICKS);
+        }
+        return tag;
     }
 }

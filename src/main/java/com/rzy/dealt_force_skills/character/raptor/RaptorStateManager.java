@@ -790,7 +790,13 @@ public final class RaptorStateManager {
         if (!persistent.contains(ROOT_TAG, Tag.TAG_COMPOUND)) {
             persistent.put(ROOT_TAG, new CompoundTag());
         }
-        return persistent.getCompound(ROOT_TAG);
+        CompoundTag tag = persistent.getCompound(ROOT_TAG);
+        if (player instanceof ServerPlayer) {
+            SkillCooldownHelper.clampCooldown(player, tag, FALCON_COOLDOWN_UNTIL, FALCON_COOLDOWN_TICKS);
+            SkillCooldownHelper.clampCooldown(player, tag, PULSE_NEXT_RECHARGE, PULSE_RECHARGE_TICKS);
+            SkillCooldownHelper.clampCooldown(player, tag, HUMMINGBIRD_COOLDOWN_UNTIL, HUMMINGBIRD_COOLDOWN_TICKS);
+        }
+        return tag;
     }
 
     private record FootprintState(int id, String ownerUuid, String ownerName, String equipmentSummary, Vec3 position, long gameTime) {

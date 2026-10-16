@@ -90,6 +90,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.entity.ThrownItemRenderer;
+import com.rzy.dealt_force_skills.util.ItemStackTagReads;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -336,14 +337,14 @@ public class ClientEvents {
         ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
         Profile chestProfile = DfsEquipmentItem.profile(chest);
         if (chestProfile != null && chestProfile.ability() == SpecialAbility.TRICK_ASSAULT
-                && now <= chest.getOrCreateTag().getLong(TRICK_UNTIL)) {
-            multiplier *= 1.0D + chest.getOrCreateTag().getInt(TRICK_STACKS) * 0.04D;
+                && now <= ItemStackTagReads.getLong(chest, TRICK_UNTIL)) {
+            multiplier *= 1.0D + ItemStackTagReads.getInt(chest, TRICK_STACKS) * 0.04D;
         }
         ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
         Profile headProfile = DfsEquipmentItem.profile(head);
         if (headProfile != null && headProfile.ability() == SpecialAbility.DICH9_ASSAULT
-                && now <= head.getOrCreateTag().getLong(DICH9_UNTIL)) {
-            multiplier *= 1.0D + head.getOrCreateTag().getInt(DICH9_STACKS) * 0.06D;
+                && now <= ItemStackTagReads.getLong(head, DICH9_UNTIL)) {
+            multiplier *= 1.0D + ItemStackTagReads.getInt(head, DICH9_STACKS) * 0.06D;
         }
         if (isMhsFuryActive(player)) {
             multiplier *= 2.0D;
@@ -1135,6 +1136,7 @@ public class ClientEvents {
 
         @SubscribeEvent
         public static void registerRenderers(EntityRenderersEvent.RegisterRenderers e) {
+            e.registerEntityRenderer(ModEntities.HVK_ZIPLINE_SEAT.get(), net.minecraft.client.renderer.entity.NoopRenderer::new);
             e.registerBlockEntityRenderer(ModBlockEntities.BLADE_WIRE.get(), BladeWireBlockEntityRenderer::new);
             e.registerEntityRenderer(ModEntities.GRAPPLE_HOOK.get(), GrappleHookRenderer::new);
             e.registerEntityRenderer(ModEntities.BLADE_WIRE_PROJECTILE.get(), ctx -> new BlockbenchProjectileRenderer<>(

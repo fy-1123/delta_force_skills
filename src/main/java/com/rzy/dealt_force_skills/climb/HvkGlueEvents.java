@@ -21,7 +21,7 @@ public final class HvkGlueEvents {
     private HvkGlueEvents() {
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
     public static void onGluedBlockBreak(BlockEvent.BreakEvent event) {
         if (!(event.getLevel() instanceof ServerLevel level)) {
             return;
@@ -45,7 +45,15 @@ public final class HvkGlueEvents {
         }
     }
 
+    @SubscribeEvent
+    public static void prune(net.minecraftforge.event.TickEvent.LevelTickEvent event) {
+        if (event.phase == net.minecraftforge.event.TickEvent.Phase.END && event.level instanceof ServerLevel level
+                && level.getGameTime() % 20 == 0 && HvkClimbGlueManager.prune(level)) {
+            NetworkHandler.sendToDimension(syncPacket(level), level.dimension());
+        }
+    }
+
     private static S2C_SyncGluedPositions syncPacket(ServerLevel level) {
-        return new S2C_SyncGluedPositions(level.dimension(), HvkClimbGlueManager.allGluedPositions(level));
+        return new S2C_SyncGluedPositions(level.dimension(), HvkClimbGlueManager.allGluedPositions(level), HvkClimbGlueManager.skillBlockedLinks(level));
     }
 }

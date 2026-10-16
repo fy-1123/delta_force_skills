@@ -91,15 +91,16 @@ public final class GhrothTaczEnhancement {
     }
 
     public static boolean isEnhanced(ItemStack stack) {
-        return stack != null && !stack.isEmpty() && stack.getOrCreateTag().getBoolean(ENHANCED_TAG);
+        CompoundTag tag = stack == null || stack.isEmpty() ? null : stack.getTag();
+        return tag != null && tag.getBoolean(ENHANCED_TAG);
     }
 
     public static boolean isEnhancedGun(ItemStack stack) {
-        return isEnhanced(stack) && "gun".equals(stack.getOrCreateTag().getString(ENHANCED_KIND));
+        return isEnhanced(stack) && "gun".equals(stack.getTag().getString(ENHANCED_KIND));
     }
 
     public static boolean isEnhancedAttachment(ItemStack stack) {
-        return isEnhanced(stack) && "attachment".equals(stack.getOrCreateTag().getString(ENHANCED_KIND));
+        return isEnhanced(stack) && "attachment".equals(stack.getTag().getString(ENHANCED_KIND));
     }
 
     public static boolean isTaczGunStack(ItemStack stack) {

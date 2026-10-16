@@ -690,6 +690,12 @@ public final class ToxikStateManager {
         if (!persistent.contains(ROOT_TAG, Tag.TAG_COMPOUND)) {
             persistent.put(ROOT_TAG, new CompoundTag());
         }
-        return persistent.getCompound(ROOT_TAG);
+        CompoundTag tag = persistent.getCompound(ROOT_TAG);
+        if (player instanceof ServerPlayer) {
+            SkillCooldownHelper.clampCooldown(player, tag, ADRENALINE_COOLDOWN_UNTIL, ADRENALINE_COOLDOWN_TICKS);
+            SkillCooldownHelper.clampCooldown(player, tag, TEAR_GAS_NEXT_RECHARGE, TEAR_GAS_RECHARGE_TICKS);
+            SkillCooldownHelper.clampCooldown(player, tag, FIREFLY_COOLDOWN_UNTIL, FIREFLY_COOLDOWN_TICKS);
+        }
+        return tag;
     }
 }

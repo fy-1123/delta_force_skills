@@ -106,6 +106,7 @@ import com.rzy.dealt_force_skills.skill.SkillCooldownHelper;
 import com.rzy.dealt_force_skills.skill.SkillDamageHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import com.rzy.dealt_force_skills.util.ItemStackTagReads;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket;
@@ -3711,6 +3712,10 @@ public class CommonEvents {
     }
 
     private static void cancelTaczReloadEvent(Event event) {
+        if (ChamberTaczEnhancement.isChamberWeapon(taczEventGunItem(event))) {
+            event.setCanceled(true);
+            return;
+        }
         try {
             Object entityObject = event.getClass().getMethod("getEntity").invoke(event);
             if (entityObject instanceof LivingEntity entity
@@ -3990,10 +3995,10 @@ public class CommonEvents {
             }
         }
         if (equipmentAbility(attacker, chestProfile) == SpecialAbility.STATIONARY_STACKS) {
-            multiplier *= 1.0D + chest.getOrCreateTag().getInt(FS_STATIONARY_STACKS) * 0.04D;
+            multiplier *= 1.0D + ItemStackTagReads.getInt(chest, FS_STATIONARY_STACKS) * 0.04D;
         }
         if (equipmentAbility(attacker, headProfile) == SpecialAbility.STATIONARY_STACKS) {
-            multiplier *= 1.0D + head.getOrCreateTag().getInt(FS_STATIONARY_STACKS) * 0.04D;
+            multiplier *= 1.0D + ItemStackTagReads.getInt(head, FS_STATIONARY_STACKS) * 0.04D;
         }
         if (equipmentAbility(attacker, headProfile) == SpecialAbility.GN_HEAVY) {
             multiplier *= 1.10D;
@@ -4172,7 +4177,7 @@ public class CommonEvents {
         }
         if (headCovered && equipmentAbility(player, headProfile) == SpecialAbility.H09_RIOT_DODGE
                 && chestProfile != null && chestProfile.id().equals("elite_ballistic_vest")
-                && !head.getOrCreateTag().getBoolean(EQUIPMENT_STATIONARY)
+                && !ItemStackTagReads.getBoolean(head, EQUIPMENT_STATIONARY)
                 && player.getRandom().nextFloat() < 0.75F) {
             notifyEquipmentAbilityTrigger(player, headProfile, ParticleTypes.CLOUD);
             return true;
@@ -4267,7 +4272,7 @@ public class CommonEvents {
             multiplier *= 0.90D;
         }
         if (headCovered && equipmentAbility(player, headProfile) == SpecialAbility.GT5_STATIONARY_REDUCTION
-                && player.getItemBySlot(EquipmentSlot.HEAD).getOrCreateTag().getBoolean(EQUIPMENT_STATIONARY)) {
+                && ItemStackTagReads.getBoolean(player.getItemBySlot(EquipmentSlot.HEAD), EQUIPMENT_STATIONARY)) {
             multiplier *= 0.20D;
             notifyEquipmentAbilityTrigger(player, headProfile, ParticleTypes.END_ROD);
         }
@@ -4294,7 +4299,7 @@ public class CommonEvents {
             ratio += 0.04D;
         }
         if (equipmentAbility(player, profile) == SpecialAbility.STATIONARY_STACKS) {
-            ratio += stack.getOrCreateTag().getInt(FS_STATIONARY_STACKS) * 0.04D;
+            ratio += ItemStackTagReads.getInt(stack, FS_STATIONARY_STACKS) * 0.04D;
         }
         ratio = Math.min(0.98D, ratio);
 
@@ -4482,12 +4487,14 @@ public class CommonEvents {
                 tickEnduranceHelmetTransform(player, head);
             }
             if (equipmentAbility(player, chestProfile) == SpecialAbility.TRICK_ASSAULT
-                    && player.level().getGameTime() > chest.getOrCreateTag().getLong(TRICK_UNTIL)) {
-                chest.getOrCreateTag().remove(TRICK_STACKS);
+                    && player.level().getGameTime() > ItemStackTagReads.getLong(chest, TRICK_UNTIL)
+                    && chest.getTag() != null) {
+                chest.getTag().remove(TRICK_STACKS);
             }
             if (equipmentAbility(player, headProfile) == SpecialAbility.DICH9_ASSAULT
-                    && player.level().getGameTime() > head.getOrCreateTag().getLong(DICH9_UNTIL)) {
-                head.getOrCreateTag().remove(DICH9_STACKS);
+                    && player.level().getGameTime() > ItemStackTagReads.getLong(head, DICH9_UNTIL)
+                    && head.getTag() != null) {
+                head.getTag().remove(DICH9_STACKS);
             }
             tickMhsFury(player, head, headProfile);
             updateEquipmentMovementBonus(player, chest, chestProfile, head, headProfile);
@@ -4759,7 +4766,7 @@ public class CommonEvents {
         }
         long now = player.level().getGameTime();
         boolean active = equipmentAbility(player, headProfile) == SpecialAbility.MHS_FURY
-                && now <= head.getOrCreateTag().getLong(MHS_FURY_UNTIL);
+                && now <= ItemStackTagReads.getLong(head, MHS_FURY_UNTIL);
 
         if (!active && equipmentAbility(player, headProfile) == SpecialAbility.MHS_FURY
                 && isTaczGunStack(player.getMainHandItem()) && hasMhsFuryTriggerTarget(player)) {
@@ -4805,11 +4812,11 @@ public class CommonEvents {
     }
 
     private static void lockMhsFuryHotbar(ServerPlayer player, ItemStack head) {
-        CompoundTag tag = head.getOrCreateTag();
-        int lockedSlot = tag.contains(MHS_FURY_SLOT) ? tag.getInt(MHS_FURY_SLOT) : player.getInventory().selected;
+        CompoundTag tag = head.getTag();
+        int lockedSlot = tag != null && tag.contains(MHS_FURY_SLOT) ? tag.getInt(MHS_FURY_SLOT) : player.getInventory().selected;
         if (lockedSlot < 0 || lockedSlot > 8) {
             lockedSlot = player.getInventory().selected;
-            tag.putInt(MHS_FURY_SLOT, lockedSlot);
+            head.getOrCreateTag().putInt(MHS_FURY_SLOT, lockedSlot);
         }
         if (player.getInventory().selected != lockedSlot) {
             player.getInventory().selected = lockedSlot;
@@ -4824,14 +4831,14 @@ public class CommonEvents {
         ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
         Profile headProfile = DfsEquipmentItem.profile(head);
         return equipmentAbility(player, headProfile) == SpecialAbility.MHS_FURY
-                && player.level().getGameTime() <= head.getOrCreateTag().getLong(MHS_FURY_UNTIL);
+                && player.level().getGameTime() <= ItemStackTagReads.getLong(head, MHS_FURY_UNTIL);
     }
 
     private static void rememberMhsTaczAmmo(ServerPlayer player, ItemStack gun, long expiresAt) {
-        CompoundTag tag = gun.getOrCreateTag();
+        CompoundTag tag = gun.getTag();
         String gunId = mhsGunId(gun);
-        int ammoCount = tag.getInt(TACZ_GUN_CURRENT_AMMO_COUNT_TAG);
-        boolean bulletInBarrel = tag.getBoolean(TACZ_GUN_HAS_BULLET_IN_BARREL_TAG);
+        int ammoCount = tag == null ? 0 : tag.getInt(TACZ_GUN_CURRENT_AMMO_COUNT_TAG);
+        boolean bulletInBarrel = tag != null && tag.getBoolean(TACZ_GUN_HAS_BULLET_IN_BARREL_TAG);
         TaczAmmoSnapshot existing = MHS_TACTICAL_AMMO_SNAPSHOTS.get(player.getUUID());
         if (existing != null && existing.gunId().equals(gunId)) {
             if (existing.ammoCount() > ammoCount) {
@@ -4854,12 +4861,13 @@ public class CommonEvents {
             MHS_TACTICAL_AMMO_SNAPSHOTS.remove(player.getUUID());
             return;
         }
-        CompoundTag tag = gun.getOrCreateTag();
-        if (tag.getInt(TACZ_GUN_CURRENT_AMMO_COUNT_TAG) < snapshot.ammoCount()) {
+        CompoundTag tag = gun.getTag();
+        if ((tag == null ? 0 : tag.getInt(TACZ_GUN_CURRENT_AMMO_COUNT_TAG)) < snapshot.ammoCount()) {
+            tag = gun.getOrCreateTag();
             tag.putInt(TACZ_GUN_CURRENT_AMMO_COUNT_TAG, snapshot.ammoCount());
         }
-        if (snapshot.bulletInBarrel() && !tag.getBoolean(TACZ_GUN_HAS_BULLET_IN_BARREL_TAG)) {
-            tag.putBoolean(TACZ_GUN_HAS_BULLET_IN_BARREL_TAG, true);
+        if (snapshot.bulletInBarrel() && (tag == null || !tag.getBoolean(TACZ_GUN_HAS_BULLET_IN_BARREL_TAG))) {
+            gun.getOrCreateTag().putBoolean(TACZ_GUN_HAS_BULLET_IN_BARREL_TAG, true);
         }
     }
 
@@ -4904,13 +4912,13 @@ public class CommonEvents {
         long now = player.level().getGameTime();
         if (chest != null && !chest.isEmpty()
                 && equipmentAbility(player, chestProfile) == SpecialAbility.TRICK_ASSAULT
-                && now <= chest.getOrCreateTag().getLong(TRICK_UNTIL)) {
-            bonus += chest.getOrCreateTag().getInt(TRICK_STACKS) * 0.05D;
+                && now <= ItemStackTagReads.getLong(chest, TRICK_UNTIL)) {
+            bonus += ItemStackTagReads.getInt(chest, TRICK_STACKS) * 0.05D;
         }
         if (head != null && !head.isEmpty()
                 && equipmentAbility(player, headProfile) == SpecialAbility.DICH9_ASSAULT
-                && now <= head.getOrCreateTag().getLong(DICH9_UNTIL)) {
-            bonus += head.getOrCreateTag().getInt(DICH9_STACKS) * 0.04D;
+                && now <= ItemStackTagReads.getLong(head, DICH9_UNTIL)) {
+            bonus += ItemStackTagReads.getInt(head, DICH9_STACKS) * 0.04D;
         }
         if (equipmentAbility(player, headProfile) == SpecialAbility.GN_HEAVY) {
             bonus += 0.05D;
@@ -4947,14 +4955,14 @@ public class CommonEvents {
         ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
         Profile chestProfile = DfsEquipmentItem.profile(chest);
         if (equipmentAbility(player, chestProfile) == SpecialAbility.TRICK_ASSAULT
-                && now <= chest.getOrCreateTag().getLong(TRICK_UNTIL)) {
-            multiplier *= 1.0D + chest.getOrCreateTag().getInt(TRICK_STACKS) * 0.04D;
+                && now <= ItemStackTagReads.getLong(chest, TRICK_UNTIL)) {
+            multiplier *= 1.0D + ItemStackTagReads.getInt(chest, TRICK_STACKS) * 0.04D;
         }
         ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
         Profile headProfile = DfsEquipmentItem.profile(head);
         if (equipmentAbility(player, headProfile) == SpecialAbility.DICH9_ASSAULT
-                && now <= head.getOrCreateTag().getLong(DICH9_UNTIL)) {
-            multiplier *= 1.0D + head.getOrCreateTag().getInt(DICH9_STACKS) * 0.06D;
+                && now <= ItemStackTagReads.getLong(head, DICH9_UNTIL)) {
+            multiplier *= 1.0D + ItemStackTagReads.getInt(head, DICH9_STACKS) * 0.06D;
         }
         if (isMhsFuryActive(player)) {
             multiplier *= 2.0D;

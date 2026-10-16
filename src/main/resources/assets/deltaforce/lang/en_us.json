@@ -146,10 +146,6 @@
   "config.deltaforce.leaf.x_offset": "X Offset",
   "config.deltaforce.leaf.y_offset": "Y Offset",
   "config.deltaforce.button.preview": "Preview",
-  "config.deltaforce.category.layout": "Interface",
-  "config.deltaforce.subcategory.layout": "Layout",
-  "config.deltaforce.layout.go_to_config": "Custom Layout",
-  "config.deltaforce.layout.go_to_config.button": "Configure",
 
   "screen.deltaforce.settings.undo": "Undo",
   "screen.deltaforce.settings.pressing_key": "> Press a key <",
@@ -159,8 +155,6 @@
   "screen.deltaforce.settings.skill_2": "Skill 2",
   "screen.deltaforce.settings.skill_1": "Skill 1",
 
-  "screen.deltaforce.layout_config": "Custom Layout",
-  "screen.deltaforce.layout_config.configure": "Configure",
 
   "screen.deltaforce.main": "Main Screen",
   "screen.deltaforce.main.start_game": "Start Game",
@@ -176,38 +170,12 @@
   "screen.deltaforce.gti_trading": "Global Trade",
   "screen.deltaforce.special_ops": "Special Ops",
 
-  "gui.deltaforce.layout.scale": "Scale",
-  "gui.deltaforce.layout.scale_x": "X Scale",
-  "gui.deltaforce.layout.scale_y": "Y Scale",
-  "gui.deltaforce.layout.pos_x": "Pos X",
-  "gui.deltaforce.layout.pos_y": "Pos Y",
-  "gui.deltaforce.layout.presave": "Pre-Save",
-  "gui.deltaforce.layout.presave_done": "Pre-Saved",
-  "gui.deltaforce.layout.presave_pending": "Unsaved pre-saves pending",
-  "gui.deltaforce.layout.no_elements": "No editable elements on this screen",
-  "gui.deltaforce.layout.current_selection": "Current: %s",
-  "gui.deltaforce.layout.no_selection": "No selection",
 
   "gui.deltaforce.exit_confirm.title": "Exit Confirmation",
   "gui.deltaforce.exit_confirm.message": "You have unsaved pre-save changes. Save before exit?",
   "gui.deltaforce.exit_confirm.save_quit": "Save & Quit",
   "gui.deltaforce.exit_confirm.discard_quit": "Discard & Quit",
 
-  "gui.deltaforce.element.hotbar": "Hotbar",
-  "gui.deltaforce.element.health": "Health",
-  "gui.deltaforce.element.armor": "Armor",
-  "gui.deltaforce.element.hunger": "Hunger",
-  "gui.deltaforce.element.crosshair": "Crosshair",
-  "gui.deltaforce.element.experience": "Experience",
-  "gui.deltaforce.element.chat": "Chat",
-  "gui.deltaforce.element.scoreboard": "Scoreboard",
-  "gui.deltaforce.element.bossbar": "Boss Bar",
-  "gui.deltaforce.element.actionbar": "Action Bar",
-  "gui.deltaforce.element.player_list": "Player List",
-  "gui.deltaforce.element.container_slots": "Container Slots",
-  "gui.deltaforce.element.player_inventory": "Player Inventory",
-  "gui.deltaforce.element.title_label": "Title Label",
-  "gui.deltaforce.element.custom_box": "Custom Box",
 
   "deltaforce.wip.making": "WIP"
 }

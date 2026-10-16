@@ -142,7 +142,14 @@ public final class DealtForcePlayerConfig {
     private static synchronized void ensureDefaultValue(String path, double defaultValue, ResourceLocation id) {
         CommentedFileConfig current = config();
         Object configured = current.get(path);
-        if (configured == null) {
+        boolean stepHeight = id.getNamespace().equals("forge")
+                && id.getPath().equals("step_height_addition");
+        if (stepHeight) {
+            defaultValue = 0.5D;
+        }
+        // Repair the old zero value while preserving nonzero custom settings.
+        if (configured == null || (stepHeight && configured instanceof Number number
+                && number.doubleValue() == 0.0D)) {
             current.set(path, defaultValue);
             dirty = true;
         }
@@ -182,7 +189,7 @@ public final class DealtForcePlayerConfig {
             return;
         }
         current.setComment(path, "Base value for player attribute " + id
-                + ". Default captured from the current player attribute: " + defaultValue
+                + ". Default base value: " + defaultValue
                 + ". Applies on login, respawn, dimension change, and /reload.");
         dirty = true;
     }

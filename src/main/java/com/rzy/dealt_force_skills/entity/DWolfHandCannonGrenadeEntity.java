@@ -10,6 +10,9 @@ import com.rzy.dealt_force_skills.util.TargetingUtil;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.server.level.ServerLevel;
@@ -40,7 +43,8 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
     private static final double GROUND_REST_OFFSET = 0.24D;
 
     private int fuseRemaining = FUSE_TICKS;
-    private boolean stopped;
+    private static final EntityDataAccessor<Boolean> STOPPED =
+        SynchedEntityData.defineId(DWolfHandCannonGrenadeEntity.class, EntityDataSerializers.BOOLEAN);
     private int lastImpactTick = -1000;
 
     public DWolfHandCannonGrenadeEntity(EntityType<? extends DWolfHandCannonGrenadeEntity> type, Level level) {
@@ -59,6 +63,7 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
 
     @Override
     protected void defineSynchedData() {
+        entityData.define(STOPPED, false);
     }
 
     @Override
@@ -73,7 +78,8 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
             }
         }
 
-        if (stopped) {
+        if (entityData.get(STOPPED)) {
+            setDeltaMovement(Vec3.ZERO);
             spawnClientTrail();
             return;
         }
@@ -117,13 +123,13 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
         if (fuseRemaining <= 0) {
             fuseRemaining = FUSE_TICKS;
         }
-        stopped = tag.getBoolean("Stopped");
+        entityData.set(STOPPED, tag.getBoolean("Stopped"));
     }
 
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
         tag.putInt("FuseRemaining", fuseRemaining);
-        tag.putBoolean("Stopped", stopped);
+        tag.putBoolean("Stopped", entityData.get(STOPPED));
     }
 
     @Override
@@ -134,18 +140,16 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
     private void handleBlockHit(BlockHitResult hit) {
         lastImpactTick = tickCount;
         Direction direction = hit.getDirection();
-        Vec3 normal = Vec3.atLowerCornerOf(direction.getNormal());
-        Vec3 bounced = bounce(direction, getDeltaMovement());
-        setPos(hit.getLocation().x + normal.x * 0.04D,
+        if (direction == Direction.UP) {
+            setPos(hit.getLocation().x, hit.getLocation().y + GROUND_REST_OFFSET, hit.getLocation().z);
+            entityData.set(STOPPED, true);
+            setDeltaMovement(Vec3.ZERO);
+        } else {
+            Vec3 normal = Vec3.atLowerCornerOf(direction.getNormal());
+            setPos(hit.getLocation().x + normal.x * 0.04D,
                 hit.getLocation().y + normal.y * 0.04D,
                 hit.getLocation().z + normal.z * 0.04D);
-        setDeltaMovement(bounced);
-
-        if (direction == Direction.UP && bounced.lengthSqr() < 0.006D) {
-            double groundY = hit.getBlockPos().getY() + 1.0D + GROUND_REST_OFFSET;
-            setPos(hit.getLocation().x, groundY, hit.getLocation().z);
-            stopped = true;
-            setDeltaMovement(Vec3.ZERO);
+            setDeltaMovement(bounce(direction, getDeltaMovement()));
         }
 
         if (level() instanceof ServerLevel serverLevel) {
@@ -168,7 +172,7 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
         LivingEntity owner = getOwner() instanceof LivingEntity living ? living : null;
         Player ownerPlayer = owner instanceof Player player ? player : null;
         double radius = CommanderStateManager.skillRadius(ownerPlayer, RADIUS);
-        double falloff = CommanderStateManager.skillDamageFalloff(ownerPlayer, 0.1D);
+        double falloff = CommanderStateManager.skillDamageFalloff(ownerPlayer, com.rzy.dealt_force_skills.config.SkillBalance.falloffPerBlock("summons.dwolfhandcannongrenadeentity", 0.1D));
         RangedSoundHelper.stop(serverLevel, center, ModSounds.D_WOLF_HAND_CANNON_FUSE.get(),
                 SoundSource.PLAYERS, 48.0D);
         serverLevel.playSound(null, center.x, center.y, center.z, ModSounds.D_WOLF_HAND_CANNON_EXPLODE.get(),
@@ -186,8 +190,10 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
                 continue;
             }
 
-            float baseDamage = target instanceof Player ? 12.0f : 24.0f;
-            float amount = baseDamage * Math.max(0.0f, 1.0f - (float) (distance * falloff));
+            float baseDamage = target instanceof Player
+                    ? com.rzy.dealt_force_skills.config.SkillBalance.damage("summons.dwolfhandcannongrenadeentity.player_damage", 12.0F)
+                    : com.rzy.dealt_force_skills.config.SkillBalance.damage("summons.dwolfhandcannongrenadeentity.non_player_damage", 24.0F);
+            float amount = baseDamage * com.rzy.dealt_force_skills.config.SkillBalance.falloff("summons.dwolfhandcannongrenadeentity", distance, falloff);
             if (amount <= 0.0f) {
                 continue;
             }
@@ -210,7 +216,7 @@ public class DWolfHandCannonGrenadeEntity extends Projectile implements ItemSupp
     }
 
     public boolean isStoppedForRender() {
-        return stopped;
+        return entityData.get(STOPPED);
     }
 
     public float impactAnimationSeconds(float partialTick) {

@@ -168,10 +168,6 @@
   "config.deltaforce.preview.model_hint": "物品模型区域",
   "config.deltaforce.preview.description": "物品描述信息...",
   "config.deltaforce.leaf.hotkey": "详情按键",
-  "config.deltaforce.category.layout": "界面",
-  "config.deltaforce.subcategory.layout": "布局",
-  "config.deltaforce.layout.go_to_config": "自定义布局",
-  "config.deltaforce.layout.go_to_config.button": "前往配置",
 
   "screen.deltaforce.settings.undo": "撤销",
   "screen.deltaforce.settings.pressing_key": "> 按下按键 <",
@@ -181,8 +177,6 @@
   "screen.deltaforce.settings.skill_2": "技能2",
   "screen.deltaforce.settings.skill_1": "技能1",
 
-  "screen.deltaforce.layout_config": "自定义布局",
-  "screen.deltaforce.layout_config.configure": "配置此页",
 
   "screen.deltaforce.main": "主界面",
   "screen.deltaforce.main.start_game": "开始游戏页",
@@ -198,38 +192,12 @@
   "screen.deltaforce.gti_trading": "全球交易所",
   "screen.deltaforce.special_ops": "特勤处",
 
-  "gui.deltaforce.layout.scale": "缩放",
-  "gui.deltaforce.layout.scale_x": "X缩放",
-  "gui.deltaforce.layout.scale_y": "Y缩放",
-  "gui.deltaforce.layout.pos_x": "X位置",
-  "gui.deltaforce.layout.pos_y": "Y位置",
-  "gui.deltaforce.layout.presave": "预保存",
-  "gui.deltaforce.layout.presave_done": "已预保存",
-  "gui.deltaforce.layout.presave_pending": "有未应用的预保存",
-  "gui.deltaforce.layout.no_elements": "此界面无可编辑元素",
-  "gui.deltaforce.layout.current_selection": "当前: %s",
-  "gui.deltaforce.layout.no_selection": "未选中元素",
 
   "gui.deltaforce.exit_confirm.title": "退出确认",
   "gui.deltaforce.exit_confirm.message": "您有未应用的预保存修改，退出前是否保存？",
   "gui.deltaforce.exit_confirm.save_quit": "保存并退出",
   "gui.deltaforce.exit_confirm.discard_quit": "放弃并退出",
 
-  "gui.deltaforce.element.hotbar": "快捷栏",
-  "gui.deltaforce.element.health": "生命值",
-  "gui.deltaforce.element.armor": "盔甲值",
-  "gui.deltaforce.element.hunger": "饥饿值",
-  "gui.deltaforce.element.crosshair": "准星",
-  "gui.deltaforce.element.experience": "经验条",
-  "gui.deltaforce.element.chat": "聊天框",
-  "gui.deltaforce.element.scoreboard": "计分板",
-  "gui.deltaforce.element.bossbar": "Boss血条",
-  "gui.deltaforce.element.actionbar": "动作栏",
-  "gui.deltaforce.element.player_list": "玩家列表",
-  "gui.deltaforce.element.container_slots": "容器槽位",
-  "gui.deltaforce.element.player_inventory": "玩家背包",
-  "gui.deltaforce.element.title_label": "标题标签",
-  "gui.deltaforce.element.custom_box": "自定义框",
 
   "deltaforce.wip.making": "制作中",
 

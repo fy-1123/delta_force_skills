@@ -34,6 +34,7 @@ public class C2S_VyronDash {
     public static void handle(C2S_VyronDash msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
+            if (com.rzy.dealt_force_skills.climb.HvkZiplineManager.blocksSkills(player)) return;
             if (player == null || player.isSpectator() || UluruLoiteringMissileEntity.isPlayerControlling(player)) {
                 return;
             }

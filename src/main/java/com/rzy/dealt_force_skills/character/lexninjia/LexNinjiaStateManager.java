@@ -2373,11 +2373,11 @@ public final class LexNinjiaStateManager {
         ItemStack hand = player.getMainHandItem();
         for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
             ItemStack stack = player.getInventory().getItem(i);
-            if (!stack.isEmpty() && predicate.test(stack) && !stack.getOrCreateTag().contains(FOOD_ART)) {
+            if (!stack.isEmpty() && predicate.test(stack) && !(stack.hasTag() && stack.getTag().contains(FOOD_ART))) {
                 available += stack.getCount();
             }
         }
-        if (!hand.isEmpty() && predicate.test(hand) && !hand.getOrCreateTag().contains(FOOD_ART)) {
+        if (!hand.isEmpty() && predicate.test(hand) && !(hand.hasTag() && hand.getTag().contains(FOOD_ART))) {
             available -= Math.min(reservedMainHandCount, hand.getCount());
         }
         return available >= count;
@@ -2396,7 +2396,7 @@ public final class LexNinjiaStateManager {
         int remaining = count;
         for (int i = 0; i < player.getInventory().getContainerSize() && remaining > 0; i++) {
             ItemStack stack = player.getInventory().getItem(i);
-            if (!stack.isEmpty() && predicate.test(stack) && !stack.getOrCreateTag().contains(FOOD_ART)) {
+            if (!stack.isEmpty() && predicate.test(stack) && !(stack.hasTag() && stack.getTag().contains(FOOD_ART))) {
                 int take = Math.min(remaining, stack.getCount());
                 stack.shrink(take);
                 remaining -= take;

@@ -26,7 +26,8 @@ public final class ChamberTaczEnhancement {
     }
 
     public static boolean isChamberWeapon(ItemStack stack) {
-        return stack != null && !stack.isEmpty() && stack.getOrCreateTag().getBoolean(WEAPON_TAG);
+        CompoundTag tag = stack == null || stack.isEmpty() ? null : stack.getTag();
+        return tag != null && tag.getBoolean(WEAPON_TAG);
     }
 
     public static ChamberGunKind kind(ItemStack stack) {
@@ -34,7 +35,7 @@ public final class ChamberTaczEnhancement {
             return ChamberGunKind.NONE;
         }
         try {
-            return ChamberGunKind.valueOf(stack.getOrCreateTag().getString(KIND_TAG));
+            return ChamberGunKind.valueOf(stack.getTag().getString(KIND_TAG));
         } catch (RuntimeException ignored) {
             return ChamberGunKind.NONE;
         }
