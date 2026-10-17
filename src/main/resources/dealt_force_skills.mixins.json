@@ -8,8 +8,10 @@
   "mixins": [
     "ChamberWeaponDropMixin",
     "ChamberWeaponContainerMixin",
-    "HvkZiplinePlayerMixin",
     "HearingSoundBroadcastMixin",
+    "HvkZiplinePlayerMixin",
+    "HvkZiplineConnectionMixin",
+    "HvkZiplineConnectionAccess",
     "ServerPlayerSelfSkillDamageMixin",
     "LivingEntityUseItemAccessor",
     "apotheosis.ItemAffixesMixin",
